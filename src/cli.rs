@@ -1,7 +1,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "mdiff", about = "TUI git diff viewer with worktree management")]
+#[command(name = "mdiff", version, about = "TUI git diff viewer with worktree management")]
 pub struct Cli {
     /// Target to diff against (branch, commit, or ref)
     pub target: Option<String>,

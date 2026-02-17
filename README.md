@@ -8,7 +8,7 @@ A terminal UI for reviewing git diffs — with syntax highlighting, split/unifie
 - **Syntax highlighting** — tree-sitter powered, supports Rust, TypeScript, JavaScript, Python, Go, Ruby, JSON, TOML, YAML, CSS, HTML, and Bash
 - **Git operations** — stage, unstage, restore files, and commit without leaving the TUI
 - **Annotations** — add inline comments on diff lines for coding agents to act on *(coming soon)*
-- **Worktree browser** — browse and switch between git worktrees, with automatic detection of active coding agents (Claude Code, Cursor, Aider, Copilot)
+- **Worktree browser** — browse and switch between git worktrees, with automatic detection of active coding agents (Claude Code, Codex, OpenCode, Gemini)
 - **Fuzzy file search** — quickly filter the file list with `/`
 - **Whitespace toggle** — hide whitespace-only changes with `w`
 
