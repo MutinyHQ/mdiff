@@ -6,7 +6,6 @@ description = "TUI git diff viewer with worktree management"
 license = "MIT"
 repository = "https://github.com/mutinyhq/mdiff"
 homepage = "https://github.com/mutinyhq/mdiff"
-readme = "README.md"
 keywords = ["git", "diff", "tui", "terminal", "worktree"]
 categories = ["command-line-utilities", "development-tools"]
 
@@ -54,6 +53,17 @@ tree-sitter-go = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-bash = "0.23"
 tree-sitter-yaml = "0.7"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Config
+toml = "0.8"
+
+# Clipboard
+arboard = "3"
 
 # Fuzzy search (for Phase 5)
 nucleo = "0.5"
