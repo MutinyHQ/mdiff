@@ -15,7 +15,9 @@ pub enum Action {
     ScrollDown,
     ScrollPageUp,
     ScrollPageDown,
+    #[allow(dead_code)]
     ScrollLeft,
+    #[allow(dead_code)]
     ScrollRight,
     ToggleViewMode,
     ToggleWhitespace,
@@ -50,5 +52,6 @@ pub enum Action {
     WorktreeBack,
 
     // Resize
+    #[allow(dead_code)]
     Resize(u16, u16),
 }

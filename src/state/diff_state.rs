@@ -31,6 +31,7 @@ pub struct DiffState {
     pub deltas: Vec<FileDelta>,
     pub selected_file: Option<usize>,
     pub scroll_offset: usize,
+    #[allow(dead_code)]
     pub horizontal_scroll: usize,
     pub loading: bool,
     /// Per-line highlight spans for the old side, indexed by 1-based line number.

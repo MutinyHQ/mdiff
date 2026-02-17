@@ -26,6 +26,7 @@ pub enum DiffLineOrigin {
     Context,
     Addition,
     Deletion,
+    #[allow(dead_code)]
     HunkHeader,
 }
 
@@ -38,6 +39,7 @@ pub struct DiffLine {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Hunk {
     pub header: String,
     pub old_start: u32,
@@ -63,5 +65,6 @@ pub enum ComparisonTarget {
     HeadVsWorkdir,
     Branch(String),
     Commit(git2::Oid),
+    #[allow(dead_code)]
     Ref(String),
 }

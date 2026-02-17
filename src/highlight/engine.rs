@@ -17,6 +17,7 @@ pub struct HighlightSpan {
 
 pub struct HighlightEngine {
     configs: HashMap<String, HighlightConfiguration>,
+    #[allow(dead_code)]
     highlight_names: Vec<String>,
 }
 

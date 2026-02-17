@@ -13,6 +13,7 @@ pub struct WorktreeInfo {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AgentInfo {
     pub agent_type: AgentType,
     pub identifier: String,
