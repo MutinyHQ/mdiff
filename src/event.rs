@@ -213,6 +213,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
+        KeyCode::Char('g') if !ctx.visual_mode_active => return Some(Action::RefreshDiff),
         _ => {}
     }
 

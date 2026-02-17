@@ -1040,6 +1040,11 @@ impl App {
                 }
             }
 
+            Action::RefreshDiff => {
+                self.request_diff();
+                self.set_status("Refreshed".to_string(), false);
+            }
+
             Action::Tick => {
                 if self.status_clear_countdown > 0 {
                     self.status_clear_countdown -= 1;

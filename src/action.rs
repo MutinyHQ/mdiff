@@ -93,6 +93,9 @@ pub enum Action {
     AgentOutputsCopyPrompt,
     KillAgentProcess,
 
+    // Refresh
+    RefreshDiff,
+
     // Resize
     Resize,
 }
