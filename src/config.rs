@@ -86,8 +86,13 @@ fn known_agents() -> Vec<AgentProviderConfig> {
         AgentProviderConfig {
             name: "gemini".to_string(),
             command: "gemini -p '{rendered_prompt}'".to_string(),
-            models: vec!["gemini-2.5-pro".to_string(), "gemini-2.5-flash".to_string()],
-            default_model: "gemini-2.5-pro".to_string(),
+            models: vec![
+                "gemini-3-flash-preview".to_string(),
+                "gemini-3-pro-preview".to_string(),
+                "gemini-2.5-pro".to_string(),
+                "gemini-2.5-flash".to_string(),
+            ],
+            default_model: "gemini-3-flash-preview".to_string(),
             description: "Google Gemini CLI".to_string(),
         },
     ]
