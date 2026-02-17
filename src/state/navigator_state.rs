@@ -1,0 +1,137 @@
+use crate::git::types::FileDelta;
+
+#[derive(Debug)]
+pub struct NavigatorEntry {
+    pub display: String,
+    pub path: String,
+    pub delta_index: usize,
+}
+
+#[derive(Debug)]
+pub struct NavigatorState {
+    pub selected: usize,
+    pub entries: Vec<NavigatorEntry>,
+    pub filtered_indices: Vec<usize>,
+    pub search_active: bool,
+    pub search_query: String,
+}
+
+impl NavigatorState {
+    pub fn new() -> Self {
+        Self {
+            selected: 0,
+            entries: Vec::new(),
+            filtered_indices: Vec::new(),
+            search_active: false,
+            search_query: String::new(),
+        }
+    }
+
+    pub fn update_from_deltas(&mut self, deltas: &[FileDelta]) {
+        self.entries = deltas
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let path_str = d.path.to_string_lossy().to_string();
+                let display = format!(
+                    "{} [{}] +{} -{}",
+                    path_str,
+                    d.status.label(),
+                    d.additions,
+                    d.deletions
+                );
+                NavigatorEntry {
+                    display,
+                    path: path_str,
+                    delta_index: i,
+                }
+            })
+            .collect();
+
+        self.refilter();
+    }
+
+    pub fn refilter(&mut self) {
+        if self.search_query.is_empty() {
+            self.filtered_indices = (0..self.entries.len()).collect();
+        } else {
+            let query_lower = self.search_query.to_lowercase();
+            self.filtered_indices = self
+                .entries
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| fuzzy_match(&e.path.to_lowercase(), &query_lower))
+                .map(|(i, _)| i)
+                .collect();
+        }
+
+        // Clamp selection
+        if !self.filtered_indices.is_empty() {
+            self.selected = self.selected.min(self.filtered_indices.len() - 1);
+        } else {
+            self.selected = 0;
+        }
+    }
+
+    pub fn visible_entries(&self) -> Vec<(usize, &NavigatorEntry)> {
+        self.filtered_indices
+            .iter()
+            .map(|&i| (i, &self.entries[i]))
+            .collect()
+    }
+
+    pub fn select_up(&mut self) {
+        self.selected = self.selected.saturating_sub(1);
+    }
+
+    pub fn select_down(&mut self) {
+        if !self.filtered_indices.is_empty() {
+            self.selected = (self.selected + 1).min(self.filtered_indices.len() - 1);
+        }
+    }
+
+    pub fn selected_delta_index(&self) -> Option<usize> {
+        self.filtered_indices
+            .get(self.selected)
+            .and_then(|&i| self.entries.get(i))
+            .map(|e| e.delta_index)
+    }
+
+    pub fn start_search(&mut self) {
+        self.search_active = true;
+        self.search_query.clear();
+    }
+
+    pub fn end_search(&mut self) {
+        self.search_active = false;
+        self.search_query.clear();
+        self.refilter();
+    }
+
+    pub fn search_push(&mut self, c: char) {
+        self.search_query.push(c);
+        self.selected = 0;
+        self.refilter();
+    }
+
+    pub fn search_pop(&mut self) {
+        self.search_query.pop();
+        self.selected = 0;
+        self.refilter();
+    }
+}
+
+/// Simple fuzzy match: all characters of pattern must appear in text in order.
+fn fuzzy_match(text: &str, pattern: &str) -> bool {
+    let mut text_iter = text.chars();
+    for pc in pattern.chars() {
+        loop {
+            match text_iter.next() {
+                Some(tc) if tc == pc => break,
+                Some(_) => continue,
+                None => return false,
+            }
+        }
+    }
+    true
+}
