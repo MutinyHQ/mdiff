@@ -10,6 +10,8 @@ pub struct WorktreeInfo {
     pub is_main: bool,
     pub is_dirty: bool,
     pub agent: Option<AgentInfo>,
+    /// HEAD commit timestamp (seconds since epoch), used for sorting.
+    pub head_time: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +57,7 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
         });
 
         let is_dirty = repo_is_dirty(&repo);
+        let head_time = head_commit_time(&repo);
 
         let mut info = WorktreeInfo {
             name: "main".to_string(),
@@ -63,6 +66,7 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
             is_main: true,
             is_dirty,
             agent: None,
+            head_time,
         };
         info.agent = detect_agent(&info.path);
         worktrees.push(info);
@@ -79,7 +83,7 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
         let wt_path = wt.path().to_path_buf();
 
         // Open the worktree's repo to get head info
-        let (head_ref, is_dirty) = match Repository::open(&wt_path) {
+        let (head_ref, is_dirty, head_time) = match Repository::open(&wt_path) {
             Ok(wt_repo) => {
                 let head = wt_repo.head().ok().and_then(|h| {
                     if h.is_branch() {
@@ -89,9 +93,10 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
                     }
                 });
                 let dirty = repo_is_dirty(&wt_repo);
-                (head, dirty)
+                let time = head_commit_time(&wt_repo);
+                (head, dirty, time)
             }
-            Err(_) => (None, false),
+            Err(_) => (None, false, 0),
         };
 
         let mut info = WorktreeInfo {
@@ -101,12 +106,24 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
             is_main: false,
             is_dirty,
             agent: None,
+            head_time,
         };
         info.agent = detect_agent(&info.path);
         worktrees.push(info);
     }
 
+    // Sort by most recently updated first
+    worktrees.sort_by(|a, b| b.head_time.cmp(&a.head_time));
+
     Ok(worktrees)
+}
+
+fn head_commit_time(repo: &Repository) -> i64 {
+    repo.head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .map(|c| c.time().seconds())
+        .unwrap_or(0)
 }
 
 fn repo_is_dirty(repo: &Repository) -> bool {
