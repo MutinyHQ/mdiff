@@ -1,5 +1,5 @@
 [package]
-name = "mdiff"
+name = "mutiny-diff"
 version = "0.1.0"
 edition = "2021"
 description = "TUI git diff viewer with worktree management"
@@ -9,6 +9,10 @@ homepage = "https://github.com/mutinyhq/mdiff"
 readme = "README.md"
 keywords = ["git", "diff", "tui", "terminal", "worktree"]
 categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "mdiff"
+path = "src/main.rs"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/mdiff-{ target }.tar.gz"
