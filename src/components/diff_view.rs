@@ -227,9 +227,6 @@ fn build_split_lines<'a>(
                     ));
                     i += 1;
                 }
-                _ => {
-                    i += 1;
-                }
             }
         }
     }
@@ -325,7 +322,6 @@ fn render_unified(
                         Some(Color::Rgb(40, 0, 0)),
                     ));
                 }
-                _ => {}
             }
         }
     }

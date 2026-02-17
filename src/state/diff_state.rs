@@ -31,8 +31,6 @@ pub struct DiffState {
     pub deltas: Vec<FileDelta>,
     pub selected_file: Option<usize>,
     pub scroll_offset: usize,
-    #[allow(dead_code)]
-    pub horizontal_scroll: usize,
     pub loading: bool,
     /// Per-line highlight spans for the old side, indexed by 1-based line number.
     pub old_highlights: Vec<Vec<HighlightSpan>>,
@@ -47,7 +45,6 @@ impl DiffState {
             deltas: Vec::new(),
             selected_file: None,
             scroll_offset: 0,
-            horizontal_scroll: 0,
             loading: false,
             old_highlights: Vec::new(),
             new_highlights: Vec::new(),

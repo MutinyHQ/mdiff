@@ -12,7 +12,7 @@ use crate::state::app_state::{ActiveView, FocusPanel};
 pub enum Event {
     Key(KeyEvent),
     Mouse(MouseEvent),
-    Resize(u16, u16),
+    Resize,
     Tick,
 }
 
@@ -39,8 +39,8 @@ impl EventReader {
                             break;
                         }
                     }
-                    Some(Ok(CrosstermEvent::Resize(w, h))) => {
-                        if event_tx.send(Event::Resize(w, h)).is_err() {
+                    Some(Ok(CrosstermEvent::Resize(_, _))) => {
+                        if event_tx.send(Event::Resize).is_err() {
                             break;
                         }
                     }

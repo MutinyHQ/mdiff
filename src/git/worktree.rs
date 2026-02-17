@@ -13,10 +13,8 @@ pub struct WorktreeInfo {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct AgentInfo {
     pub agent_type: AgentType,
-    pub identifier: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +124,6 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
     if path.join(".claude").is_dir() {
         return Some(AgentInfo {
             agent_type: AgentType::ClaudeCode,
-            identifier: "Claude Code".to_string(),
         });
     }
 
@@ -134,7 +131,6 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
     if path.join(".cursorrules").is_file() || path.join(".cursor").is_dir() {
         return Some(AgentInfo {
             agent_type: AgentType::Cursor,
-            identifier: "Cursor".to_string(),
         });
     }
 
@@ -142,7 +138,6 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
     if path.join(".aider.conf.yml").is_file() || path.join(".aider").is_dir() {
         return Some(AgentInfo {
             agent_type: AgentType::Aider,
-            identifier: "Aider".to_string(),
         });
     }
 
@@ -150,7 +145,6 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
     if path.join(".github/copilot").is_dir() {
         return Some(AgentInfo {
             agent_type: AgentType::Copilot,
-            identifier: "Copilot".to_string(),
         });
     }
 
@@ -167,7 +161,6 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
             };
             return Some(AgentInfo {
                 agent_type,
-                identifier: dir_name.to_string(),
             });
         }
     }

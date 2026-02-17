@@ -30,7 +30,7 @@ impl DiffEngine {
                 };
                 repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))?
             }
-            ComparisonTarget::Branch(name) | ComparisonTarget::Ref(name) => {
+            ComparisonTarget::Branch(name) => {
                 let obj = repo
                     .revparse_single(name)
                     .with_context(|| format!("Could not resolve: {name}"))?;
@@ -129,18 +129,13 @@ impl DiffEngine {
                     if let Some(h) = current_hunk.take() {
                         deltas[idx].hunks.push(h);
                     }
-                    let (old_start, old_lines, new_start, new_lines) = if let Some(ref h) = hunk {
-                        (h.old_start(), h.old_lines(), h.new_start(), h.new_lines())
+                    let header = if let Some(ref h) = hunk {
+                        format!("@@ -{},{} +{},{} @@", h.old_start(), h.old_lines(), h.new_start(), h.new_lines())
                     } else {
-                        (0, 0, 0, 0)
+                        "@@ -0,0 +0,0 @@".to_string()
                     };
-                    let header = format!("@@ -{old_start},{old_lines} +{new_start},{new_lines} @@");
                     current_hunk = Some(Hunk {
                         header,
-                        old_start,
-                        old_lines,
-                        new_start,
-                        new_lines,
                         lines: Vec::new(),
                     });
                 }

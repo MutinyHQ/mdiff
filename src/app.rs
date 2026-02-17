@@ -47,7 +47,6 @@ impl App {
             ComparisonTarget::HeadVsWorkdir => "HEAD".to_string(),
             ComparisonTarget::Branch(name) => name.clone(),
             ComparisonTarget::Commit(oid) => format!("{:.7}", oid),
-            ComparisonTarget::Ref(name) => name.clone(),
         };
         if open_worktree_browser {
             state.active_view = ActiveView::WorktreeBrowser;
@@ -146,7 +145,7 @@ impl App {
                         self.state.active_view,
                     ),
                     Event::Mouse(mouse) => self.handle_mouse(mouse),
-                    Event::Resize(w, h) => Some(Action::Resize(w, h)),
+                    Event::Resize => Some(Action::Resize),
                     Event::Tick => Some(Action::Tick),
                 };
                 if let Some(action) = action {
@@ -451,8 +450,7 @@ impl App {
                     }
                 }
             }
-            Action::Resize(_, _) => {}
-            _ => {}
+            Action::Resize => {}
         }
     }
 

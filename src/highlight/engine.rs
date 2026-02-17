@@ -17,8 +17,6 @@ pub struct HighlightSpan {
 
 pub struct HighlightEngine {
     configs: HashMap<String, HighlightConfiguration>,
-    #[allow(dead_code)]
-    highlight_names: Vec<String>,
 }
 
 impl HighlightEngine {
@@ -31,10 +29,7 @@ impl HighlightEngine {
             configs.insert(entry.name.to_string(), config);
         }
 
-        Self {
-            configs,
-            highlight_names,
-        }
+        Self { configs }
     }
 
     /// Highlight a file's content and return per-line highlight spans.
