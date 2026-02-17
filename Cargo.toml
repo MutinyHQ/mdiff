@@ -3,6 +3,17 @@ name = "mdiff"
 version = "0.1.0"
 edition = "2021"
 description = "TUI git diff viewer with worktree management"
+license = "MIT"
+repository = "https://github.com/mutinyhq/mdiff"
+homepage = "https://github.com/mutinyhq/mdiff"
+readme = "README.md"
+keywords = ["git", "diff", "tui", "terminal", "worktree"]
+categories = ["command-line-utilities", "development-tools"]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/mdiff-{ target }.tar.gz"
+bin-dir = "mdiff-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
 
 [dependencies]
 # TUI
