@@ -159,9 +159,7 @@ fn detect_agent(path: &Path) -> Option<AgentInfo> {
                 "copilot" => AgentType::Copilot,
                 _ => AgentType::Other,
             };
-            return Some(AgentInfo {
-                agent_type,
-            });
+            return Some(AgentInfo { agent_type });
         }
     }
 

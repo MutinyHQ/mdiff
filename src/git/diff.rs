@@ -130,7 +130,13 @@ impl DiffEngine {
                         deltas[idx].hunks.push(h);
                     }
                     let header = if let Some(ref h) = hunk {
-                        format!("@@ -{},{} +{},{} @@", h.old_start(), h.old_lines(), h.new_start(), h.new_lines())
+                        format!(
+                            "@@ -{},{} +{},{} @@",
+                            h.old_start(),
+                            h.old_lines(),
+                            h.new_start(),
+                            h.new_lines()
+                        )
                     } else {
                         "@@ -0,0 +0,0 @@".to_string()
                     };
