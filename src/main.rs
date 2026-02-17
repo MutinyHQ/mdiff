@@ -1,12 +1,18 @@
 mod action;
+mod agent_runner;
 mod app;
 mod async_diff;
 mod cli;
 mod components;
+mod config;
+mod context;
+mod display_map;
 mod event;
 mod git;
 mod highlight;
+mod session;
 mod state;
+mod template;
 mod tui;
 
 use anyhow::Result;

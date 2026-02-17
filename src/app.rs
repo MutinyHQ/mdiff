@@ -5,21 +5,34 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::action::Action;
+use crate::agent_runner::{AgentEvent, AgentRunner};
 use crate::async_diff::{DiffRequest, DiffWorker};
 use crate::components::action_hud::ActionHud;
+use crate::components::agent_outputs::AgentOutputs;
+use crate::components::agent_selector::render_agent_selector;
+use crate::components::annotation_menu::render_annotation_menu;
+use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
 use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::DiffView;
 use crate::components::navigator::Navigator;
+use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
-use crate::event::{map_key_to_action, Event, EventReader};
+use crate::config::{self, MdiffConfig};
+use crate::context;
+use crate::display_map::{build_display_map, DisplayRowInfo};
+use crate::event::{map_key_to_action, Event, EventReader, KeyContext};
 use crate::git::commands::GitCli;
 use crate::git::types::{ComparisonTarget, DiffLineOrigin, FileDelta};
 use crate::git::worktree;
 use crate::highlight::HighlightEngine;
+use crate::session;
+use crate::state::agent_state::{AgentRun, AgentRunStatus};
+use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::{AppState, DiffOptions, DiffViewMode};
+use crate::template;
 use crate::tui::Tui;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -33,6 +46,8 @@ pub struct App {
     status_clear_countdown: u32,
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
+    config: MdiffConfig,
+    agent_runner: Option<AgentRunner>,
 }
 
 impl App {
@@ -51,9 +66,14 @@ impl App {
         if open_worktree_browser {
             state.active_view = ActiveView::WorktreeBrowser;
         }
+
+        // Load session annotations
+        state.annotations = session::load_session(&repo_path, &state.target_label);
+
         let worker = DiffWorker::new(repo_path.clone());
         let highlight_engine = HighlightEngine::new();
         let git_cli = GitCli::new(&repo_path);
+        let config = config::load_config();
         Self {
             state,
             worker,
@@ -64,6 +84,8 @@ impl App {
             status_clear_countdown: 0,
             repo_path,
             nav_area: Cell::new(Rect::default()),
+            config,
+            agent_runner: None,
         }
     }
 
@@ -80,9 +102,19 @@ impl App {
         let diff_view = DiffView;
         let action_hud = ActionHud;
         let worktree_browser = WorktreeBrowser;
+        let agent_outputs = AgentOutputs;
 
         loop {
             self.poll_diff_results();
+            self.poll_agent_output();
+
+            // Update viewport height for cursor auto-scroll calculations
+            let term_size = terminal.size()?;
+            let mut vh = term_size.height.saturating_sub(4) as usize; // context_bar + hud + borders
+            if self.state.prompt_preview_visible {
+                vh = vh * 60 / 100;
+            }
+            self.state.diff.viewport_height = vh;
 
             terminal.draw(|frame| {
                 let outer = Layout::default()
@@ -105,18 +137,44 @@ impl App {
 
                         self.nav_area.set(main[0]);
                         navigator.render(frame, main[0], &self.state);
-                        diff_view.render(frame, main[1], &self.state);
+
+                        if self.state.prompt_preview_visible {
+                            let vsplit = Layout::default()
+                                .direction(Direction::Vertical)
+                                .constraints([
+                                    Constraint::Percentage(60),
+                                    Constraint::Percentage(40),
+                                ])
+                                .split(main[1]);
+
+                            diff_view.render(frame, vsplit[0], &self.state);
+                            render_prompt_preview(frame, vsplit[1], &self.state);
+                        } else {
+                            diff_view.render(frame, main[1], &self.state);
+                        }
                     }
                     ActiveView::WorktreeBrowser => {
                         worktree_browser.render(frame, outer[1], &self.state);
+                    }
+                    ActiveView::AgentOutputs => {
+                        agent_outputs.render(frame, outer[1], &self.state);
                     }
                 }
 
                 action_hud.render(frame, outer[2], &self.state);
 
-                // Render commit dialog overlay if open
+                // Render modal overlays (in priority order)
                 if self.state.commit_dialog_open {
                     render_commit_dialog(frame, &self.state);
+                }
+                if self.state.comment_editor_open {
+                    render_comment_editor(frame, &self.state);
+                }
+                if self.state.annotation_menu_open {
+                    render_annotation_menu(frame, &self.state);
+                }
+                if self.state.agent_selector.open {
+                    render_agent_selector(frame, &self.state.agent_selector);
                 }
             })?;
 
@@ -136,14 +194,18 @@ impl App {
             let mut actions: Vec<Action> = Vec::new();
 
             for event in pending {
+                let ctx = KeyContext {
+                    focus: self.state.focus,
+                    search_active: self.state.navigator.search_active,
+                    commit_dialog_open: self.state.commit_dialog_open,
+                    comment_editor_open: self.state.comment_editor_open,
+                    agent_selector_open: self.state.agent_selector.open,
+                    annotation_menu_open: self.state.annotation_menu_open,
+                    visual_mode_active: self.state.selection.active,
+                    active_view: self.state.active_view,
+                };
                 let action = match event {
-                    Event::Key(key) => map_key_to_action(
-                        key,
-                        self.state.focus,
-                        self.state.navigator.search_active,
-                        self.state.commit_dialog_open,
-                        self.state.active_view,
-                    ),
+                    Event::Key(key) => map_key_to_action(key, &ctx),
                     Event::Mouse(mouse) => self.handle_mouse(mouse),
                     Event::Resize => Some(Action::Resize),
                     Event::Tick => Some(Action::Tick),
@@ -177,6 +239,13 @@ impl App {
                 break;
             }
         }
+
+        // Save session on quit
+        session::save_session(
+            &self.repo_path,
+            &self.state.target_label,
+            &self.state.annotations,
+        );
 
         Ok(())
     }
@@ -215,6 +284,68 @@ impl App {
         }
     }
 
+    fn poll_agent_output(&mut self) {
+        // Collect events first, then process them (avoids borrow conflicts)
+        let Some(runner) = self.agent_runner.as_mut() else {
+            return;
+        };
+        let mut events = Vec::new();
+        while let Some(event) = runner.try_recv() {
+            events.push(event);
+        }
+
+        let mut done = false;
+        for event in events {
+            match event {
+                AgentEvent::OutputLine(run_id, line) => {
+                    if let Some(run) = self
+                        .state
+                        .agent_outputs
+                        .runs
+                        .iter_mut()
+                        .find(|r| r.id == run_id)
+                    {
+                        run.output_lines.push(line);
+                    }
+                    // Auto-scroll detail if we're viewing this run
+                    let selected_id = self.state.agent_outputs.selected().map(|r| r.id);
+                    if selected_id == Some(run_id) {
+                        if let Some(run) = self
+                            .state
+                            .agent_outputs
+                            .runs
+                            .iter()
+                            .find(|r| r.id == run_id)
+                        {
+                            self.state.agent_outputs.detail_scroll =
+                                run.output_lines.len().saturating_sub(1);
+                        }
+                    }
+                }
+                AgentEvent::Done(run_id, exit_code) => {
+                    if let Some(run) = self
+                        .state
+                        .agent_outputs
+                        .runs
+                        .iter_mut()
+                        .find(|r| r.id == run_id)
+                    {
+                        run.status = if exit_code == 0 {
+                            AgentRunStatus::Success { exit_code }
+                        } else {
+                            AgentRunStatus::Failed { exit_code }
+                        };
+                    }
+                    done = true;
+                }
+            }
+        }
+
+        if done {
+            self.agent_runner = None;
+        }
+    }
+
     fn update_highlights(&mut self) {
         let Some(delta) = self.state.diff.selected_delta() else {
             self.state.diff.old_highlights.clear();
@@ -238,6 +369,75 @@ impl App {
             .unwrap_or_else(|| vec![Vec::new(); new_line_count + 1]);
     }
 
+    /// Build the display map for the currently selected file.
+    fn current_display_map(&self) -> Vec<DisplayRowInfo> {
+        let Some(delta) = self.state.diff.selected_delta() else {
+            return Vec::new();
+        };
+        build_display_map(delta, self.state.diff.options.view_mode)
+    }
+
+    /// Convert the current visual selection to a LineAnchor using the display map.
+    fn selection_to_anchor(&self) -> Option<LineAnchor> {
+        let delta = self.state.diff.selected_delta()?;
+        let display_map = self.current_display_map();
+        let (start, end) = self.state.selection.range();
+
+        let file_path = delta.path.to_string_lossy().to_string();
+        let mut min_line: Option<u32> = None;
+        let mut max_line: Option<u32> = None;
+
+        for row_idx in start..=end {
+            if let Some(info) = display_map.get(row_idx) {
+                for lineno in [info.old_lineno, info.new_lineno].iter().flatten() {
+                    min_line = Some(min_line.map_or(*lineno, |m: u32| m.min(*lineno)));
+                    max_line = Some(max_line.map_or(*lineno, |m: u32| m.max(*lineno)));
+                }
+            }
+        }
+
+        Some(LineAnchor {
+            file_path,
+            line_start: min_line.unwrap_or(1),
+            line_end: max_line.unwrap_or(1),
+        })
+    }
+
+    /// Convert the cursor row to a single-line LineAnchor (used when no visual selection is active).
+    fn cursor_to_anchor(&self) -> Option<LineAnchor> {
+        let delta = self.state.diff.selected_delta()?;
+        let display_map = self.current_display_map();
+        let info = display_map.get(self.state.diff.cursor_row)?;
+
+        let file_path = delta.path.to_string_lossy().to_string();
+        let lineno = info.new_lineno.or(info.old_lineno)?;
+        Some(LineAnchor {
+            file_path,
+            line_start: lineno,
+            line_end: lineno,
+        })
+    }
+
+    /// Get a LineAnchor from either the visual selection or the cursor position.
+    fn current_anchor(&self) -> Option<LineAnchor> {
+        if self.state.selection.active {
+            self.selection_to_anchor()
+        } else {
+            self.cursor_to_anchor()
+        }
+    }
+
+    /// Render the prompt template for the current selection and optional comment.
+    fn render_prompt_for_selection(&self, comment: &str) -> Option<String> {
+        let delta = self.state.diff.selected_delta()?;
+        let anchor = self.current_anchor()?;
+        let ctx = context::extract_context(delta, &anchor, comment, self.config.context_padding);
+        Some(template::render_template(
+            &self.config.prompt_template,
+            &ctx,
+        ))
+    }
+
     fn update(&mut self, action: Action) {
         match action {
             Action::Quit => {
@@ -254,6 +454,7 @@ impl App {
             Action::SelectFile(idx) => {
                 self.state.diff.selected_file = Some(idx);
                 self.state.diff.scroll_offset = 0;
+                self.state.diff.cursor_row = 0;
                 // Sync navigator selection to match clicked file
                 if let Some(vis_idx) = self
                     .state
@@ -268,26 +469,45 @@ impl App {
                 self.update_highlights();
             }
             Action::ScrollUp => {
-                self.state.diff.scroll_offset = self.state.diff.scroll_offset.saturating_sub(1);
+                self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(1);
+                // Auto-scroll if cursor goes above viewport
+                if self.state.diff.cursor_row < self.state.diff.scroll_offset {
+                    self.state.diff.scroll_offset = self.state.diff.cursor_row;
+                }
             }
             Action::ScrollDown => {
-                let max = self.state.diff.total_lines();
-                if self.state.diff.scroll_offset < max {
-                    self.state.diff.scroll_offset += 1;
+                let max = self.current_display_map().len().saturating_sub(1);
+                if self.state.diff.cursor_row < max {
+                    self.state.diff.cursor_row += 1;
+                }
+                // Auto-scroll if cursor goes below viewport
+                let vh = self.state.diff.viewport_height;
+                if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
+                    self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
                 }
             }
             Action::ScrollPageUp => {
-                self.state.diff.scroll_offset = self.state.diff.scroll_offset.saturating_sub(20);
+                let vh = self.state.diff.viewport_height;
+                self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(vh);
+                self.state.diff.scroll_offset = self.state.diff.scroll_offset.saturating_sub(vh);
             }
             Action::ScrollPageDown => {
-                let max = self.state.diff.total_lines();
-                self.state.diff.scroll_offset = (self.state.diff.scroll_offset + 20).min(max);
+                let vh = self.state.diff.viewport_height;
+                let max = self.current_display_map().len().saturating_sub(1);
+                self.state.diff.cursor_row = (self.state.diff.cursor_row + vh).min(max);
+                if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
+                    self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
+                }
             }
             Action::ToggleViewMode => {
                 self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
                     DiffViewMode::Split => DiffViewMode::Unified,
                     DiffViewMode::Unified => DiffViewMode::Split,
                 };
+                // Exit visual mode on view mode change since display map changes
+                self.state.selection.active = false;
+                self.state.diff.cursor_row = 0;
+                self.state.diff.scroll_offset = 0;
             }
             Action::ToggleWhitespace => {
                 self.state.diff.options.ignore_whitespace =
@@ -299,6 +519,13 @@ impl App {
             }
             Action::FocusDiffView => {
                 self.state.focus = FocusPanel::DiffView;
+                // Ensure cursor is within visible viewport
+                let vh = self.state.diff.viewport_height;
+                let scroll = self.state.diff.scroll_offset;
+                if self.state.diff.cursor_row < scroll || self.state.diff.cursor_row >= scroll + vh
+                {
+                    self.state.diff.cursor_row = scroll;
+                }
             }
             Action::StartSearch => {
                 self.state.navigator.start_search();
@@ -318,7 +545,7 @@ impl App {
             }
             Action::ToggleWorktreeBrowser => {
                 self.state.active_view = match self.state.active_view {
-                    ActiveView::DiffExplorer => {
+                    ActiveView::DiffExplorer | ActiveView::AgentOutputs => {
                         self.refresh_worktrees();
                         ActiveView::WorktreeBrowser
                     }
@@ -442,6 +669,377 @@ impl App {
             Action::CommitBackspace => {
                 self.state.commit_message.pop();
             }
+
+            // Visual selection
+            Action::EnterVisualMode => {
+                self.state.selection.active = true;
+                self.state.selection.anchor = self.state.diff.cursor_row;
+                self.state.selection.cursor = self.state.diff.cursor_row;
+                self.state.focus = FocusPanel::DiffView;
+            }
+            Action::ExitVisualMode => {
+                self.state.selection.active = false;
+            }
+            Action::ExtendSelectionUp => {
+                self.state.selection.cursor = self.state.selection.cursor.saturating_sub(1);
+                // Auto-scroll if cursor goes above viewport
+                if self.state.selection.cursor < self.state.diff.scroll_offset {
+                    self.state.diff.scroll_offset = self.state.selection.cursor;
+                }
+            }
+            Action::ExtendSelectionDown => {
+                let display_map = self.current_display_map();
+                let max = display_map.len().saturating_sub(1);
+                if self.state.selection.cursor < max {
+                    self.state.selection.cursor += 1;
+                }
+                // Auto-scroll if cursor goes below viewport (approximation)
+                // We don't have the exact viewport height here, so use a reasonable default
+            }
+
+            // Comment editor
+            Action::OpenCommentEditor => {
+                if self.state.selection.active {
+                    self.state.comment_editor_open = true;
+                    self.state.comment_editor_text.clear();
+                }
+            }
+            Action::CancelComment => {
+                self.state.comment_editor_open = false;
+                self.state.comment_editor_text.clear();
+                self.state.editing_annotation = None;
+            }
+            Action::ConfirmComment => {
+                if !self.state.comment_editor_text.trim().is_empty() {
+                    if let Some(editing) = self.state.editing_annotation.take() {
+                        // Editing an existing annotation from the annotation menu
+                        self.state.annotations.update_comment(
+                            &editing.file_path,
+                            editing.line_start,
+                            editing.line_end,
+                            &editing.old_comment,
+                            &self.state.comment_editor_text,
+                        );
+                        self.set_status("Comment updated".to_string(), false);
+                    } else if let Some(anchor) = self.selection_to_anchor() {
+                        // Creating a new annotation from visual mode
+                        let now = chrono::Utc::now().to_rfc3339();
+                        self.state.annotations.add(Annotation {
+                            anchor,
+                            comment: self.state.comment_editor_text.clone(),
+                            created_at: now,
+                        });
+                        self.set_status("Comment added".to_string(), false);
+                    }
+                }
+                self.state.comment_editor_open = false;
+                self.state.comment_editor_text.clear();
+                self.state.selection.active = false;
+                self.state.editing_annotation = None;
+            }
+            Action::CommentChar(c) => {
+                self.state.comment_editor_text.push(c);
+            }
+            Action::CommentBackspace => {
+                self.state.comment_editor_text.pop();
+            }
+            // Annotations
+            Action::DeleteAnnotation => {
+                if let Some(anchor) = self.selection_to_anchor() {
+                    self.state.annotations.delete_at(
+                        &anchor.file_path,
+                        anchor.line_start,
+                        anchor.line_end,
+                    );
+                    self.set_status("Annotation deleted".to_string(), false);
+                }
+            }
+            Action::NextAnnotation => {
+                let file_path = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(|d| d.path.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                // Use current scroll position to approximate current line
+                let display_map = self.current_display_map();
+                let current_lineno = display_map
+                    .get(self.state.diff.scroll_offset)
+                    .and_then(|info| info.new_lineno.or(info.old_lineno))
+                    .unwrap_or(0);
+
+                if let Some((_next_file, next_line)) = self
+                    .state
+                    .annotations
+                    .next_after(&file_path, current_lineno)
+                {
+                    // Scroll to the annotation line
+                    self.scroll_to_line(next_line);
+                }
+            }
+            Action::PrevAnnotation => {
+                let file_path = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(|d| d.path.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let display_map = self.current_display_map();
+                let current_lineno = display_map
+                    .get(self.state.diff.scroll_offset)
+                    .and_then(|info| info.new_lineno.or(info.old_lineno))
+                    .unwrap_or(0);
+
+                if let Some((_prev_file, prev_line)) = self
+                    .state
+                    .annotations
+                    .prev_before(&file_path, current_lineno)
+                {
+                    self.scroll_to_line(prev_line);
+                }
+            }
+
+            // Annotation menu
+            Action::OpenAnnotationMenu => {
+                if let Some(anchor) = self.cursor_to_anchor() {
+                    let overlapping = self
+                        .state
+                        .annotations
+                        .annotations_overlapping(&anchor.file_path, anchor.line_start);
+                    if overlapping.is_empty() {
+                        self.set_status("No annotations on this line".to_string(), false);
+                    } else {
+                        self.state.annotation_menu_items = overlapping
+                            .iter()
+                            .map(|a| crate::state::app_state::AnnotationMenuItem {
+                                file_path: a.anchor.file_path.clone(),
+                                line_start: a.anchor.line_start,
+                                line_end: a.anchor.line_end,
+                                comment: a.comment.clone(),
+                            })
+                            .collect();
+                        self.state.annotation_menu_selected = 0;
+                        self.state.annotation_menu_open = true;
+                    }
+                }
+            }
+            Action::AnnotationMenuUp => {
+                if !self.state.annotation_menu_items.is_empty() {
+                    if self.state.annotation_menu_selected == 0 {
+                        self.state.annotation_menu_selected =
+                            self.state.annotation_menu_items.len() - 1;
+                    } else {
+                        self.state.annotation_menu_selected -= 1;
+                    }
+                }
+            }
+            Action::AnnotationMenuDown => {
+                if !self.state.annotation_menu_items.is_empty() {
+                    self.state.annotation_menu_selected = (self.state.annotation_menu_selected + 1)
+                        % self.state.annotation_menu_items.len();
+                }
+            }
+            Action::AnnotationMenuDelete => {
+                if let Some(item) = self
+                    .state
+                    .annotation_menu_items
+                    .get(self.state.annotation_menu_selected)
+                    .cloned()
+                {
+                    self.state.annotations.delete_annotation(
+                        &item.file_path,
+                        item.line_start,
+                        item.line_end,
+                        &item.comment,
+                    );
+                    self.state
+                        .annotation_menu_items
+                        .remove(self.state.annotation_menu_selected);
+                    if self.state.annotation_menu_items.is_empty() {
+                        self.state.annotation_menu_open = false;
+                        self.set_status("Annotation deleted".to_string(), false);
+                    } else {
+                        if self.state.annotation_menu_selected
+                            >= self.state.annotation_menu_items.len()
+                        {
+                            self.state.annotation_menu_selected =
+                                self.state.annotation_menu_items.len() - 1;
+                        }
+                        self.set_status("Annotation deleted".to_string(), false);
+                    }
+                }
+            }
+            Action::AnnotationMenuEdit => {
+                if let Some(item) = self
+                    .state
+                    .annotation_menu_items
+                    .get(self.state.annotation_menu_selected)
+                    .cloned()
+                {
+                    self.state.editing_annotation =
+                        Some(crate::state::app_state::EditingAnnotation {
+                            file_path: item.file_path.clone(),
+                            line_start: item.line_start,
+                            line_end: item.line_end,
+                            old_comment: item.comment.clone(),
+                        });
+                    self.state.annotation_menu_open = false;
+                    self.state.comment_editor_open = true;
+                    self.state.comment_editor_text = item.comment;
+                }
+            }
+            Action::CancelAnnotationMenu => {
+                self.state.annotation_menu_open = false;
+                self.state.annotation_menu_items.clear();
+            }
+
+            // Prompt / clipboard
+            Action::CopyPromptToClipboard => {
+                let comment = self.comments_for_file();
+                if let Some(rendered) = self.render_prompt_for_selection(&comment) {
+                    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&rendered)) {
+                        Ok(()) => self.set_status("Prompt copied to clipboard".to_string(), false),
+                        Err(e) => {
+                            self.set_status(format!("Clipboard error: {e}"), true);
+                        }
+                    }
+                } else {
+                    self.set_status("No lines at cursor".to_string(), true);
+                }
+            }
+            Action::TogglePromptPreview => {
+                self.state.prompt_preview_visible = !self.state.prompt_preview_visible;
+                if self.state.prompt_preview_visible {
+                    self.update_prompt_preview();
+                }
+            }
+
+            // Agent selector
+            Action::OpenAgentSelector => {
+                if self.config.agents.is_empty() {
+                    self.set_status("No agents configured".to_string(), true);
+                } else {
+                    self.state.agent_selector.populate(&self.config.agents);
+                    self.state.agent_selector.rerun_prompt = None;
+                    self.state.agent_selector.open = true;
+                }
+            }
+            Action::CancelAgentSelector => {
+                self.state.agent_selector.open = false;
+                self.state.agent_selector.rerun_prompt = None;
+            }
+            Action::AgentSelectorUp => {
+                self.state.agent_selector.select_up();
+            }
+            Action::AgentSelectorDown => {
+                self.state.agent_selector.select_down();
+            }
+            Action::AgentSelectorFilter(c) => {
+                self.state.agent_selector.filter.push(c);
+                self.state.agent_selector.refilter();
+            }
+            Action::AgentSelectorBackspace => {
+                self.state.agent_selector.filter.pop();
+                self.state.agent_selector.refilter();
+            }
+            Action::AgentSelectorCycleModel => {
+                self.state.agent_selector.cycle_model();
+            }
+            Action::SelectAgent => {
+                let agent = self.state.agent_selector.selected_agent_config().cloned();
+                let model = self.state.agent_selector.selected_model_name();
+                let rerun_prompt = self.state.agent_selector.rerun_prompt.clone();
+
+                if let (Some(agent), Some(model)) = (agent, model) {
+                    // Get rendered prompt: use rerun_prompt if available, otherwise render from selection
+                    let rendered_prompt = rerun_prompt.or_else(|| {
+                        let comment = self.comments_for_file();
+                        self.render_prompt_for_selection(&comment)
+                    });
+
+                    if let Some(prompt) = rendered_prompt {
+                        let command = build_agent_command(&agent.command, &model, &prompt);
+                        let run_id = self.state.agent_outputs.next_id;
+
+                        let source_file = self
+                            .state
+                            .diff
+                            .selected_delta()
+                            .map(|d| d.path.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        let source_lines = self
+                            .selection_to_anchor()
+                            .map(|a| (a.line_start, a.line_end))
+                            .unwrap_or((0, 0));
+
+                        let run = AgentRun {
+                            id: run_id,
+                            agent_name: agent.name.clone(),
+                            model: model.clone(),
+                            command: command.clone(),
+                            rendered_prompt: prompt,
+                            output_lines: Vec::new(),
+                            status: AgentRunStatus::Running,
+                            started_at: chrono::Utc::now().format("%H:%M").to_string(),
+                            source_file,
+                            source_lines,
+                        };
+
+                        self.state.agent_outputs.add_run(run);
+                        self.agent_runner = Some(AgentRunner::spawn(run_id, &command));
+                        self.state.agent_selector.open = false;
+                        self.state.active_view = ActiveView::AgentOutputs;
+                        self.set_status(format!("Running {}/{}", agent.name, model), false);
+                    } else {
+                        self.set_status("No selection — select lines first".to_string(), true);
+                    }
+                }
+            }
+
+            // Agent outputs tab
+            Action::SwitchToAgentOutputs => {
+                if self.state.active_view == ActiveView::AgentOutputs {
+                    self.state.active_view = ActiveView::DiffExplorer;
+                } else {
+                    self.state.active_view = ActiveView::AgentOutputs;
+                }
+            }
+            Action::AgentOutputsUp => {
+                self.state.agent_outputs.select_up();
+            }
+            Action::AgentOutputsDown => {
+                self.state.agent_outputs.select_down();
+            }
+            Action::AgentOutputsScrollUp => {
+                self.state.agent_outputs.detail_scroll =
+                    self.state.agent_outputs.detail_scroll.saturating_sub(1);
+            }
+            Action::AgentOutputsScrollDown => {
+                if let Some(run) = self.state.agent_outputs.selected() {
+                    let max = run.output_lines.len().saturating_sub(1);
+                    if self.state.agent_outputs.detail_scroll < max {
+                        self.state.agent_outputs.detail_scroll += 1;
+                    }
+                }
+            }
+            Action::AgentOutputsCopyPrompt => {
+                if let Some(run) = self.state.agent_outputs.selected() {
+                    let prompt = run.rendered_prompt.clone();
+                    match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&prompt)) {
+                        Ok(()) => self.set_status("Prompt copied to clipboard".to_string(), false),
+                        Err(e) => {
+                            self.set_status(format!("Clipboard error: {e}"), true);
+                        }
+                    }
+                }
+            }
+            Action::KillAgentProcess => {
+                if let Some(runner) = self.agent_runner.as_mut() {
+                    runner.kill();
+                    self.set_status("Agent process killed".to_string(), false);
+                }
+            }
+
             Action::Tick => {
                 if self.status_clear_countdown > 0 {
                     self.status_clear_countdown -= 1;
@@ -526,9 +1124,65 @@ impl App {
             self.state.diff.selected_file = Some(delta_idx);
             self.state.diff.scroll_offset = 0;
             if changed {
+                self.state.diff.cursor_row = 0;
                 self.update_highlights();
+                // Exit visual mode when switching files
+                self.state.selection.active = false;
             }
         }
+    }
+
+    /// Scroll to the display row containing the given line number.
+    fn scroll_to_line(&mut self, target_lineno: u32) {
+        let display_map = self.current_display_map();
+        for (row_idx, info) in display_map.iter().enumerate() {
+            let matches =
+                info.new_lineno == Some(target_lineno) || info.old_lineno == Some(target_lineno);
+            if matches {
+                self.state.diff.scroll_offset = row_idx;
+                return;
+            }
+        }
+    }
+
+    /// Collect all annotations for the current file, formatted with line ranges.
+    fn comments_for_file(&self) -> String {
+        let file_path = self
+            .state
+            .diff
+            .selected_delta()
+            .map(|d| d.path.to_string_lossy().to_string());
+        let Some(file_path) = file_path else {
+            return String::new();
+        };
+        let Some(anns) = self.state.annotations.annotations.get(&file_path) else {
+            return String::new();
+        };
+        if anns.is_empty() {
+            return String::new();
+        }
+
+        anns.iter()
+            .map(|ann| {
+                if ann.anchor.line_start == ann.anchor.line_end {
+                    format!("- Line {}: {}", ann.anchor.line_start, ann.comment)
+                } else {
+                    format!(
+                        "- Lines {}-{}: {}",
+                        ann.anchor.line_start, ann.anchor.line_end, ann.comment
+                    )
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Update the prompt preview text from the current selection state.
+    fn update_prompt_preview(&mut self) {
+        let comment = self.comments_for_file();
+        self.state.prompt_preview_text = self
+            .render_prompt_for_selection(&comment)
+            .unwrap_or_default();
     }
 }
 
@@ -575,6 +1229,15 @@ fn reconstruct_content(delta: &FileDelta, side: ContentSide) -> (String, usize) 
 
     let content = content_lines.join("\n");
     (content, max_line)
+}
+
+/// Build the shell command for an agent by substituting `{model}` and `{rendered_prompt}`.
+fn build_agent_command(command_template: &str, model: &str, prompt: &str) -> String {
+    // Escape single quotes in the prompt for safe shell embedding
+    let escaped_prompt = prompt.replace('\'', "'\\''");
+    command_template
+        .replace("{model}", model)
+        .replace("{rendered_prompt}", &escaped_prompt)
 }
 
 pub fn parse_target(target: Option<&str>) -> ComparisonTarget {

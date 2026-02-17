@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::display_map::{build_display_map, DisplayRowInfo};
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
@@ -72,6 +73,70 @@ fn format_title(delta: &FileDelta, view_label: &str) -> String {
     format!(" {path_display} [{view_label}] ")
 }
 
+/// Check if a display row index is within the current visual selection range.
+fn is_row_selected(state: &AppState, display_row: usize) -> bool {
+    if !state.selection.active {
+        return false;
+    }
+    let (start, end) = state.selection.range();
+    display_row >= start && display_row <= end
+}
+
+/// Check if a display row is the cursor row (when not in visual selection mode).
+fn is_cursor_row(state: &AppState, display_row: usize) -> bool {
+    !state.selection.active
+        && state.focus == FocusPanel::DiffView
+        && display_row == state.diff.cursor_row
+}
+
+/// Per-row highlight: separates gutter indicator from content background.
+#[derive(Clone, Copy, Default)]
+struct RowHighlight {
+    /// Background for the gutter/line-number area.
+    gutter_bg: Option<Color>,
+    /// Foreground for the gutter (overrides DarkGray when set).
+    gutter_fg: Option<Color>,
+    /// Background override for content area. When set, replaces diff_bg.
+    content_bg: Option<Color>,
+}
+
+/// Compute row highlight for cursor or visual selection.
+fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
+    if is_row_selected(state, display_row) {
+        let bg = Some(Color::Rgb(70, 50, 100));
+        RowHighlight {
+            gutter_bg: bg,
+            gutter_fg: None,
+            content_bg: bg,
+        }
+    } else if is_cursor_row(state, display_row) {
+        RowHighlight {
+            gutter_bg: Some(Color::Cyan),
+            gutter_fg: Some(Color::Black),
+            content_bg: None,
+        }
+    } else {
+        RowHighlight::default()
+    }
+}
+
+/// Check if a line has an annotation marker in the gutter.
+fn has_annotation(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> bool {
+    let file_path = delta.path.to_string_lossy();
+    // Check both old and new line numbers
+    if let Some(n) = row_info.new_lineno {
+        if state.annotations.has_annotation_at(&file_path, n) {
+            return true;
+        }
+    }
+    if let Some(n) = row_info.old_lineno {
+        if state.annotations.has_annotation_at(&file_path, n) {
+            return true;
+        }
+    }
+    false
+}
+
 fn render_split(
     frame: &mut Frame,
     area: Rect,
@@ -109,12 +174,17 @@ fn render_split(
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
 
+    // Build display map for selection/annotation checking
+    let display_map = build_display_map(delta, DiffViewMode::Split);
+
     let (left_lines, right_lines) = build_split_lines(
         delta,
         state.diff.scroll_offset,
         inner.height as usize,
         old_hl,
         new_hl,
+        state,
+        &display_map,
     );
 
     let left_para = Paragraph::new(left_lines);
@@ -124,27 +194,36 @@ fn render_split(
     frame.render_widget(right_para, halves[1]);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_split_lines<'a>(
     delta: &'a FileDelta,
     scroll: usize,
     height: usize,
     old_hl: &[Vec<HighlightSpan>],
     new_hl: &[Vec<HighlightSpan>],
+    state: &AppState,
+    display_map: &[DisplayRowInfo],
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
     let mut left: Vec<Line> = Vec::new();
     let mut right: Vec<Line> = Vec::new();
+    let mut display_row: usize = 0;
 
     let gutter_width = 5;
 
     for hunk in &delta.hunks {
-        left.push(Line::from(Span::styled(
-            format!("{:>gutter_width$} {}", "...", &hunk.header),
-            Style::default().fg(Color::DarkGray),
-        )));
-        right.push(Line::from(Span::styled(
-            format!("{:>gutter_width$} {}", "...", &hunk.header),
-            Style::default().fg(Color::DarkGray),
-        )));
+        let hl = row_highlight(state, display_row);
+        let ann_marker = display_map
+            .get(display_row)
+            .is_some_and(|info| has_annotation(state, delta, info));
+
+        left.push(make_hunk_header_line(
+            gutter_width,
+            &hunk.header,
+            hl,
+            ann_marker,
+        ));
+        right.push(make_hunk_header_line(gutter_width, &hunk.header, hl, false));
+        display_row += 1;
 
         let mut i = 0;
         let lines = &hunk.lines;
@@ -152,6 +231,11 @@ fn build_split_lines<'a>(
             match lines[i].origin {
                 DiffLineOrigin::Context => {
                     let line = &lines[i];
+                    let hl = row_highlight(state, display_row);
+                    let ann_marker = display_map
+                        .get(display_row)
+                        .is_some_and(|info| has_annotation(state, delta, info));
+
                     let gutter_l = format_lineno(line.old_lineno, gutter_width);
                     let gutter_r = format_lineno(line.new_lineno, gutter_width);
                     let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
@@ -161,13 +245,18 @@ fn build_split_lines<'a>(
                         &line.content,
                         old_spans,
                         None,
+                        hl,
+                        ann_marker,
                     ));
                     right.push(make_highlighted_line(
                         &gutter_r,
                         &line.content,
                         new_spans,
                         None,
+                        hl,
+                        false,
                     ));
+                    display_row += 1;
                     i += 1;
                 }
                 DiffLineOrigin::Deletion => {
@@ -185,6 +274,11 @@ fn build_split_lines<'a>(
                     let max = dels.len().max(adds.len());
 
                     for j in 0..max {
+                        let hl = row_highlight(state, display_row);
+                        let ann_marker = display_map
+                            .get(display_row)
+                            .is_some_and(|info| has_annotation(state, delta, info));
+
                         if j < dels.len() {
                             let line = &dels[j];
                             let gutter = format_lineno(line.old_lineno, gutter_width);
@@ -194,9 +288,11 @@ fn build_split_lines<'a>(
                                 &line.content,
                                 spans,
                                 Some(Color::Rgb(40, 0, 0)),
+                                hl,
+                                ann_marker,
                             ));
                         } else {
-                            left.push(make_empty_line(gutter_width));
+                            left.push(make_empty_line(gutter_width, hl));
                         }
 
                         if j < adds.len() {
@@ -208,23 +304,35 @@ fn build_split_lines<'a>(
                                 &line.content,
                                 spans,
                                 Some(Color::Rgb(0, 30, 0)),
+                                hl,
+                                false,
                             ));
                         } else {
-                            right.push(make_empty_line(gutter_width));
+                            right.push(make_empty_line(gutter_width, hl));
                         }
+
+                        display_row += 1;
                     }
                 }
                 DiffLineOrigin::Addition => {
                     let line = &lines[i];
+                    let hl = row_highlight(state, display_row);
+                    let ann_marker = display_map
+                        .get(display_row)
+                        .is_some_and(|info| has_annotation(state, delta, info));
+
                     let gutter = format_lineno(line.new_lineno, gutter_width);
                     let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                    left.push(make_empty_line(gutter_width));
+                    left.push(make_empty_line(gutter_width, hl));
                     right.push(make_highlighted_line(
                         &gutter,
                         &line.content,
                         spans,
                         Some(Color::Rgb(0, 30, 0)),
+                        hl,
+                        ann_marker,
                     ));
+                    display_row += 1;
                     i += 1;
                 }
             }
@@ -269,18 +377,33 @@ fn render_unified(
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
 
+    // Build display map for selection/annotation checking
+    let display_map = build_display_map(delta, DiffViewMode::Unified);
+
     let gutter_width = 5;
     let mut lines: Vec<Line> = Vec::new();
+    let mut display_row: usize = 0;
 
     for hunk in &delta.hunks {
-        lines.push(Line::from(Span::styled(
-            format!("{:>gutter_width$} {}", "...", &hunk.header),
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-        )));
+        let hl = row_highlight(state, display_row);
+        let ann_marker = display_map
+            .get(display_row)
+            .is_some_and(|info| has_annotation(state, delta, info));
+
+        lines.push(make_hunk_header_line_unified(
+            gutter_width,
+            &hunk.header,
+            hl,
+            ann_marker,
+        ));
+        display_row += 1;
 
         for line in &hunk.lines {
+            let hl = row_highlight(state, display_row);
+            let ann_marker = display_map
+                .get(display_row)
+                .is_some_and(|info| has_annotation(state, delta, info));
+
             let (old_g, new_g) = (
                 format_lineno(line.old_lineno, gutter_width),
                 format_lineno(line.new_lineno, gutter_width),
@@ -296,6 +419,8 @@ fn render_unified(
                         &line.content,
                         spans,
                         None,
+                        hl,
+                        ann_marker,
                     ));
                 }
                 DiffLineOrigin::Addition => {
@@ -308,6 +433,8 @@ fn render_unified(
                         &line.content,
                         spans,
                         Some(Color::Rgb(0, 30, 0)),
+                        hl,
+                        ann_marker,
                     ));
                 }
                 DiffLineOrigin::Deletion => {
@@ -320,9 +447,12 @@ fn render_unified(
                         &line.content,
                         spans,
                         Some(Color::Rgb(40, 0, 0)),
+                        hl,
+                        ann_marker,
                     ));
                 }
             }
+            display_row += 1;
         }
     }
 
@@ -344,28 +474,111 @@ fn format_lineno(lineno: Option<u32>, width: usize) -> String {
     }
 }
 
+/// Format a gutter string, optionally replacing the trailing space with an annotation marker.
+fn format_gutter_with_marker(gutter: &str, ann_marker: bool) -> String {
+    if ann_marker {
+        format!("{gutter}\u{2502}")
+    } else {
+        format!("{gutter} ")
+    }
+}
+
+/// Build a hunk header line for split view.
+fn make_hunk_header_line<'a>(
+    gutter_width: usize,
+    header: &str,
+    hl: RowHighlight,
+    ann_marker: bool,
+) -> Line<'a> {
+    let marker = if ann_marker { "\u{2502}" } else { " " };
+    let gutter_text = format!("{:>gutter_width$}{marker}", "...");
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default().fg(Color::DarkGray);
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    Line::from(vec![
+        Span::styled(gutter_text, gutter_style),
+        Span::styled(header.to_string(), content_style),
+    ])
+}
+
+/// Build a hunk header line for unified view.
+fn make_hunk_header_line_unified<'a>(
+    gutter_width: usize,
+    header: &str,
+    hl: RowHighlight,
+    ann_marker: bool,
+) -> Line<'a> {
+    let marker = if ann_marker { "\u{2502}" } else { " " };
+    let gutter_text = format!("{:>gutter_width$}{marker}", "...");
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default()
+        .fg(Color::Magenta)
+        .add_modifier(Modifier::BOLD);
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    Line::from(vec![
+        Span::styled(gutter_text, gutter_style),
+        Span::styled(header.to_string(), content_style),
+    ])
+}
+
 /// Build a line with syntax highlighting spans overlaid on a diff background.
+/// Gutter and content are highlighted separately via RowHighlight.
 fn make_highlighted_line<'a>(
     gutter: &str,
     content: &str,
     hl_spans: Option<&Vec<HighlightSpan>>,
-    bg: Option<Color>,
+    diff_bg: Option<Color>,
+    hl: RowHighlight,
+    ann_marker: bool,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
-    let gutter_span = Span::styled(format!("{gutter} "), Style::default().fg(Color::DarkGray));
+    let content_bg = hl.content_bg.or(diff_bg);
+    let gutter_text = format_gutter_with_marker(gutter, ann_marker);
+
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if ann_marker {
+        gutter_style = gutter_style.fg(Color::Yellow);
+    }
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let gutter_span = Span::styled(gutter_text, gutter_style);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, bg)
+        apply_highlights(trimmed, spans, content_bg)
     } else {
         // Fallback: no highlighting
         let mut style = Style::default();
-        if let Some(bg_color) = bg {
+        if let Some(bg_color) = content_bg {
             style = style.bg(bg_color);
-            // Use diff-specific fg colors
-            if bg_color == Color::Rgb(40, 0, 0) {
-                style = style.fg(Color::Red);
-            } else if bg_color == Color::Rgb(0, 30, 0) {
-                style = style.fg(Color::Green);
+            if hl.content_bg.is_none() {
+                // Use diff-specific fg colors only when not selected
+                if bg_color == Color::Rgb(40, 0, 0) {
+                    style = style.fg(Color::Red);
+                } else if bg_color == Color::Rgb(0, 30, 0) {
+                    style = style.fg(Color::Green);
+                } else {
+                    style = style.fg(Color::White);
+                }
             } else {
                 style = style.fg(Color::White);
             }
@@ -434,41 +647,77 @@ fn apply_highlights<'a>(
     result
 }
 
-fn make_empty_line<'a>(gutter_width: usize) -> Line<'a> {
-    Line::from(Span::styled(
-        format!("{} ", " ".repeat(gutter_width)),
-        Style::default()
-            .fg(Color::DarkGray)
-            .bg(Color::Rgb(20, 20, 20)),
-    ))
+fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight) -> Line<'a> {
+    let mut gutter_style = Style::default()
+        .fg(Color::DarkGray)
+        .bg(Color::Rgb(20, 20, 20));
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default()
+        .fg(Color::DarkGray)
+        .bg(Color::Rgb(20, 20, 20));
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    Line::from(vec![
+        Span::styled(format!("{} ", " ".repeat(gutter_width)), gutter_style),
+        Span::styled(" ", content_style),
+    ])
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_unified_highlighted<'a>(
     old_g: &str,
     new_g: &str,
     prefix: &str,
     content: &str,
     hl_spans: Option<&Vec<HighlightSpan>>,
-    bg: Option<Color>,
+    diff_bg: Option<Color>,
+    hl: RowHighlight,
+    ann_marker: bool,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
-    let gutter_span = Span::styled(
-        format!("{old_g} {new_g} "),
-        Style::default().fg(Color::DarkGray),
-    );
+    let content_bg = hl.content_bg.or(diff_bg);
+
+    let marker = if ann_marker { "\u{2502}" } else { " " };
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if ann_marker {
+        gutter_style = gutter_style.fg(Color::Yellow);
+    }
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let gutter_span = Span::styled(format!("{old_g} {new_g}{marker}"), gutter_style);
 
     let prefix_style = match prefix {
-        "+" => Style::default().fg(Color::Green).bg(bg.unwrap_or_default()),
-        "-" => Style::default().fg(Color::Red).bg(bg.unwrap_or_default()),
-        _ => Style::default().fg(Color::DarkGray),
+        "+" => Style::default()
+            .fg(Color::Green)
+            .bg(content_bg.unwrap_or_default()),
+        "-" => Style::default()
+            .fg(Color::Red)
+            .bg(content_bg.unwrap_or_default()),
+        _ => {
+            let mut s = Style::default().fg(Color::DarkGray);
+            if let Some(bg_color) = content_bg {
+                s = s.bg(bg_color);
+            }
+            s
+        }
     };
     let prefix_span = Span::styled(prefix.to_string(), prefix_style);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, bg)
+        apply_highlights(trimmed, spans, content_bg)
     } else {
         let mut style = Style::default().fg(Color::White);
-        if let Some(bg_color) = bg {
+        if let Some(bg_color) = content_bg {
             style = style.bg(bg_color);
         }
         vec![Span::styled(trimmed.to_string(), style)]

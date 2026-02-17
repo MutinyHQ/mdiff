@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::state::app_state::ActiveView;
 use crate::state::AppState;
 
 use super::Component;
@@ -26,17 +27,44 @@ impl Component for ActionHud {
             return;
         }
 
-        let bindings = [
-            ("q", "quit"),
-            ("j/k", "nav"),
-            ("/", "search"),
-            ("Tab", "view"),
-            ("w", "ws"),
-            ("s", "stage"),
-            ("u", "unstage"),
-            ("r", "restore"),
-            ("c", "commit"),
-        ];
+        let bindings: &[(&str, &str)] = if state.active_view == ActiveView::AgentOutputs {
+            &[
+                ("j/k", "select"),
+                ("J/K", "scroll"),
+                ("y", "copy"),
+                ("^A", "re-run"),
+                ("^K", "kill"),
+                ("Esc", "back"),
+            ]
+        } else if state.selection.active {
+            &[
+                ("j/k", "extend"),
+                ("i", "comment"),
+                ("d", "delete"),
+                ("y", "yank"),
+                ("v/Esc", "exit"),
+                ("]", "next"),
+                ("[", "prev"),
+            ]
+        } else {
+            &[
+                ("q", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("Tab", "view"),
+                ("w", "ws"),
+                ("s", "stage"),
+                ("u", "unstage"),
+                ("r", "restore"),
+                ("c", "commit"),
+                ("v", "visual"),
+                ("a", "annotate"),
+                ("y", "yank"),
+                ("p", "preview"),
+                ("o", "outputs"),
+                ("^A", "agent"),
+            ]
+        };
 
         let mut spans = Vec::new();
         spans.push(Span::raw(" "));
@@ -54,6 +82,24 @@ impl Component for ActionHud {
                 (*desc).to_string(),
                 Style::default().fg(Color::DarkGray),
             ));
+        }
+
+        // Show annotation count on the right side
+        let ann_count = state.annotations.count();
+        if ann_count > 0 {
+            // Calculate space needed for right-aligned text
+            let ann_text = format!(" {ann_count} annotations ");
+            let used_width: usize = spans.iter().map(|s| s.width()).sum();
+            let remaining = (area.width as usize).saturating_sub(used_width + ann_text.len());
+            if remaining > 0 {
+                spans.push(Span::raw(" ".repeat(remaining)));
+                spans.push(Span::styled(
+                    ann_text,
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
         }
 
         let bar =

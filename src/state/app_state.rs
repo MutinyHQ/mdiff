@@ -1,9 +1,31 @@
-use super::{DiffOptions, DiffState, NavigatorState, WorktreeState};
+use super::{
+    AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState, NavigatorState,
+    SelectionState, WorktreeState,
+};
+
+/// Snapshot of an annotation for the annotation menu (owned to avoid borrow issues).
+#[derive(Debug, Clone)]
+pub struct AnnotationMenuItem {
+    pub file_path: String,
+    pub line_start: u32,
+    pub line_end: u32,
+    pub comment: String,
+}
+
+/// Context for editing an existing annotation (set when user presses `e` in annotation menu).
+#[derive(Debug, Clone)]
+pub struct EditingAnnotation {
+    pub file_path: String,
+    pub line_start: u32,
+    pub line_end: u32,
+    pub old_comment: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveView {
     DiffExplorer,
     WorktreeBrowser,
+    AgentOutputs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +45,30 @@ pub struct AppState {
     pub commit_message: String,
     pub status_message: Option<(String, bool)>, // (message, is_error)
     pub target_label: String,
+
+    // Visual selection
+    pub selection: SelectionState,
+
+    // Annotations
+    pub annotations: AnnotationState,
+
+    // Comment editor
+    pub comment_editor_open: bool,
+    pub comment_editor_text: String,
+
+    // Prompt preview
+    pub prompt_preview_visible: bool,
+    pub prompt_preview_text: String,
+
+    // Annotation menu
+    pub annotation_menu_open: bool,
+    pub annotation_menu_items: Vec<AnnotationMenuItem>,
+    pub annotation_menu_selected: usize,
+    pub editing_annotation: Option<EditingAnnotation>,
+
+    // Agent
+    pub agent_outputs: AgentOutputsState,
+    pub agent_selector: AgentSelectorState,
 }
 
 impl AppState {
@@ -38,6 +84,18 @@ impl AppState {
             commit_message: String::new(),
             status_message: None,
             target_label: String::new(),
+            selection: SelectionState::default(),
+            annotations: AnnotationState::default(),
+            comment_editor_open: false,
+            comment_editor_text: String::new(),
+            prompt_preview_visible: false,
+            prompt_preview_text: String::new(),
+            annotation_menu_open: false,
+            annotation_menu_items: Vec::new(),
+            annotation_menu_selected: 0,
+            editing_annotation: None,
+            agent_outputs: AgentOutputsState::default(),
+            agent_selector: AgentSelectorState::default(),
         }
     }
 }

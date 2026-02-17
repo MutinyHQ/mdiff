@@ -74,16 +74,22 @@ impl EventReader {
     }
 }
 
+/// All context needed to map a key event to an action.
+pub struct KeyContext {
+    pub focus: FocusPanel,
+    pub search_active: bool,
+    pub commit_dialog_open: bool,
+    pub comment_editor_open: bool,
+    pub agent_selector_open: bool,
+    pub annotation_menu_open: bool,
+    pub visual_mode_active: bool,
+    pub active_view: ActiveView,
+}
+
 /// Map a key event to an action based on current app context.
-pub fn map_key_to_action(
-    key: KeyEvent,
-    focus: FocusPanel,
-    search_active: bool,
-    commit_dialog_open: bool,
-    active_view: ActiveView,
-) -> Option<Action> {
-    // Commit dialog mode
-    if commit_dialog_open {
+pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
+    // Priority 1: Commit dialog mode
+    if ctx.commit_dialog_open {
         return match key.code {
             KeyCode::Esc => Some(Action::CancelCommit),
             KeyCode::Enter => Some(Action::ConfirmCommit),
@@ -93,8 +99,45 @@ pub fn map_key_to_action(
         };
     }
 
-    // Search mode
-    if search_active {
+    // Priority 2: Comment editor mode
+    if ctx.comment_editor_open {
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelComment),
+            KeyCode::Enter => Some(Action::ConfirmComment),
+            KeyCode::Backspace => Some(Action::CommentBackspace),
+            KeyCode::Char(c) => Some(Action::CommentChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 2.5: Agent selector mode
+    if ctx.agent_selector_open {
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelAgentSelector),
+            KeyCode::Enter => Some(Action::SelectAgent),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentSelectorUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentSelectorDown),
+            KeyCode::Tab => Some(Action::AgentSelectorCycleModel),
+            KeyCode::Backspace => Some(Action::AgentSelectorBackspace),
+            KeyCode::Char(c) => Some(Action::AgentSelectorFilter(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 2.75: Annotation menu mode
+    if ctx.annotation_menu_open {
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelAnnotationMenu),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::AnnotationMenuUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::AnnotationMenuDown),
+            KeyCode::Char('e') | KeyCode::Enter => Some(Action::AnnotationMenuEdit),
+            KeyCode::Char('d') => Some(Action::AnnotationMenuDelete),
+            _ => None,
+        };
+    }
+
+    // Priority 3: Search mode
+    if ctx.search_active {
         return match key.code {
             KeyCode::Esc => Some(Action::EndSearch),
             KeyCode::Enter => Some(Action::EndSearch),
@@ -106,20 +149,32 @@ pub fn map_key_to_action(
         };
     }
 
-    // Global bindings
+    // Priority 4: Global bindings (always active)
     match key.code {
-        KeyCode::Char('q') => return Some(Action::Quit),
+        KeyCode::Char('q') if !ctx.visual_mode_active => return Some(Action::Quit),
         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::Quit)
         }
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::ToggleWorktreeBrowser)
         }
+        KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::OpenAgentSelector)
+        }
         _ => {}
     }
 
-    // Worktree browser mode
-    if active_view == ActiveView::WorktreeBrowser {
+    // Annotation navigation (global in DiffExplorer)
+    if ctx.active_view == ActiveView::DiffExplorer {
+        match key.code {
+            KeyCode::Char(']') => return Some(Action::NextAnnotation),
+            KeyCode::Char('[') => return Some(Action::PrevAnnotation),
+            _ => {}
+        }
+    }
+
+    // Priority 5: Worktree browser mode
+    if ctx.active_view == ActiveView::WorktreeBrowser {
         return match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::WorktreeUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::WorktreeDown),
@@ -131,20 +186,51 @@ pub fn map_key_to_action(
         };
     }
 
-    // Diff explorer global bindings
+    // Priority 5.5: Agent outputs tab
+    if ctx.active_view == ActiveView::AgentOutputs {
+        // Check Ctrl+K first (before plain 'k')
+        if key.code == KeyCode::Char('k') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Some(Action::KillAgentProcess);
+        }
+        return match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentOutputsUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
+            KeyCode::Char('K') => Some(Action::AgentOutputsScrollUp),
+            KeyCode::Char('J') => Some(Action::AgentOutputsScrollDown),
+            KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
+            KeyCode::Esc => Some(Action::SwitchToAgentOutputs), // toggle back
+            _ => None,
+        };
+    }
+
+    // Priority 6: Diff explorer global bindings
     match key.code {
         KeyCode::Tab => return Some(Action::ToggleViewMode),
-        KeyCode::Char('w') => return Some(Action::ToggleWhitespace),
+        KeyCode::Char('w') if !ctx.visual_mode_active => return Some(Action::ToggleWhitespace),
         KeyCode::Char('/') => return Some(Action::StartSearch),
-        KeyCode::Char('s') => return Some(Action::StageFile),
-        KeyCode::Char('u') => return Some(Action::UnstageFile),
-        KeyCode::Char('r') => return Some(Action::RestoreFile),
-        KeyCode::Char('c') => return Some(Action::OpenCommitDialog),
+        KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
+        KeyCode::Char('u') if !ctx.visual_mode_active => return Some(Action::UnstageFile),
+        KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
+        KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
+        KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
         _ => {}
     }
 
-    // Focus-dependent bindings
-    match focus {
+    // Priority 7: Visual mode in DiffView
+    if ctx.visual_mode_active && ctx.focus == FocusPanel::DiffView {
+        return match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::ExtendSelectionUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::ExtendSelectionDown),
+            KeyCode::Char('i') => Some(Action::OpenCommentEditor),
+            KeyCode::Char('d') => Some(Action::DeleteAnnotation),
+            KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
+            KeyCode::Char('v') | KeyCode::Esc => Some(Action::ExitVisualMode),
+            _ => None,
+        };
+    }
+
+    // Priority 8: Focus-dependent bindings
+    match ctx.focus {
         FocusPanel::Navigator => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigatorUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigatorDown),
@@ -157,6 +243,10 @@ pub fn map_key_to_action(
             KeyCode::Left | KeyCode::Char('h') => Some(Action::FocusNavigator),
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
+            KeyCode::Char('v') => Some(Action::EnterVisualMode),
+            KeyCode::Char('p') => Some(Action::TogglePromptPreview),
+            KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
+            KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
             _ => None,
         },
     }

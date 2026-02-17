@@ -31,6 +31,8 @@ pub struct DiffState {
     pub deltas: Vec<FileDelta>,
     pub selected_file: Option<usize>,
     pub scroll_offset: usize,
+    pub cursor_row: usize,
+    pub viewport_height: usize,
     pub loading: bool,
     /// Per-line highlight spans for the old side, indexed by 1-based line number.
     pub old_highlights: Vec<Vec<HighlightSpan>>,
@@ -45,6 +47,8 @@ impl DiffState {
             deltas: Vec::new(),
             selected_file: None,
             scroll_offset: 0,
+            cursor_row: 0,
+            viewport_height: 20,
             loading: false,
             old_highlights: Vec::new(),
             new_highlights: Vec::new(),
@@ -53,11 +57,5 @@ impl DiffState {
 
     pub fn selected_delta(&self) -> Option<&FileDelta> {
         self.selected_file.and_then(|i| self.deltas.get(i))
-    }
-
-    pub fn total_lines(&self) -> usize {
-        self.selected_delta()
-            .map(|d| d.hunks.iter().map(|h| h.lines.len() + 1).sum::<usize>())
-            .unwrap_or(0)
     }
 }
