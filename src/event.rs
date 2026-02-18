@@ -275,7 +275,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('i') => Some(Action::OpenCommentEditor),
             KeyCode::Char('d') => Some(Action::DeleteAnnotation),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
-            KeyCode::Char('v') | KeyCode::Esc => Some(Action::ExitVisualMode),
+            KeyCode::Char('v') | KeyCode::Char('V') | KeyCode::Esc => Some(Action::ExitVisualMode),
             _ => None,
         };
     }
@@ -299,7 +299,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
             KeyCode::Char(' ') => Some(Action::ExpandContext),
-            KeyCode::Char('v') => Some(Action::EnterVisualMode),
+            KeyCode::Char('v') | KeyCode::Char('V') => Some(Action::EnterVisualMode),
             KeyCode::Char('i') => Some(Action::OpenCommentEditor),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
