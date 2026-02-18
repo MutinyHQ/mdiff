@@ -154,9 +154,14 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
 
     let mut display_lines: Vec<Line> = Vec::new();
 
-    // Always show the command at top
+    // Always show the command at top (truncated to avoid consuming scrollback)
+    let display_cmd = if run.command.len() > 120 {
+        format!("$ {}…", &run.command[..120])
+    } else {
+        format!("$ {}", run.command)
+    };
     display_lines.push(Line::from(Span::styled(
-        format!("$ {}", run.command),
+        display_cmd,
         Style::default()
             .fg(theme.text_muted)
             .add_modifier(Modifier::ITALIC),

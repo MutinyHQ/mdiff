@@ -86,7 +86,7 @@ fn known_agents() -> Vec<AgentProviderConfig> {
         },
         AgentProviderConfig {
             name: "opencode".to_string(),
-            command: "opencode -m {model} '{rendered_prompt}'".to_string(),
+            command: "opencode -m {model} --prompt '{rendered_prompt}'".to_string(),
             models: vec![
                 "anthropic/claude-sonnet-4-6".to_string(),
                 "openai/gpt-5.2-codex".to_string(),

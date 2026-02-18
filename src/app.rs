@@ -243,6 +243,7 @@ impl App {
 
             // Coalesce: collapse consecutive scroll actions into net movement
             let mut scroll_delta: i32 = 0;
+            let mut agent_scroll_delta: i32 = 0;
             let mut actions: Vec<Action> = Vec::new();
 
             for event in pending {
@@ -270,6 +271,8 @@ impl App {
                     match action {
                         Action::ScrollUp => scroll_delta -= 1,
                         Action::ScrollDown => scroll_delta += 1,
+                        Action::AgentOutputsScrollUp => agent_scroll_delta -= 1,
+                        Action::AgentOutputsScrollDown => agent_scroll_delta += 1,
                         other => actions.push(other),
                     }
                 }
@@ -283,6 +286,17 @@ impl App {
             } else if scroll_delta > 0 {
                 for _ in 0..scroll_delta {
                     self.update(Action::ScrollDown);
+                }
+            }
+
+            // Apply coalesced agent output scroll
+            if agent_scroll_delta < 0 {
+                for _ in 0..(-agent_scroll_delta) {
+                    self.update(Action::AgentOutputsScrollUp);
+                }
+            } else if agent_scroll_delta > 0 {
+                for _ in 0..agent_scroll_delta {
+                    self.update(Action::AgentOutputsScrollDown);
                 }
             }
 
@@ -1415,8 +1429,20 @@ impl App {
 
     fn handle_mouse(&self, mouse: MouseEvent) -> Option<Action> {
         match mouse.kind {
-            MouseEventKind::ScrollUp => Some(Action::ScrollUp),
-            MouseEventKind::ScrollDown => Some(Action::ScrollDown),
+            MouseEventKind::ScrollUp => {
+                if self.state.active_view == ActiveView::AgentOutputs {
+                    Some(Action::AgentOutputsScrollUp)
+                } else {
+                    Some(Action::ScrollUp)
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if self.state.active_view == ActiveView::AgentOutputs {
+                    Some(Action::AgentOutputsScrollDown)
+                } else {
+                    Some(Action::ScrollDown)
+                }
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 if self.state.active_view != ActiveView::DiffExplorer {
                     return None;
@@ -1583,7 +1609,7 @@ impl App {
         for delta in &self.state.diff.deltas {
             let filename = delta.path.to_string_lossy().to_string();
             let file_annotations = self.state.annotations.annotations.get(&filename);
-            if !file_annotations.is_some_and(|anns| !anns.is_empty()) {
+            if file_annotations.is_none_or(|anns| anns.is_empty()) {
                 continue;
             }
 
