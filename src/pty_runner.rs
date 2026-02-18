@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::Write;
+use std::path::Path;
 use tokio::sync::mpsc;
 
 /// Events emitted by the PTY runner.
@@ -21,7 +22,7 @@ pub struct PtyRunner {
 impl PtyRunner {
     /// Spawn an agent subprocess in a PTY. Returns a PtyRunner that can be
     /// polled for output and written to for interactive input.
-    pub fn spawn(run_id: usize, command: &str, rows: u16, cols: u16) -> Self {
+    pub fn spawn(run_id: usize, command: &str, rows: u16, cols: u16, cwd: &Path) -> Self {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -35,6 +36,7 @@ impl PtyRunner {
         let mut cmd = CommandBuilder::new("sh");
         cmd.arg("-c");
         cmd.arg(command);
+        cmd.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd).expect("failed to spawn");
         // Drop the slave side - the child owns it now.

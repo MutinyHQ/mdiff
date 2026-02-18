@@ -1150,8 +1150,13 @@ impl App {
                         };
 
                         self.state.agent_outputs.add_run(run);
-                        self.pty_runner =
-                            Some(PtyRunner::spawn(run_id, &command, pty_rows, pty_cols));
+                        self.pty_runner = Some(PtyRunner::spawn(
+                            run_id,
+                            &command,
+                            pty_rows,
+                            pty_cols,
+                            &self.repo_path,
+                        ));
                         self.state.agent_selector.open = false;
                         self.state.active_view = ActiveView::AgentOutputs;
                         self.state.pty_focus = true;
