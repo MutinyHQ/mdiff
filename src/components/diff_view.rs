@@ -6,7 +6,9 @@ use ratatui::{
     Frame,
 };
 
-use crate::display_map::{build_display_map, filter_hunk_lines, DisplayRowInfo, FilteredItem};
+use crate::display_map::{
+    build_display_map, filter_hunk_lines, DisplayRowInfo, ExpandDirection, FilteredItem,
+};
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
@@ -259,17 +261,23 @@ fn build_split_lines<'a>(
         let mut i = 0;
         while i < items.len() {
             match &items[i] {
-                FilteredItem::CollapsedIndicator { hidden_count, .. } => {
+                FilteredItem::CollapsedIndicator {
+                    hidden_count,
+                    direction,
+                    ..
+                } => {
                     let hl = row_highlight(state, display_row);
                     left.push(make_collapsed_indicator_line(
                         gutter_width,
                         *hidden_count,
+                        *direction,
                         hl,
                         theme,
                     ));
                     right.push(make_collapsed_indicator_line(
                         gutter_width,
                         *hidden_count,
+                        *direction,
                         hl,
                         theme,
                     ));
@@ -503,11 +511,16 @@ fn render_unified(
 
         for item in &items {
             match item {
-                FilteredItem::CollapsedIndicator { hidden_count, .. } => {
+                FilteredItem::CollapsedIndicator {
+                    hidden_count,
+                    direction,
+                    ..
+                } => {
                     let hl = row_highlight(state, display_row);
                     lines.push(make_collapsed_indicator_line_unified(
                         gutter_width,
                         *hidden_count,
+                        *direction,
                         hl,
                         theme,
                     ));
@@ -856,6 +869,7 @@ fn make_unified_highlighted<'a>(
 fn make_collapsed_indicator_line<'a>(
     gutter_width: usize,
     hidden_count: usize,
+    direction: ExpandDirection,
     hl: RowHighlight,
     theme: &Theme,
 ) -> Line<'a> {
@@ -871,8 +885,11 @@ fn make_collapsed_indicator_line<'a>(
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
-    let label =
-        format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    let caret = match direction {
+        ExpandDirection::Down => "\u{25bc}", // ▼
+        ExpandDirection::Up => "\u{25b2}",   // ▲
+    };
+    let label = format!("{caret} {hidden_count} lines hidden {caret}");
     Line::from(vec![
         Span::styled(gutter_text, gutter_style),
         Span::styled(label, content_style),
@@ -883,6 +900,7 @@ fn make_collapsed_indicator_line<'a>(
 fn make_collapsed_indicator_line_unified<'a>(
     gutter_width: usize,
     hidden_count: usize,
+    direction: ExpandDirection,
     hl: RowHighlight,
     theme: &Theme,
 ) -> Line<'a> {
@@ -901,8 +919,11 @@ fn make_collapsed_indicator_line_unified<'a>(
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
-    let label =
-        format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    let caret = match direction {
+        ExpandDirection::Down => "\u{25bc}", // ▼
+        ExpandDirection::Up => "\u{25b2}",   // ▲
+    };
+    let label = format!("{caret} {hidden_count} lines hidden {caret}");
     Line::from(vec![
         Span::styled(gutter_text, gutter_style),
         Span::styled(label, content_style),

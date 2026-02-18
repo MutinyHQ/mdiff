@@ -1074,26 +1074,13 @@ impl App {
                 let rerun_prompt = self.state.agent_selector.rerun_prompt.clone();
 
                 if let (Some(agent), Some(model)) = (agent, model) {
-                    // Get rendered prompt: use rerun_prompt if available, otherwise render from selection
-                    let rendered_prompt = rerun_prompt.or_else(|| {
-                        let comment = self.comments_for_file();
-                        self.render_prompt_for_selection(&comment)
-                    });
+                    // Always use all files + all annotations for the prompt
+                    let rendered_prompt =
+                        rerun_prompt.or_else(|| self.render_prompt_for_all_files());
 
                     if let Some(prompt) = rendered_prompt {
                         let command = build_agent_command(&agent.command, &model, &prompt);
                         let run_id = self.state.agent_outputs.next_id;
-
-                        let source_file = self
-                            .state
-                            .diff
-                            .selected_delta()
-                            .map(|d| d.path.to_string_lossy().to_string())
-                            .unwrap_or_default();
-                        let source_lines = self
-                            .selection_to_anchor()
-                            .map(|a| (a.line_start, a.line_end))
-                            .unwrap_or((0, 0));
 
                         let run = AgentRun {
                             id: run_id,
@@ -1104,17 +1091,26 @@ impl App {
                             output_lines: Vec::new(),
                             status: AgentRunStatus::Running,
                             started_at: chrono::Utc::now().format("%H:%M").to_string(),
-                            source_file,
-                            source_lines,
+                            source_file: String::new(),
+                            source_lines: (0, 0),
                         };
 
                         self.state.agent_outputs.add_run(run);
                         self.agent_runner = Some(AgentRunner::spawn(run_id, &command));
                         self.state.agent_selector.open = false;
                         self.state.active_view = ActiveView::AgentOutputs;
+
+                        // Clear annotations — they've been captured in the prompt
+                        self.state.annotations = Default::default();
+                        session::save_session(
+                            &self.repo_path,
+                            &self.state.target_label,
+                            &self.state.annotations,
+                        );
+
                         self.set_status(format!("Running {}/{}", agent.name, model), false);
                     } else {
-                        self.set_status("No selection — select lines first".to_string(), true);
+                        self.set_status("No diff to review".to_string(), true);
                     }
                 }
             }
@@ -1472,6 +1468,68 @@ impl App {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// Collect all annotations across all files, formatted with file paths and line ranges.
+    fn comments_for_all_files(&self) -> String {
+        let mut parts = Vec::new();
+        for (file_path, anns) in &self.state.annotations.annotations {
+            for ann in anns {
+                if ann.anchor.line_start == ann.anchor.line_end {
+                    parts.push(format!(
+                        "- {} Line {}: {}",
+                        file_path, ann.anchor.line_start, ann.comment
+                    ));
+                } else {
+                    parts.push(format!(
+                        "- {} Lines {}-{}: {}",
+                        file_path, ann.anchor.line_start, ann.anchor.line_end, ann.comment
+                    ));
+                }
+            }
+        }
+        parts.join("\n")
+    }
+
+    /// Render a prompt covering all files in the diff with all annotations.
+    fn render_prompt_for_all_files(&self) -> Option<String> {
+        if self.state.diff.deltas.is_empty() {
+            return None;
+        }
+
+        let comments = self.comments_for_all_files();
+
+        let mut diff_sections = Vec::new();
+        for delta in &self.state.diff.deltas {
+            let filename = delta.path.to_string_lossy();
+            let mut lines = Vec::new();
+            for hunk in &delta.hunks {
+                if !hunk.header.is_empty() {
+                    lines.push(hunk.header.trim_end().to_string());
+                }
+                for line in &hunk.lines {
+                    let prefix = match line.origin {
+                        DiffLineOrigin::Addition => "+",
+                        DiffLineOrigin::Deletion => "-",
+                        DiffLineOrigin::Context => " ",
+                    };
+                    lines.push(format!("{}{}", prefix, line.content.trim_end()));
+                }
+            }
+            diff_sections.push(format!("### {}\n```diff\n{}\n```", filename, lines.join("\n")));
+        }
+
+        let prompt = format!(
+            "You are reviewing a code change. A reviewer has left comments on the diff below. \
+             Address each review comment by making the necessary code changes. If a comment asks \
+             a question, answer it and make any implied fixes. Keep changes minimal and focused \
+             on what the reviewer asked for.\n\n\
+             ## Review Comments\n\n{}\n\n\
+             ## Changes\n\n{}",
+            comments,
+            diff_sections.join("\n\n")
+        );
+        Some(prompt)
     }
 
     /// Update the prompt preview text from the current selection state.

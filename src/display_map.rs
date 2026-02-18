@@ -234,6 +234,7 @@ pub fn build_split_display_map(
             is_collapsed_indicator: false,
             gap_id: None,
             hidden_count: 0,
+            expand_direction: None,
         });
 
         let (items, next_offset) =
@@ -246,6 +247,7 @@ pub fn build_split_display_map(
                 FilteredItem::CollapsedIndicator {
                     hidden_count,
                     gap_id,
+                    direction,
                 } => {
                     rows.push(DisplayRowInfo {
                         hunk_index: hunk_idx,
@@ -257,6 +259,7 @@ pub fn build_split_display_map(
                         is_collapsed_indicator: true,
                         gap_id: Some(*gap_id),
                         hidden_count: *hidden_count,
+                        expand_direction: Some(*direction),
                     });
                     i += 1;
                 }
@@ -275,6 +278,7 @@ pub fn build_split_display_map(
                             is_collapsed_indicator: false,
                             gap_id: None,
                             hidden_count: 0,
+                            expand_direction: None,
                         });
                         i += 1;
                     }
@@ -367,6 +371,7 @@ pub fn build_split_display_map(
                                 is_collapsed_indicator: false,
                                 gap_id: None,
                                 hidden_count: 0,
+                                expand_direction: None,
                             });
                         }
                     }
@@ -381,6 +386,7 @@ pub fn build_split_display_map(
                             is_collapsed_indicator: false,
                             gap_id: None,
                             hidden_count: 0,
+                            expand_direction: None,
                         });
                         i += 1;
                     }
@@ -413,6 +419,7 @@ pub fn build_unified_display_map(
             is_collapsed_indicator: false,
             gap_id: None,
             hidden_count: 0,
+            expand_direction: None,
         });
 
         let (items, next_offset) =
@@ -424,6 +431,7 @@ pub fn build_unified_display_map(
                 FilteredItem::CollapsedIndicator {
                     hidden_count,
                     gap_id,
+                    direction,
                 } => {
                     rows.push(DisplayRowInfo {
                         hunk_index: hunk_idx,
@@ -435,6 +443,7 @@ pub fn build_unified_display_map(
                         is_collapsed_indicator: true,
                         gap_id: Some(*gap_id),
                         hidden_count: *hidden_count,
+                        expand_direction: Some(*direction),
                     });
                 }
                 FilteredItem::Line {
@@ -451,6 +460,7 @@ pub fn build_unified_display_map(
                         is_collapsed_indicator: false,
                         gap_id: None,
                         hidden_count: 0,
+                        expand_direction: None,
                     });
                 }
             }
