@@ -89,6 +89,14 @@ pub struct KeyContext {
 
 /// Map a key event to an action based on current app context.
 pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
+    // Priority 0: Ctrl-C / Ctrl-D always quit, even inside modals
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('c') | KeyCode::Char('d') => return Some(Action::Quit),
+            _ => {}
+        }
+    }
+
     // Priority 1: Commit dialog mode
     if ctx.commit_dialog_open {
         return match key.code {
@@ -164,9 +172,6 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     // Priority 4: Global bindings (always active)
     match key.code {
         KeyCode::Char('q') if !ctx.visual_mode_active => return Some(Action::Quit),
-        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            return Some(Action::Quit)
-        }
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::ToggleWorktreeBrowser)
         }
