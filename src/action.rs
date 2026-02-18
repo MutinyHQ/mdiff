@@ -125,6 +125,8 @@ pub enum Action {
     EnterPtyFocus,
     ExitPtyFocus,
     PtyInput(KeyEvent),
+    PtyScrollUp,
+    PtyScrollDown,
 
     // Review state
     ToggleFileReviewed,

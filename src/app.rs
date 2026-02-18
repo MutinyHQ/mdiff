@@ -1273,6 +1273,18 @@ impl App {
                     }
                 }
             }
+            Action::PtyScrollUp => {
+                if let Some(runner) = self.pty_runner.as_mut() {
+                    // Send 3 up-arrow sequences per scroll tick
+                    runner.write_input(b"\x1b[A\x1b[A\x1b[A");
+                }
+            }
+            Action::PtyScrollDown => {
+                if let Some(runner) = self.pty_runner.as_mut() {
+                    // Send 3 down-arrow sequences per scroll tick
+                    runner.write_input(b"\x1b[B\x1b[B\x1b[B");
+                }
+            }
 
             Action::RefreshDiff => {
                 self.request_diff();
@@ -1436,14 +1448,14 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 if self.state.active_view == ActiveView::AgentOutputs {
-                    None
+                    Some(Action::PtyScrollUp)
                 } else {
                     Some(Action::ScrollUp)
                 }
             }
             MouseEventKind::ScrollDown => {
                 if self.state.active_view == ActiveView::AgentOutputs {
-                    None
+                    Some(Action::PtyScrollDown)
                 } else {
                     Some(Action::ScrollDown)
                 }
