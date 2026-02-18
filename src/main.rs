@@ -6,7 +6,6 @@ mod async_diff;
 mod cli;
 mod components;
 mod config;
-mod context;
 mod display_map;
 mod event;
 mod git;
@@ -14,7 +13,6 @@ mod highlight;
 mod pty_runner;
 mod session;
 mod state;
-mod template;
 mod theme;
 mod tui;
 

@@ -22,7 +22,6 @@ use crate::components::target_dialog::render_target_dialog;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{self, MdiffConfig, PersistentSettings};
-use crate::context;
 use crate::display_map::{build_display_map, DisplayRowInfo};
 use crate::event::{map_key_to_action, Event, EventReader, KeyContext};
 use crate::git::commands::GitCli;
@@ -37,7 +36,6 @@ use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::review_state::compute_diff_hashes;
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, DiffOptions, DiffViewMode};
-use crate::template;
 use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -446,26 +444,6 @@ impl App {
             line_start: lineno,
             line_end: lineno,
         })
-    }
-
-    /// Get a LineAnchor from either the visual selection or the cursor position.
-    fn current_anchor(&self) -> Option<LineAnchor> {
-        if self.state.selection.active {
-            self.selection_to_anchor()
-        } else {
-            self.cursor_to_anchor()
-        }
-    }
-
-    /// Render the prompt template for the current selection and optional comment.
-    fn render_prompt_for_selection(&self, comment: &str) -> Option<String> {
-        let delta = self.state.diff.selected_delta()?;
-        let anchor = self.current_anchor()?;
-        let ctx = context::extract_context(delta, &anchor, comment, self.config.context_padding);
-        Some(template::render_template(
-            &self.config.prompt_template,
-            &ctx,
-        ))
     }
 
     fn update(&mut self, action: Action) {
@@ -1025,8 +1003,7 @@ impl App {
 
             // Prompt / clipboard
             Action::CopyPromptToClipboard => {
-                let comment = self.comments_for_file();
-                if let Some(rendered) = self.render_prompt_for_selection(&comment) {
+                if let Some(rendered) = self.render_prompt_for_all_files() {
                     match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&rendered)) {
                         Ok(()) => self.set_status("Prompt copied to clipboard".to_string(), false),
                         Err(e) => {
@@ -1034,7 +1011,7 @@ impl App {
                         }
                     }
                 } else {
-                    self.set_status("No lines at cursor".to_string(), true);
+                    self.set_status("No diff to copy".to_string(), true);
                 }
             }
             Action::TogglePromptPreview => {
@@ -1155,7 +1132,9 @@ impl App {
             Action::AgentOutputsScrollUp => {
                 // detail_scroll is lines from bottom; increase to scroll up
                 if let Some(run) = self.state.agent_outputs.selected() {
-                    let max_scroll = run.terminal.screen().size().0 as usize;
+                    let (cursor_row, _) = run.terminal.screen().cursor_position();
+                    let content_rows = (cursor_row as usize) + 1;
+                    let max_scroll = content_rows.saturating_sub(1);
                     if self.state.agent_outputs.detail_scroll < max_scroll {
                         self.state.agent_outputs.detail_scroll += 1;
                     }
@@ -1557,38 +1536,6 @@ impl App {
         }
     }
 
-    /// Collect all annotations for the current file, formatted with line ranges.
-    fn comments_for_file(&self) -> String {
-        let file_path = self
-            .state
-            .diff
-            .selected_delta()
-            .map(|d| d.path.to_string_lossy().to_string());
-        let Some(file_path) = file_path else {
-            return String::new();
-        };
-        let Some(anns) = self.state.annotations.annotations.get(&file_path) else {
-            return String::new();
-        };
-        if anns.is_empty() {
-            return String::new();
-        }
-
-        anns.iter()
-            .map(|ann| {
-                if ann.anchor.line_start == ann.anchor.line_end {
-                    format!("- Line {}: {}", ann.anchor.line_start, ann.comment)
-                } else {
-                    format!(
-                        "- Lines {}-{}: {}",
-                        ann.anchor.line_start, ann.anchor.line_end, ann.comment
-                    )
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// Collect all annotations across all files, formatted with file paths and line ranges.
     fn comments_for_all_files(&self) -> String {
         let mut parts = Vec::new();
@@ -1611,56 +1558,105 @@ impl App {
     }
 
     /// Render a prompt covering all files in the diff with all annotations.
+    ///
+    /// Annotated files get scoped diffs (only lines near annotations).
+    /// Unannotated files get a one-line summary with status and +/- counts.
     fn render_prompt_for_all_files(&self) -> Option<String> {
         if self.state.diff.deltas.is_empty() {
             return None;
         }
 
         let comments = self.comments_for_all_files();
+        let padding: u32 = 5;
 
-        let mut diff_sections = Vec::new();
+        let mut annotated_sections = Vec::new();
+
         for delta in &self.state.diff.deltas {
-            let filename = delta.path.to_string_lossy();
+            let filename = delta.path.to_string_lossy().to_string();
+            let file_annotations = self.state.annotations.annotations.get(&filename);
+            let has_annotations = file_annotations.is_some_and(|anns| !anns.is_empty());
+
+            if !has_annotations {
+                continue;
+            }
+
+            // Build the set of line ranges we care about (annotation ranges + padding)
+            let anns = file_annotations.unwrap();
+            let mut visible_ranges: Vec<(u32, u32)> = anns
+                .iter()
+                .map(|a| {
+                    (
+                        a.anchor.line_start.saturating_sub(padding),
+                        a.anchor.line_end + padding,
+                    )
+                })
+                .collect();
+            // Sort and merge overlapping ranges
+            visible_ranges.sort_by_key(|r| r.0);
+            let mut merged: Vec<(u32, u32)> = Vec::new();
+            for range in visible_ranges {
+                if let Some(last) = merged.last_mut() {
+                    if range.0 <= last.1 + 1 {
+                        last.1 = last.1.max(range.1);
+                        continue;
+                    }
+                }
+                merged.push(range);
+            }
+
+            // Collect diff lines that fall within merged ranges
             let mut lines = Vec::new();
             for hunk in &delta.hunks {
-                if !hunk.header.is_empty() {
-                    lines.push(hunk.header.trim_end().to_string());
-                }
+                let mut hunk_lines = Vec::new();
+                let mut any_in_range = false;
                 for line in &hunk.lines {
-                    let prefix = match line.origin {
-                        DiffLineOrigin::Addition => "+",
-                        DiffLineOrigin::Deletion => "-",
-                        DiffLineOrigin::Context => " ",
-                    };
-                    lines.push(format!("{}{}", prefix, line.content.trim_end()));
+                    let lineno = line.new_lineno.or(line.old_lineno).unwrap_or(0);
+                    let in_range = merged.iter().any(|(s, e)| lineno >= *s && lineno <= *e);
+                    if in_range {
+                        any_in_range = true;
+                        let prefix = match line.origin {
+                            DiffLineOrigin::Addition => "+",
+                            DiffLineOrigin::Deletion => "-",
+                            DiffLineOrigin::Context => " ",
+                        };
+                        hunk_lines.push(format!("{}{}", prefix, line.content.trim_end()));
+                    }
+                }
+                if any_in_range {
+                    if !hunk.header.is_empty() {
+                        lines.push(hunk.header.trim_end().to_string());
+                    }
+                    lines.extend(hunk_lines);
                 }
             }
-            diff_sections.push(format!(
+
+            annotated_sections.push(format!(
                 "### {}\n```diff\n{}\n```",
                 filename,
                 lines.join("\n")
             ));
         }
 
-        let prompt = format!(
+        let mut prompt = String::from(
             "You are reviewing a code change. A reviewer has left comments on the diff below. \
              Address each review comment by making the necessary code changes. If a comment asks \
              a question, answer it and make any implied fixes. Keep changes minimal and focused \
              on what the reviewer asked for.\n\n\
-             ## Review Comments\n\n{}\n\n\
-             ## Changes\n\n{}",
-            comments,
-            diff_sections.join("\n\n")
+             ## Review Comments\n\n",
         );
+        prompt.push_str(&comments);
+
+        if !annotated_sections.is_empty() {
+            prompt.push_str("\n\n## Annotated Files\n\n");
+            prompt.push_str(&annotated_sections.join("\n\n"));
+        }
+
         Some(prompt)
     }
 
-    /// Update the prompt preview text from the current selection state.
+    /// Update the prompt preview text from the current diff + annotations.
     fn update_prompt_preview(&mut self) {
-        let comment = self.comments_for_file();
-        self.state.prompt_preview_text = self
-            .render_prompt_for_selection(&comment)
-            .unwrap_or_default();
+        self.state.prompt_preview_text = self.render_prompt_for_all_files().unwrap_or_default();
     }
 }
 

@@ -22,8 +22,6 @@ pub struct AgentProviderConfig {
 pub struct MdiffConfig {
     pub agents: Vec<AgentProviderConfig>,
     pub agents_by_name: HashMap<String, usize>,
-    pub prompt_template: String,
-    pub context_padding: usize,
     pub theme: Theme,
     pub unified: Option<bool>,
     pub ignore_whitespace: Option<bool>,
@@ -43,8 +41,6 @@ impl Default for MdiffConfig {
         Self {
             agents,
             agents_by_name,
-            prompt_template: DEFAULT_TEMPLATE.to_string(),
-            context_padding: 5,
             theme: Theme::from_name("one-dark"),
             unified: None,
             ignore_whitespace: None,
@@ -120,32 +116,8 @@ fn detect_agents() -> Vec<AgentProviderConfig> {
         .collect()
 }
 
-const DEFAULT_TEMPLATE: &str = r#"You are reviewing a code change. A reviewer has left comments on the diff below. Address each review comment by making the necessary code changes. If a comment asks a question, answer it and make any implied fixes. Keep changes minimal and focused on what the reviewer asked for.
-
-## Review Comments
-
-{comments}
-
-## File
-
-{filename} (Lines {line_start}-{line_end})
-
-{hunk_header}
-
-```diff
-{diff_content}
-```
-
-## Surrounding Context
-
-{context}"#;
-
 #[derive(Debug, Deserialize)]
 struct ConfigFile {
-    #[serde(default = "default_context_padding")]
-    context_padding: usize,
-    #[serde(default)]
-    prompt_template: Option<String>,
     #[serde(default)]
     agents: Vec<AgentProviderConfig>,
     #[serde(default)]
@@ -160,10 +132,6 @@ struct ConfigFile {
     context_lines: Option<usize>,
     #[serde(default)]
     agent_models: HashMap<String, String>,
-}
-
-fn default_context_padding() -> usize {
-    5
 }
 
 fn config_path() -> PathBuf {
@@ -221,10 +189,6 @@ pub fn load_config() -> MdiffConfig {
     MdiffConfig {
         agents,
         agents_by_name,
-        prompt_template: file
-            .prompt_template
-            .unwrap_or_else(|| DEFAULT_TEMPLATE.to_string()),
-        context_padding: file.context_padding,
         theme,
         unified: file.unified,
         ignore_whitespace: file.ignore_whitespace,

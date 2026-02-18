@@ -145,9 +145,10 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
 
     // Render the vt100 terminal screen
     let screen = run.terminal.screen();
-    let (term_rows, term_cols) = screen.size();
+    let (_term_rows, term_cols) = screen.size();
+    let (cursor_row, _) = screen.cursor_position();
 
-    // detail_scroll is offset from bottom (0 = live/bottom)
+    // detail_scroll is offset from bottom (0 = live/follow cursor)
     let scroll_offset = outputs.detail_scroll;
 
     let mut display_lines: Vec<Line> = Vec::new();
@@ -164,53 +165,23 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // Determine how many terminal rows to show
     let lines_for_terminal = inner_height.saturating_sub(display_lines.len());
 
-    // Render visible screen rows (row 0..term_rows)
-    // With detail_scroll: 0 = show bottom, higher = scroll up into history
-    // For now, render the current visible screen from the vt100 parser
-    let rows_to_show = (term_rows as usize).min(lines_for_terminal);
-    let first_visible_row = if scroll_offset > 0 {
-        // When scrolling up, show earlier rows
-        (term_rows as usize).saturating_sub(scroll_offset + rows_to_show)
-    } else {
-        // At bottom: show the last N rows that fit
-        (term_rows as usize).saturating_sub(rows_to_show)
-    };
+    // Content on visible screen: rows 0..=cursor_row have content.
+    // The vt100 parser manages scrollback internally — older lines scroll off
+    // the visible screen. We render from the visible screen rows only.
+    let content_rows = (cursor_row as usize) + 1;
 
-    for row in first_visible_row..first_visible_row + rows_to_show {
-        let mut spans: Vec<Span> = Vec::new();
-        let mut current_text = String::new();
-        let mut current_style = Style::default().fg(theme.text);
+    // Determine the window of visible screen rows to render.
+    // scroll_offset=0 means show the latest (follow cursor), higher = scroll up.
+    let end_idx = content_rows.saturating_sub(scroll_offset);
+    let start_idx = end_idx.saturating_sub(lines_for_terminal);
 
-        for col in 0..term_cols {
-            let cell = screen.cell(row as u16, col);
-            if let Some(cell) = cell {
-                let cell_style = vt100_cell_to_style(cell, theme);
-                let ch = cell.contents();
-                let ch = if ch.is_empty() { " " } else { &ch };
-
-                if cell_style == current_style {
-                    current_text.push_str(ch);
-                } else {
-                    if !current_text.is_empty() {
-                        spans.push(Span::styled(
-                            std::mem::take(&mut current_text),
-                            current_style,
-                        ));
-                    }
-                    current_text = ch.to_string();
-                    current_style = cell_style;
-                }
-            }
-        }
-        if !current_text.is_empty() {
-            // Trim trailing spaces
-            let trimmed = current_text.trim_end();
-            if !trimmed.is_empty() {
-                spans.push(Span::styled(trimmed.to_string(), current_style));
-            }
-        }
-
-        display_lines.push(Line::from(spans));
+    for screen_row in start_idx..end_idx {
+        display_lines.push(render_screen_row(
+            screen,
+            screen_row as u16,
+            term_cols,
+            theme,
+        ));
     }
 
     // Show status indicator at end if done and we're at the bottom
@@ -245,6 +216,49 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     let visible: Vec<Line> = display_lines.into_iter().take(inner_height).collect();
     let paragraph = Paragraph::new(visible).wrap(Wrap { trim: false });
     frame.render_widget(paragraph, inner);
+}
+
+/// Render a single visible screen row to a styled Line.
+fn render_screen_row(
+    screen: &vt100::Screen,
+    row: u16,
+    term_cols: u16,
+    theme: &Theme,
+) -> Line<'static> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut current_text = String::new();
+    let mut current_style = Style::default().fg(theme.text);
+
+    for col in 0..term_cols {
+        let cell = screen.cell(row, col);
+        if let Some(cell) = cell {
+            let cell_style = vt100_cell_to_style(cell, theme);
+            let ch = cell.contents();
+            let ch = if ch.is_empty() { " " } else { &ch };
+
+            if cell_style == current_style {
+                current_text.push_str(ch);
+            } else {
+                if !current_text.is_empty() {
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current_text),
+                        current_style,
+                    ));
+                }
+                current_text = ch.to_string();
+                current_style = cell_style;
+            }
+        }
+    }
+    if !current_text.is_empty() {
+        // Trim trailing spaces
+        let trimmed = current_text.trim_end();
+        if !trimmed.is_empty() {
+            spans.push(Span::styled(trimmed.to_string(), current_style));
+        }
+    }
+
+    Line::from(spans)
 }
 
 /// Convert a vt100 cell to a ratatui Style.
