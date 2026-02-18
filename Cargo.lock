@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "mutiny-diff"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "arboard",
