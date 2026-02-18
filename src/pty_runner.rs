@@ -8,8 +8,6 @@ use tokio::sync::mpsc;
 pub enum PtyEvent {
     /// Raw output bytes from the PTY.
     Output(usize, Vec<u8>),
-    /// Process exited with the given code.
-    Done(usize, i32),
 }
 
 /// Manages a PTY-based agent subprocess.

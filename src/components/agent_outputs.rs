@@ -146,61 +146,43 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // Render the vt100 terminal screen
     let screen = run.terminal.screen();
     let (term_rows, term_cols) = screen.size();
-    let scrollback = screen.scrollback();
-
-    // Build display lines from scrollback + visible screen
-    // Total lines = scrollback + visible rows
-    let total_lines = scrollback + term_rows as usize;
 
     // detail_scroll is offset from bottom (0 = live/bottom)
     let scroll_offset = outputs.detail_scroll;
 
-    // Calculate which line range to show
-    let end_line = total_lines.saturating_sub(scroll_offset);
-    let start_line = end_line.saturating_sub(inner_height);
-
     let mut display_lines: Vec<Line> = Vec::new();
 
-    // Show command at top if we're near the beginning
-    if start_line == 0 {
-        display_lines.push(Line::from(Span::styled(
-            format!("$ {}", run.command),
-            Style::default()
-                .fg(theme.text_muted)
-                .add_modifier(Modifier::ITALIC),
-        )));
-        display_lines.push(Line::from(""));
-    }
+    // Always show the command at top
+    display_lines.push(Line::from(Span::styled(
+        format!("$ {}", run.command),
+        Style::default()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::ITALIC),
+    )));
+    display_lines.push(Line::from(""));
 
     // Determine how many terminal rows to show
     let lines_for_terminal = inner_height.saturating_sub(display_lines.len());
 
-    for line_idx in start_line..end_line.min(start_line + lines_for_terminal) {
-        let row = if line_idx < scrollback {
-            // Scrollback row
-            screen.rows_formatted(line_idx as u16, (line_idx + 1) as u16)
-        } else {
-            // Visible screen row
-            let visible_row = line_idx - scrollback;
-            screen.rows_formatted(
-                (scrollback + visible_row) as u16,
-                (scrollback + visible_row + 1) as u16,
-            )
-        };
+    // Render visible screen rows (row 0..term_rows)
+    // With detail_scroll: 0 = show bottom, higher = scroll up into history
+    // For now, render the current visible screen from the vt100 parser
+    let rows_to_show = (term_rows as usize).min(lines_for_terminal);
+    let first_visible_row = if scroll_offset > 0 {
+        // When scrolling up, show earlier rows
+        (term_rows as usize).saturating_sub(scroll_offset + rows_to_show)
+    } else {
+        // At bottom: show the last N rows that fit
+        (term_rows as usize).saturating_sub(rows_to_show)
+    };
 
-        // Parse the row into styled spans using the vt100 cell API
-        let row_idx = if line_idx < scrollback {
-            -(scrollback as i32 - line_idx as i32)
-        } else {
-            (line_idx - scrollback) as i32
-        };
-
+    for row in first_visible_row..first_visible_row + rows_to_show {
         let mut spans: Vec<Span> = Vec::new();
         let mut current_text = String::new();
         let mut current_style = Style::default().fg(theme.text);
 
         for col in 0..term_cols {
-            let cell = screen.cell(row_idx as u16, col);
+            let cell = screen.cell(row as u16, col);
             if let Some(cell) = cell {
                 let cell_style = vt100_cell_to_style(cell, theme);
                 let ch = cell.contents();

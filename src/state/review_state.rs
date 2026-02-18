@@ -75,26 +75,21 @@ impl ReviewState {
                     // File is new since last refresh.
                     self.files
                         .insert(path.clone(), (FileReviewStatus::New, None));
-                } else if let Some((status, reviewed_hash)) = self.files.get(path) {
-                    match status {
-                        FileReviewStatus::Reviewed | FileReviewStatus::ChangedSinceReview => {
-                            // Check if diff content changed since review.
-                            if *reviewed_hash != Some(new_hash) {
-                                self.files.insert(
-                                    path.clone(),
-                                    (FileReviewStatus::ChangedSinceReview, *reviewed_hash),
-                                );
-                            } else {
-                                // Hash matches review - stays Reviewed.
-                                self.files.insert(
-                                    path.clone(),
-                                    (FileReviewStatus::Reviewed, *reviewed_hash),
-                                );
-                            }
-                        }
-                        _ => {
-                            // Unreviewed or New - stays as-is.
-                        }
+                } else if let Some((
+                    FileReviewStatus::Reviewed | FileReviewStatus::ChangedSinceReview,
+                    reviewed_hash,
+                )) = self.files.get(path)
+                {
+                    // Check if diff content changed since review.
+                    if *reviewed_hash != Some(new_hash) {
+                        self.files.insert(
+                            path.clone(),
+                            (FileReviewStatus::ChangedSinceReview, *reviewed_hash),
+                        );
+                    } else {
+                        // Hash matches review - stays Reviewed.
+                        self.files
+                            .insert(path.clone(), (FileReviewStatus::Reviewed, *reviewed_hash));
                     }
                 }
             }

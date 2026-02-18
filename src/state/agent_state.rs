@@ -22,8 +22,6 @@ pub struct AgentRun {
     pub terminal: vt100::Parser,
     pub status: AgentRunStatus,
     pub started_at: String,
-    pub source_file: String,
-    pub source_lines: (u32, u32),
 }
 
 impl fmt::Debug for AgentRun {
@@ -58,10 +56,6 @@ impl AgentOutputsState {
 
     pub fn selected(&self) -> Option<&AgentRun> {
         self.runs.get(self.selected_run)
-    }
-
-    pub fn selected_mut(&mut self) -> Option<&mut AgentRun> {
-        self.runs.get_mut(self.selected_run)
     }
 
     pub fn select_up(&mut self) {

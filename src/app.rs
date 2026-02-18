@@ -346,24 +346,6 @@ impl App {
                         self.state.agent_outputs.detail_scroll = 0;
                     }
                 }
-                PtyEvent::Done(run_id, code) => {
-                    if let Some(run) = self
-                        .state
-                        .agent_outputs
-                        .runs
-                        .iter_mut()
-                        .find(|r| r.id == run_id)
-                    {
-                        run.status = if code == 0 {
-                            AgentRunStatus::Success { exit_code: code }
-                        } else {
-                            AgentRunStatus::Failed { exit_code: code }
-                        };
-                    }
-                    self.state.pty_focus = false;
-                    self.pty_runner = None;
-                    return;
-                }
             }
         }
 
@@ -1129,8 +1111,6 @@ impl App {
                             terminal: vt100::Parser::new(pty_rows, pty_cols, 10000),
                             status: AgentRunStatus::Running,
                             started_at: chrono::Utc::now().format("%H:%M").to_string(),
-                            source_file: String::new(),
-                            source_lines: (0, 0),
                         };
 
                         self.state.agent_outputs.add_run(run);
@@ -1175,10 +1155,9 @@ impl App {
                 self.state.agent_outputs.select_down();
             }
             Action::AgentOutputsScrollUp => {
-                // detail_scroll is lines from bottom; increase to scroll up into history
+                // detail_scroll is lines from bottom; increase to scroll up
                 if let Some(run) = self.state.agent_outputs.selected() {
-                    let scrollback = run.terminal.screen().scrollback();
-                    let max_scroll = scrollback + run.terminal.screen().size().0 as usize;
+                    let max_scroll = run.terminal.screen().size().0 as usize;
                     if self.state.agent_outputs.detail_scroll < max_scroll {
                         self.state.agent_outputs.detail_scroll += 1;
                     }
