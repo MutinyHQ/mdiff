@@ -1,0 +1,9 @@
+[workspace]
+# Let the existing release.yml build binaries and create the GitHub release
+git_release_enable = false
+# Create git tags (triggers release.yml)
+git_tag_enable = true
+# Publish to crates.io
+publish = true
+
+pr_labels = ["release"]
