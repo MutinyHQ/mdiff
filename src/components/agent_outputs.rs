@@ -144,8 +144,6 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     // Render the vt100 terminal screen.
-    // The app calls parser.set_scrollback(detail_scroll) before rendering,
-    // so screen.cell() already reflects the scrolled position.
     let screen = run.terminal.screen();
     let (_term_rows, term_cols) = screen.size();
     let (cursor_row, _) = screen.cursor_position();
@@ -172,9 +170,10 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // Only rows 0..=cursor_row have content; rows below the cursor are blank.
     let content_rows = (cursor_row as usize) + 1;
 
-    // Render from the top of the (scrollback-shifted) screen.
+    // Render from the bottom so the cursor line is always visible.
+    let start_row = content_rows.saturating_sub(lines_for_terminal);
     let rows_to_show = lines_for_terminal.min(content_rows);
-    for screen_row in 0..rows_to_show {
+    for screen_row in start_row..(start_row + rows_to_show) {
         display_lines.push(render_screen_row(
             screen,
             screen_row as u16,
