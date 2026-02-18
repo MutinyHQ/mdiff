@@ -8,11 +8,15 @@ pub enum Action {
     // Navigation
     NavigatorUp,
     NavigatorDown,
+    NavigatorTop,
+    NavigatorBottom,
     SelectFile(usize),
 
     // Diff view
     ScrollUp,
     ScrollDown,
+    ScrollToTop,
+    ScrollToBottom,
     ScrollPageUp,
     ScrollPageDown,
     ToggleViewMode,

@@ -461,6 +461,17 @@ impl App {
                 self.state.navigator.select_down();
                 self.sync_selection();
             }
+            Action::NavigatorTop => {
+                self.state.navigator.selected = 0;
+                self.sync_selection();
+            }
+            Action::NavigatorBottom => {
+                let len = self.state.navigator.visible_entries().len();
+                if len > 0 {
+                    self.state.navigator.selected = len - 1;
+                }
+                self.sync_selection();
+            }
             Action::SelectFile(idx) => {
                 self.state.diff.selected_file = Some(idx);
                 self.state.diff.scroll_offset = 0;
@@ -495,6 +506,16 @@ impl App {
                 if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
                     self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
                 }
+            }
+            Action::ScrollToTop => {
+                self.state.diff.cursor_row = 0;
+                self.state.diff.scroll_offset = 0;
+            }
+            Action::ScrollToBottom => {
+                let max = self.current_display_map().len().saturating_sub(1);
+                self.state.diff.cursor_row = max;
+                let vh = self.state.diff.viewport_height;
+                self.state.diff.scroll_offset = max.saturating_sub(vh.saturating_sub(1));
             }
             Action::ScrollPageUp => {
                 let vh = self.state.diff.viewport_height;
@@ -1101,7 +1122,24 @@ impl App {
                 }
             }
             Action::ExpandContext => {
-                // TODO: expand context around the current cursor position
+                let display_map = self.current_display_map();
+                if let Some(info) = display_map.get(self.state.diff.cursor_row) {
+                    if info.is_collapsed_indicator {
+                        if let Some(gap_id) = info.gap_id {
+                            let current = self
+                                .state
+                                .diff
+                                .gap_expansions
+                                .get(&gap_id)
+                                .copied()
+                                .unwrap_or(0);
+                            self.state
+                                .diff
+                                .gap_expansions
+                                .insert(gap_id, current + 20);
+                        }
+                    }
+                }
             }
             Action::Resize => {}
         }
@@ -1228,6 +1266,8 @@ impl App {
                 self.update_highlights();
                 // Exit visual mode when switching files
                 self.state.selection.active = false;
+                // Reset context expansions for the new file
+                self.state.diff.gap_expansions.clear();
             }
         }
     }

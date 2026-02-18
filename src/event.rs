@@ -231,7 +231,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
-        KeyCode::Char('g') if !ctx.visual_mode_active => return Some(Action::RefreshDiff),
+        KeyCode::Char('R') => return Some(Action::RefreshDiff),
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         _ => {}
     }
@@ -254,12 +254,16 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         FocusPanel::Navigator => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigatorUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigatorDown),
+            KeyCode::Char('g') => Some(Action::NavigatorTop),
+            KeyCode::Char('G') => Some(Action::NavigatorBottom),
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => Some(Action::FocusDiffView),
             _ => None,
         },
         FocusPanel::DiffView => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::ScrollUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::ScrollDown),
+            KeyCode::Char('g') => Some(Action::ScrollToTop),
+            KeyCode::Char('G') => Some(Action::ScrollToBottom),
             KeyCode::Left | KeyCode::Char('h') => Some(Action::FocusNavigator),
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
