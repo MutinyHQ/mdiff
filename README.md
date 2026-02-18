@@ -1,13 +1,15 @@
 # mdiff
 
-A terminal UI for reviewing git diffs — with syntax highlighting, split/unified views, and built-in git operations.
+A terminal UI for reviewing git diffs — with syntax highlighting, split/unified views, inline annotations, and agent-assisted code review.
 
 ## Features
 
 - **Split and unified diff views** — side-by-side or interleaved, toggle with `Tab`
 - **Syntax highlighting** — tree-sitter powered, supports Rust, TypeScript, JavaScript, Python, Go, Ruby, JSON, TOML, YAML, CSS, HTML, and Bash
 - **Git operations** — stage, unstage, restore files, and commit without leaving the TUI
-- **Annotations** — add inline comments on diff lines for coding agents to act on *(coming soon)*
+- **Inline annotations** — select diff lines in visual mode and attach review comments that persist across sessions
+- **Agent handoff** — launch a configured coding agent with a templated prompt containing the selected code, diff context, and your annotations; or copy the prompt to your clipboard for use in any existing agent session
+- **Runtime target switching** — change the comparison ref (branch, tag, commit) at runtime with `t`
 - **Worktree browser** — browse and switch between git worktrees, with automatic detection of active coding agents (Claude Code, Codex, OpenCode, Gemini)
 - **Fuzzy file search** — quickly filter the file list with `/`
 - **Whitespace toggle** — hide whitespace-only changes with `w`
@@ -49,42 +51,71 @@ mdiff --wt
 mdiff --unified -w
 ```
 
+## Workflow: Annotate and Hand Off
+
+1. Run `mdiff` to review your diff
+2. Navigate to a file, press `v` to enter visual mode, and select the lines you want to comment on
+3. Press `i` to open the comment editor and describe the change you want — a bug fix, a refactor, a question
+4. Repeat for as many files and regions as needed; annotations are saved per-target and persist across sessions
+5. When ready, either:
+   - Press `Ctrl+A` to pick a configured agent, which launches with a templated prompt containing the selected code, surrounding context, and all your annotations for that file
+   - Press `y` to copy the rendered prompt to your clipboard, then paste it into any existing agent session (Claude Code, Cursor, Copilot, etc.)
+6. Press `p` to preview the rendered prompt before sending
+
 ## Keybindings
 
-### Global
+Press `?` to show all keybindings in the HUD. The essentials:
+
+### Navigation
 
 | Key | Action |
 |-----|--------|
-| `q` | Quit |
-| `Ctrl+C` | Quit |
-| `Tab` | Toggle split/unified view |
-| `w` | Toggle whitespace |
+| `j` / `↓` | Next item / scroll down |
+| `k` / `↑` | Previous item / scroll up |
+| `g` | Jump to top |
+| `G` | Jump to bottom |
+| `h` / `←` | Focus file navigator |
+| `l` / `→` / `Enter` | Focus diff view |
 | `/` | Search files |
+| `Tab` | Toggle split/unified view |
+| `PageUp` / `PageDown` | Scroll page |
+
+### Annotations & Prompts
+
+| Key | Action |
+|-----|--------|
+| `v` | Enter visual mode (select lines) |
+| `i` | Add comment on selection |
+| `a` | Open annotation menu on current line |
+| `d` | Delete annotation on selection |
+| `]` / `[` | Jump to next/previous annotation |
+| `y` | Copy rendered prompt to clipboard |
+| `p` | Toggle prompt preview |
+| `Ctrl+A` | Open agent selector |
+
+### Git Operations
+
+| Key | Action |
+|-----|--------|
 | `s` | Stage file |
 | `u` | Unstage file |
 | `r` | Restore file |
 | `c` | Open commit dialog |
+| `t` | Change comparison target |
+| `R` | Refresh diff |
+
+### General
+
+| Key | Action |
+|-----|--------|
+| `q` | Quit |
+| `Ctrl+C` / `Ctrl+D` | Quit (from any modal) |
+| `w` | Toggle whitespace |
+| `o` | Toggle agent outputs tab |
 | `Ctrl+W` | Toggle worktree browser |
+| `?` | Show/hide all keybindings |
 
-### File navigator
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Next file |
-| `k` / `↑` | Previous file |
-| `l` / `→` / `Enter` | Focus diff view |
-
-### Diff view
-
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Scroll down |
-| `k` / `↑` | Scroll up |
-| `h` / `←` | Focus file navigator |
-| `PageUp` | Scroll page up |
-| `PageDown` | Scroll page down |
-
-### Worktree browser
+### Worktree Browser
 
 | Key | Action |
 |-----|--------|
@@ -94,6 +125,24 @@ mdiff --unified -w
 | `r` | Refresh list |
 | `f` | Freeze worktree (stage all + auto-commit) |
 | `Esc` | Back to diff view |
+
+## Agent Configuration
+
+Configure agents in `~/.config/mdiff/config.toml`:
+
+```toml
+[[agents]]
+name = "claude"
+command = "claude --model {model} --print '{rendered_prompt}'"
+models = ["sonnet", "opus"]
+
+[[agents]]
+name = "codex"
+command = "codex --model {model} --prompt '{rendered_prompt}'"
+models = ["o3-mini", "o4-mini"]
+```
+
+The `{rendered_prompt}` placeholder is replaced with the templated prompt containing the diff context, selected code, and your annotations. The `{model}` placeholder is replaced with the model you select.
 
 ## CLI Reference
 

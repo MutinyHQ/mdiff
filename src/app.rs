@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::action::Action;
 use crate::agent_runner::{AgentEvent, AgentRunner};
 use crate::async_diff::{DiffRequest, DiffWorker};
-use crate::components::action_hud::ActionHud;
+use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
@@ -120,12 +120,13 @@ impl App {
             self.state.diff.viewport_height = vh;
 
             terminal.draw(|frame| {
+                let hud_h = hud_height(&self.state, frame.area().width);
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([
                         Constraint::Length(1),
                         Constraint::Min(3),
-                        Constraint::Length(1),
+                        Constraint::Length(hud_h),
                     ])
                     .split(frame.area());
 
@@ -451,6 +452,17 @@ impl App {
     }
 
     fn update(&mut self, action: Action) {
+        // Auto-collapse HUD on first real command after expanding
+        if self.state.hud_expanded {
+            match action {
+                Action::Tick | Action::Resize | Action::ToggleHud => {}
+                _ => {
+                    self.state.hud_expanded = false;
+                    self.hud_collapse_countdown = 0;
+                }
+            }
+        }
+
         match action {
             Action::Quit => {
                 self.state.should_quit = true;
