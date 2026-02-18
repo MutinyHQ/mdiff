@@ -51,6 +51,7 @@ pub struct App {
     hud_collapse_countdown: u32,
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
+    diff_viewport_height: Cell<usize>,
     config: MdiffConfig,
     pty_runner: Option<PtyRunner>,
 }
@@ -95,6 +96,7 @@ impl App {
             hud_collapse_countdown: 0,
             repo_path,
             nav_area: Cell::new(Rect::default()),
+            diff_viewport_height: Cell::new(20),
             config,
             pty_runner: None,
         }
@@ -118,14 +120,6 @@ impl App {
         loop {
             self.poll_diff_results();
             self.poll_pty_output();
-
-            // Update viewport height for cursor auto-scroll calculations
-            let term_size = terminal.size()?;
-            let mut vh = term_size.height.saturating_sub(4) as usize; // context_bar + hud + borders
-            if self.state.prompt_preview_visible {
-                vh = vh * 60 / 100;
-            }
-            self.state.diff.viewport_height = vh;
 
             terminal.draw(|frame| {
                 let hud_h = hud_height(&self.state, frame.area().width);
@@ -159,9 +153,13 @@ impl App {
                                 ])
                                 .split(main[1]);
 
+                            self.diff_viewport_height
+                                .set(vsplit[0].height.saturating_sub(2) as usize);
                             diff_view.render(frame, vsplit[0], &self.state);
                             render_prompt_preview(frame, vsplit[1], &self.state);
                         } else {
+                            self.diff_viewport_height
+                                .set(main[1].height.saturating_sub(2) as usize);
                             diff_view.render(frame, main[1], &self.state);
                         }
                     }
@@ -198,6 +196,8 @@ impl App {
                     render_settings_modal(frame, &self.state);
                 }
             })?;
+
+            self.state.diff.viewport_height = self.diff_viewport_height.get();
 
             // Wait for at least one event, then drain all pending events
             // to avoid input lag from buffered scroll/key events.
@@ -853,8 +853,11 @@ impl App {
                 if self.state.selection.cursor < max {
                     self.state.selection.cursor += 1;
                 }
-                // Auto-scroll if cursor goes below viewport (approximation)
-                // We don't have the exact viewport height here, so use a reasonable default
+                // Auto-scroll if cursor goes below viewport
+                let vh = self.state.diff.viewport_height;
+                if self.state.selection.cursor >= self.state.diff.scroll_offset + vh {
+                    self.state.diff.scroll_offset = self.state.selection.cursor - vh + 1;
+                }
             }
 
             // Comment editor
