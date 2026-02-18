@@ -74,7 +74,9 @@ impl Component for Navigator {
                         .add_modifier(Modifier::BOLD)
                         .bg(theme.selection_bg)
                 } else if is_active {
-                    Style::default().fg(theme.text).bg(theme.selection_inactive_bg)
+                    Style::default()
+                        .fg(theme.text)
+                        .bg(theme.selection_inactive_bg)
                 } else {
                     Style::default().fg(theme.text)
                 };

@@ -47,9 +47,7 @@ pub fn style_for_highlight(idx: usize, syntax: &SyntaxColors) -> Style {
             .add_modifier(Modifier::BOLD),
         "string" | "string.special" => Style::default().fg(syntax.string),
         "number" | "constant" | "constant.builtin" => Style::default().fg(syntax.number),
-        "function" | "function.builtin" | "function.method" => {
-            Style::default().fg(syntax.function)
-        }
+        "function" | "function.builtin" | "function.method" => Style::default().fg(syntax.function),
         "type" | "type.builtin" | "constructor" => Style::default().fg(syntax.type_name),
         "variable.builtin" => Style::default().fg(syntax.property),
         "variable" | "variable.parameter" => Style::default().fg(syntax.variable),

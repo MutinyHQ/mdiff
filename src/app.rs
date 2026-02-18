@@ -13,12 +13,12 @@ use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
-use crate::components::target_dialog::render_target_dialog;
 use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::DiffView;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::settings_modal::render_settings_modal;
+use crate::components::target_dialog::render_target_dialog;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{self, MdiffConfig, PersistentSettings};
@@ -35,8 +35,8 @@ use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, DiffOptions, DiffViewMode};
-use crate::theme::{next_theme, prev_theme, Theme};
 use crate::template;
+use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
@@ -468,10 +468,15 @@ impl App {
         // Auto-collapse HUD on first real command after expanding
         if self.state.hud_expanded {
             match action {
-                Action::Tick | Action::Resize | Action::ToggleHud
-                | Action::OpenSettings | Action::CloseSettings
-                | Action::SettingsUp | Action::SettingsDown
-                | Action::SettingsLeft | Action::SettingsRight => {}
+                Action::Tick
+                | Action::Resize
+                | Action::ToggleHud
+                | Action::OpenSettings
+                | Action::CloseSettings
+                | Action::SettingsUp
+                | Action::SettingsDown
+                | Action::SettingsLeft
+                | Action::SettingsRight => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -1175,10 +1180,7 @@ impl App {
                                 .get(&gap_id)
                                 .copied()
                                 .unwrap_or(0);
-                            self.state
-                                .diff
-                                .gap_expansions
-                                .insert(gap_id, current + 20);
+                            self.state.diff.gap_expansions.insert(gap_id, current + 20);
                         }
                     }
                 }
@@ -1218,7 +1220,8 @@ impl App {
                     }
                     1 => {
                         // Toggle view mode
-                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
+                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode
+                        {
                             DiffViewMode::Split => DiffViewMode::Unified,
                             DiffViewMode::Unified => DiffViewMode::Split,
                         };
@@ -1251,7 +1254,8 @@ impl App {
                     }
                     1 => {
                         // Toggle view mode
-                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
+                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode
+                        {
                             DiffViewMode::Split => DiffViewMode::Unified,
                             DiffViewMode::Unified => DiffViewMode::Split,
                         };
@@ -1341,8 +1345,7 @@ impl App {
     fn validate_ref(&self, input: &str) -> Result<(ComparisonTarget, String), String> {
         let repo =
             git2::Repository::open(&self.repo_path).map_err(|e| format!("open repo: {e}"))?;
-        repo.revparse_single(input)
-            .map_err(|e| format!("{e}"))?;
+        repo.revparse_single(input).map_err(|e| format!("{e}"))?;
         // Use parse_target for consistent ComparisonTarget construction
         let target = parse_target(Some(input));
         let label = match &target {

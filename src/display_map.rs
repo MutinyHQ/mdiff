@@ -56,11 +56,7 @@ pub fn filter_hunk_lines<'a>(
         } else {
             0
         };
-        let show_before_next = if has_change_after {
-            display_context
-        } else {
-            0
-        };
+        let show_before_next = if has_change_after { display_context } else { 0 };
         let baseline_total = show_after_prev + show_before_next;
 
         if baseline_total >= total {

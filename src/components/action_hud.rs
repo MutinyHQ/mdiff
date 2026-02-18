@@ -84,7 +84,12 @@ fn binding_width(key: &str, desc: &str) -> usize {
 }
 
 /// Build wrapped lines of binding spans that fit within `max_width`.
-fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>, theme: &Theme) -> Vec<Line<'static>> {
+fn build_lines(
+    bindings: &[(&str, &str)],
+    max_width: u16,
+    ann_text: Option<&str>,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
     let max_w = max_width as usize;
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
@@ -104,7 +109,10 @@ fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>
             current_spans.push(Span::raw(" ".to_string()));
             current_width = 1;
         } else if i > 0 {
-            current_spans.push(Span::styled(" ".to_string(), Style::default().fg(theme.text_muted)));
+            current_spans.push(Span::styled(
+                " ".to_string(),
+                Style::default().fg(theme.text_muted),
+            ));
             current_width += 1;
         }
 

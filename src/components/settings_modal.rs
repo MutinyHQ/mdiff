@@ -35,7 +35,7 @@ pub fn render_settings_modal(frame: &mut Frame, state: &AppState) {
     let constraints: Vec<Constraint> = (0..SETTINGS_ROW_COUNT)
         .map(|_| Constraint::Length(1))
         .chain(std::iter::once(Constraint::Length(1))) // hints row
-        .chain(std::iter::once(Constraint::Min(0)))    // spacer
+        .chain(std::iter::once(Constraint::Min(0))) // spacer
         .collect();
 
     let rows = Layout::default()
@@ -54,7 +54,14 @@ pub fn render_settings_modal(frame: &mut Frame, state: &AppState) {
         DiffViewMode::Split => "< Split >",
         DiffViewMode::Unified => "< Unified >",
     };
-    render_setting_row(frame, rows[1], "View Mode", view_value, selected == 1, theme);
+    render_setting_row(
+        frame,
+        rows[1],
+        "View Mode",
+        view_value,
+        selected == 1,
+        theme,
+    );
 
     // Row 2: Ignore Whitespace
     let ws_value = if state.diff.options.ignore_whitespace {

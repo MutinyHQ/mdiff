@@ -75,18 +75,12 @@ impl Theme {
 }
 
 pub fn next_theme(current: &str) -> &'static str {
-    let idx = THEME_NAMES
-        .iter()
-        .position(|&n| n == current)
-        .unwrap_or(0);
+    let idx = THEME_NAMES.iter().position(|&n| n == current).unwrap_or(0);
     THEME_NAMES[(idx + 1) % THEME_NAMES.len()]
 }
 
 pub fn prev_theme(current: &str) -> &'static str {
-    let idx = THEME_NAMES
-        .iter()
-        .position(|&n| n == current)
-        .unwrap_or(0);
+    let idx = THEME_NAMES.iter().position(|&n| n == current).unwrap_or(0);
     if idx == 0 {
         THEME_NAMES[THEME_NAMES.len() - 1]
     } else {

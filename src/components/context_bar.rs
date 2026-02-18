@@ -28,7 +28,10 @@ impl Component for ContextBar {
         };
 
         let line = Line::from(vec![
-            Span::styled(" mdiff ", Style::default().fg(Color::Black).bg(theme.accent)),
+            Span::styled(
+                " mdiff ",
+                Style::default().fg(Color::Black).bg(theme.accent),
+            ),
             Span::raw("  "),
             Span::styled(
                 &state.target_label,

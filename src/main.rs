@@ -72,7 +72,14 @@ async fn main() -> Result<()> {
     let context_lines = config.context_lines;
 
     let diff_options = DiffOptions::new(ignore_ws, unified);
-    let mut app = App::new(diff_options, cli.worktree_browser, target, repo_path, config, context_lines);
+    let mut app = App::new(
+        diff_options,
+        cli.worktree_browser,
+        target,
+        repo_path,
+        config,
+        context_lines,
+    );
 
     let mut terminal = tui::init()?;
     let result = app.run(&mut terminal).await;

@@ -239,7 +239,13 @@ fn build_split_lines<'a>(
             ann_marker,
             theme,
         ));
-        right.push(make_hunk_header_line(gutter_width, &hunk.header, hl, false, theme));
+        right.push(make_hunk_header_line(
+            gutter_width,
+            &hunk.header,
+            hl,
+            false,
+            theme,
+        ));
         display_row += 1;
 
         let (items, next_offset) = filter_hunk_lines(
@@ -253,11 +259,14 @@ fn build_split_lines<'a>(
         let mut i = 0;
         while i < items.len() {
             match &items[i] {
-                FilteredItem::CollapsedIndicator {
-                    hidden_count, ..
-                } => {
+                FilteredItem::CollapsedIndicator { hidden_count, .. } => {
                     let hl = row_highlight(state, display_row);
-                    left.push(make_collapsed_indicator_line(gutter_width, *hidden_count, hl, theme));
+                    left.push(make_collapsed_indicator_line(
+                        gutter_width,
+                        *hidden_count,
+                        hl,
+                        theme,
+                    ));
                     right.push(make_collapsed_indicator_line(
                         gutter_width,
                         *hidden_count,
@@ -354,8 +363,7 @@ fn build_split_lines<'a>(
                             if j < dels.len() {
                                 let line = dels[j];
                                 let gutter = format_lineno(line.old_lineno, gutter_width);
-                                let spans =
-                                    line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                                let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
                                 left.push(make_highlighted_line(
                                     &gutter,
                                     &line.content,
@@ -372,8 +380,7 @@ fn build_split_lines<'a>(
                             if j < adds.len() {
                                 let line = adds[j];
                                 let gutter = format_lineno(line.new_lineno, gutter_width);
-                                let spans =
-                                    line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                                let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
                                 right.push(make_highlighted_line(
                                     &gutter,
                                     &line.content,
@@ -496,9 +503,7 @@ fn render_unified(
 
         for item in &items {
             match item {
-                FilteredItem::CollapsedIndicator {
-                    hidden_count, ..
-                } => {
+                FilteredItem::CollapsedIndicator { hidden_count, .. } => {
                     let hl = row_highlight(state, display_row);
                     lines.push(make_collapsed_indicator_line_unified(
                         gutter_width,
@@ -521,8 +526,7 @@ fn render_unified(
 
                     match line.origin {
                         DiffLineOrigin::Context => {
-                            let spans =
-                                line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                            let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
                             lines.push(make_unified_highlighted(
                                 &old_g,
                                 &new_g,
@@ -536,8 +540,7 @@ fn render_unified(
                             ));
                         }
                         DiffLineOrigin::Addition => {
-                            let spans =
-                                line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                            let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
                             let blank = " ".repeat(gutter_width);
                             lines.push(make_unified_highlighted(
                                 &blank,
@@ -552,8 +555,7 @@ fn render_unified(
                             ));
                         }
                         DiffLineOrigin::Deletion => {
-                            let spans =
-                                line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                            let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
                             let blank = " ".repeat(gutter_width);
                             lines.push(make_unified_highlighted(
                                 &old_g,
@@ -581,13 +583,7 @@ fn render_unified(
         .collect();
     // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
     let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
-    let wrapped = wrap_lines_for_display(
-        visible,
-        inner.width,
-        unified_gutter_width,
-        true,
-        theme,
-    );
+    let wrapped = wrap_lines_for_display(visible, inner.width, unified_gutter_width, true, theme);
     let paragraph = Paragraph::new(wrapped);
     frame.render_widget(paragraph, inner);
 }
@@ -779,18 +775,14 @@ fn apply_highlights<'a>(
 }
 
 fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight, theme: &Theme) -> Line<'a> {
-    let mut gutter_style = Style::default()
-        .fg(theme.text_muted)
-        .bg(theme.collapsed_bg);
+    let mut gutter_style = Style::default().fg(theme.text_muted).bg(theme.collapsed_bg);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
     if let Some(bg) = hl.gutter_bg {
         gutter_style = gutter_style.bg(bg);
     }
-    let mut content_style = Style::default()
-        .fg(theme.text_muted)
-        .bg(theme.collapsed_bg);
+    let mut content_style = Style::default().fg(theme.text_muted).bg(theme.collapsed_bg);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
@@ -879,7 +871,8 @@ fn make_collapsed_indicator_line<'a>(
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
-    let label = format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    let label =
+        format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
     Line::from(vec![
         Span::styled(gutter_text, gutter_style),
         Span::styled(label, content_style),
@@ -908,7 +901,8 @@ fn make_collapsed_indicator_line_unified<'a>(
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
-    let label = format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    let label =
+        format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
     Line::from(vec![
         Span::styled(gutter_text, gutter_style),
         Span::styled(label, content_style),
