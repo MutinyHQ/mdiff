@@ -300,6 +300,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::PageDown => Some(Action::ScrollPageDown),
             KeyCode::Char(' ') => Some(Action::ExpandContext),
             KeyCode::Char('v') => Some(Action::EnterVisualMode),
+            KeyCode::Char('i') => Some(Action::OpenCommentEditor),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),

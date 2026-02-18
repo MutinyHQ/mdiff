@@ -819,10 +819,14 @@ impl App {
 
             // Comment editor
             Action::OpenCommentEditor => {
-                if self.state.selection.active {
-                    self.state.comment_editor_open = true;
-                    self.state.comment_editor_text.clear();
+                if !self.state.selection.active {
+                    // Set a single-line selection at the cursor
+                    self.state.selection.active = true;
+                    self.state.selection.anchor = self.state.diff.cursor_row;
+                    self.state.selection.cursor = self.state.diff.cursor_row;
                 }
+                self.state.comment_editor_open = true;
+                self.state.comment_editor_text.clear();
             }
             Action::CancelComment => {
                 self.state.comment_editor_open = false;
