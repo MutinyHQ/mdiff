@@ -109,6 +109,9 @@ pub enum Action {
     // Refresh
     RefreshDiff,
 
+    // HUD
+    ToggleHud,
+
     // Resize
     Resize,
 }

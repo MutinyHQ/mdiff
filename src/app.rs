@@ -45,6 +45,7 @@ pub struct App {
     highlight_engine: HighlightEngine,
     git_cli: GitCli,
     status_clear_countdown: u32,
+    hud_collapse_countdown: u32,
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
     config: MdiffConfig,
@@ -83,6 +84,7 @@ impl App {
             highlight_engine,
             git_cli,
             status_clear_countdown: 0,
+            hud_collapse_countdown: 0,
             repo_path,
             nav_area: Cell::new(Rect::default()),
             config,
@@ -1113,11 +1115,23 @@ impl App {
                 self.set_status("Refreshed".to_string(), false);
             }
 
+            Action::ToggleHud => {
+                self.state.hud_expanded = !self.state.hud_expanded;
+                // 10 seconds at 50ms tick rate
+                self.hud_collapse_countdown = if self.state.hud_expanded { 200 } else { 0 };
+            }
+
             Action::Tick => {
                 if self.status_clear_countdown > 0 {
                     self.status_clear_countdown -= 1;
                     if self.status_clear_countdown == 0 {
                         self.state.status_message = None;
+                    }
+                }
+                if self.hud_collapse_countdown > 0 {
+                    self.hud_collapse_countdown -= 1;
+                    if self.hud_collapse_countdown == 0 {
+                        self.state.hud_expanded = false;
                     }
                 }
             }

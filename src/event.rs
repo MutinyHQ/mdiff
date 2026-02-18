@@ -233,6 +233,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
         KeyCode::Char('R') => return Some(Action::RefreshDiff),
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
+        KeyCode::Char('?') => return Some(Action::ToggleHud),
         _ => {}
     }
 

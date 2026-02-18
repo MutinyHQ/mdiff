@@ -47,6 +47,7 @@ pub struct AppState {
     pub target_dialog_input: String,
     pub status_message: Option<(String, bool)>, // (message, is_error)
     pub target_label: String,
+    pub hud_expanded: bool,
 
     // Visual selection
     pub selection: SelectionState,
@@ -88,6 +89,7 @@ impl AppState {
             target_dialog_input: String::new(),
             status_message: None,
             target_label: String::new(),
+            hud_expanded: false,
             selection: SelectionState::default(),
             annotations: AnnotationState::default(),
             comment_editor_open: false,

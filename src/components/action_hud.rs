@@ -46,14 +46,13 @@ impl Component for ActionHud {
                 ("]", "next"),
                 ("[", "prev"),
             ]
-        } else {
+        } else if state.hud_expanded {
             &[
                 ("q", "quit"),
                 ("j/k", "nav"),
                 ("/", "search"),
                 ("Tab", "view"),
                 ("w", "ws"),
-
                 ("s", "stage"),
                 ("u", "unstage"),
                 ("r", "restore"),
@@ -69,6 +68,20 @@ impl Component for ActionHud {
                 ("o", "outputs"),
                 ("^W", "worktree"),
                 ("^A", "agent"),
+                ("?", "hide"),
+            ]
+        } else {
+            &[
+                ("q", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("v", "visual"),
+                ("y", "yank"),
+                ("Space", "expand"),
+                ("o", "outputs"),
+                ("^W", "worktree"),
+                ("^A", "agent"),
+                ("?", "help"),
             ]
         };
 
