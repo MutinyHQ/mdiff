@@ -25,6 +25,7 @@ pub struct Theme {
     pub visual_select_bg: Color,
     pub cursor_line_fg: Color,
     pub collapsed_bg: Color,
+    pub search_match_bg: Color,
 
     // Status indicators
     pub success: Color,
@@ -119,6 +120,7 @@ pub struct ThemeOverrides {
     pub visual_select_bg: Option<String>,
     pub cursor_line_fg: Option<String>,
     pub collapsed_bg: Option<String>,
+    pub search_match_bg: Option<String>,
     pub success: Option<String>,
     pub error: Option<String>,
     pub warning: Option<String>,
@@ -168,6 +170,7 @@ pub fn apply_overrides(theme: &mut Theme, overrides: &ThemeOverrides) {
     apply!(visual_select_bg);
     apply!(cursor_line_fg);
     apply!(collapsed_bg);
+    apply!(search_match_bg);
     apply!(success);
     apply!(error);
     apply!(warning);
@@ -218,6 +221,7 @@ fn one_dark() -> Theme {
         visual_select_bg: Color::Rgb(70, 50, 100),
         cursor_line_fg: Color::Yellow,
         collapsed_bg: Color::Rgb(20, 20, 20),
+        search_match_bg: Color::Rgb(60, 50, 10),
         success: Color::Green,
         error: Color::Red,
         warning: Color::Yellow,
@@ -257,6 +261,7 @@ fn github_dark() -> Theme {
         visual_select_bg: Color::Rgb(50, 60, 90),
         cursor_line_fg: Color::Rgb(210, 153, 34),
         collapsed_bg: Color::Rgb(13, 17, 23),
+        search_match_bg: Color::Rgb(50, 40, 10),
         success: Color::Rgb(63, 185, 80),
         error: Color::Rgb(248, 81, 73),
         warning: Color::Rgb(210, 153, 34),
@@ -296,6 +301,7 @@ fn dracula() -> Theme {
         visual_select_bg: Color::Rgb(80, 60, 120),
         cursor_line_fg: Color::Rgb(241, 250, 140),
         collapsed_bg: Color::Rgb(30, 31, 40),
+        search_match_bg: Color::Rgb(60, 55, 15),
         success: Color::Rgb(80, 250, 123),
         error: Color::Rgb(255, 85, 85),
         warning: Color::Rgb(241, 250, 140),
@@ -335,6 +341,7 @@ fn catppuccin_mocha() -> Theme {
         visual_select_bg: Color::Rgb(60, 50, 90),
         cursor_line_fg: Color::Rgb(249, 226, 175),
         collapsed_bg: Color::Rgb(24, 24, 37),
+        search_match_bg: Color::Rgb(55, 48, 15),
         success: Color::Rgb(166, 227, 161),
         error: Color::Rgb(243, 139, 168),
         warning: Color::Rgb(249, 226, 175),
@@ -374,6 +381,7 @@ fn tokyo_night() -> Theme {
         visual_select_bg: Color::Rgb(55, 50, 95),
         cursor_line_fg: Color::Rgb(224, 175, 104),
         collapsed_bg: Color::Rgb(20, 22, 30),
+        search_match_bg: Color::Rgb(50, 42, 12),
         success: Color::Rgb(158, 206, 106),
         error: Color::Rgb(247, 118, 142),
         warning: Color::Rgb(224, 175, 104),
@@ -413,6 +421,7 @@ fn solarized_dark() -> Theme {
         visual_select_bg: Color::Rgb(30, 60, 80),
         cursor_line_fg: Color::Rgb(181, 137, 0),
         collapsed_bg: Color::Rgb(0, 26, 33),
+        search_match_bg: Color::Rgb(40, 35, 5),
         success: Color::Rgb(133, 153, 0),
         error: Color::Rgb(220, 50, 47),
         warning: Color::Rgb(181, 137, 0),

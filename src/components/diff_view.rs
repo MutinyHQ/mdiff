@@ -151,9 +151,9 @@ fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
         }
     } else if is_search_match(state, display_row) {
         RowHighlight {
-            gutter_bg: Some(theme.warning),
-            gutter_fg: Some(Color::Black),
-            content_bg: Some(theme.visual_select_bg),
+            gutter_bg: None,
+            gutter_fg: None,
+            content_bg: Some(theme.search_match_bg),
         }
     } else {
         RowHighlight::default()
