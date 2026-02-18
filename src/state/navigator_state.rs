@@ -14,6 +14,8 @@ pub struct NavigatorState {
     pub filtered_indices: Vec<usize>,
     pub search_active: bool,
     pub search_query: String,
+    /// Saved selection index before search started (for cancel/restore).
+    pre_search_selected: Option<usize>,
 }
 
 impl NavigatorState {
@@ -24,6 +26,7 @@ impl NavigatorState {
             filtered_indices: Vec::new(),
             search_active: false,
             search_query: String::new(),
+            pre_search_selected: None,
         }
     }
 
@@ -98,14 +101,41 @@ impl NavigatorState {
     }
 
     pub fn start_search(&mut self) {
+        self.pre_search_selected = Some(self.selected);
         self.search_active = true;
         self.search_query.clear();
     }
 
-    pub fn end_search(&mut self) {
+    /// Confirm search (Enter): resolve the currently selected entry, then
+    /// clear the query and refilter so all entries are visible again, keeping
+    /// focus on the entry that was selected in the filtered list.
+    pub fn confirm_search(&mut self) {
+        let target_delta_index = self.selected_delta_index();
         self.search_active = false;
         self.search_query.clear();
         self.refilter();
+        // Find the entry with the same delta_index in the now-unfiltered list
+        if let Some(delta_idx) = target_delta_index {
+            if let Some(pos) = self
+                .filtered_indices
+                .iter()
+                .position(|&i| self.entries[i].delta_index == delta_idx)
+            {
+                self.selected = pos;
+            }
+        }
+        self.pre_search_selected = None;
+    }
+
+    /// Cancel search (Esc): restore the selection from before search started.
+    pub fn cancel_search(&mut self) {
+        let restore = self.pre_search_selected.take();
+        self.search_active = false;
+        self.search_query.clear();
+        self.refilter();
+        if let Some(prev) = restore {
+            self.selected = prev.min(self.filtered_indices.len().saturating_sub(1));
+        }
     }
 
     pub fn search_push(&mut self, c: char) {

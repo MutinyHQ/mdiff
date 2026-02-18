@@ -218,6 +218,7 @@ impl App {
                 let ctx = KeyContext {
                     focus: self.state.focus,
                     search_active: self.state.navigator.search_active,
+                    diff_search_active: self.state.diff.search_active,
                     commit_dialog_open: self.state.commit_dialog_open,
                     target_dialog_open: self.state.target_dialog_open,
                     comment_editor_open: self.state.comment_editor_open,
@@ -579,8 +580,13 @@ impl App {
                 self.state.navigator.start_search();
                 self.state.focus = FocusPanel::Navigator;
             }
-            Action::EndSearch => {
-                self.state.navigator.end_search();
+            Action::ConfirmSearch => {
+                self.state.navigator.confirm_search();
+                self.sync_selection();
+                self.state.focus = FocusPanel::DiffView;
+            }
+            Action::CancelSearch => {
+                self.state.navigator.cancel_search();
                 self.sync_selection();
             }
             Action::SearchChar(c) => {
@@ -590,6 +596,63 @@ impl App {
             Action::SearchBackspace => {
                 self.state.navigator.search_pop();
                 self.sync_selection();
+            }
+
+            // Diff text search
+            Action::StartDiffSearch => {
+                self.state.diff.search_active = true;
+                self.state.diff.search_query.clear();
+                self.state.diff.search_matches.clear();
+                self.state.diff.search_match_index = None;
+            }
+            Action::EndDiffSearch => {
+                self.state.diff.search_active = false;
+                // Keep query and matches so n/N can navigate
+            }
+            Action::DiffSearchChar(c) => {
+                self.state.diff.search_query.push(c);
+                self.recompute_diff_search_matches();
+            }
+            Action::DiffSearchBackspace => {
+                self.state.diff.search_query.pop();
+                self.recompute_diff_search_matches();
+            }
+            Action::DiffSearchNext => {
+                if self.state.diff.search_matches.is_empty() {
+                    // No matches — do nothing (or fall through to NextUnreviewed equivalent)
+                } else {
+                    let next = match self.state.diff.search_match_index {
+                        Some(idx) => (idx + 1) % self.state.diff.search_matches.len(),
+                        None => 0,
+                    };
+                    self.state.diff.search_match_index = Some(next);
+                    let row = self.state.diff.search_matches[next];
+                    self.state.diff.cursor_row = row;
+                    let vh = self.state.diff.viewport_height;
+                    if row < self.state.diff.scroll_offset
+                        || row >= self.state.diff.scroll_offset + vh
+                    {
+                        self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
+                    }
+                }
+            }
+            Action::DiffSearchPrev => {
+                if !self.state.diff.search_matches.is_empty() {
+                    let prev = match self.state.diff.search_match_index {
+                        Some(0) => self.state.diff.search_matches.len() - 1,
+                        Some(idx) => idx - 1,
+                        None => self.state.diff.search_matches.len() - 1,
+                    };
+                    self.state.diff.search_match_index = Some(prev);
+                    let row = self.state.diff.search_matches[prev];
+                    self.state.diff.cursor_row = row;
+                    let vh = self.state.diff.viewport_height;
+                    if row < self.state.diff.scroll_offset
+                        || row >= self.state.diff.scroll_offset + vh
+                    {
+                        self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
+                    }
+                }
             }
             Action::ToggleWorktreeBrowser => {
                 self.state.active_view = match self.state.active_view {
@@ -1514,6 +1577,74 @@ impl App {
                 self.state.selection.active = false;
                 // Reset context expansions for the new file
                 self.state.diff.gap_expansions.clear();
+                // Clear diff search state for the new file
+                self.state.diff.search_query.clear();
+                self.state.diff.search_matches.clear();
+                self.state.diff.search_match_index = None;
+                self.state.diff.search_active = false;
+            }
+        }
+    }
+
+    /// Recompute diff search matches from the current display map.
+    fn recompute_diff_search_matches(&mut self) {
+        self.state.diff.search_matches.clear();
+        self.state.diff.search_match_index = None;
+
+        let query = self.state.diff.search_query.to_lowercase();
+        if query.is_empty() {
+            return;
+        }
+
+        // Collect matches using current_display_map + delta, avoiding borrow conflicts
+        // by collecting all needed data into a local vec first.
+        let matches: Vec<usize> = {
+            let Some(delta) = self.state.diff.selected_delta() else {
+                return;
+            };
+            let display_map = build_display_map(
+                delta,
+                self.state.diff.options.view_mode,
+                self.state.diff.display_context,
+                &self.state.diff.gap_expansions,
+            );
+            display_map
+                .iter()
+                .enumerate()
+                .filter_map(|(row_idx, info)| {
+                    if info.is_header || info.is_collapsed_indicator {
+                        return None;
+                    }
+                    let line_idx = info.line_index?;
+                    let hunk = delta.hunks.get(info.hunk_index)?;
+                    let line = hunk.lines.get(line_idx)?;
+                    if line.content.to_lowercase().contains(&query) {
+                        Some(row_idx)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
+
+        self.state.diff.search_matches = matches;
+
+        // Jump to the first match at or after the cursor
+        if !self.state.diff.search_matches.is_empty() {
+            let cursor = self.state.diff.cursor_row;
+            let idx = self
+                .state
+                .diff
+                .search_matches
+                .iter()
+                .position(|&r| r >= cursor)
+                .unwrap_or(0);
+            self.state.diff.search_match_index = Some(idx);
+            let row = self.state.diff.search_matches[idx];
+            self.state.diff.cursor_row = row;
+            let vh = self.state.diff.viewport_height;
+            if row < self.state.diff.scroll_offset || row >= self.state.diff.scroll_offset + vh {
+                self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
             }
         }
     }

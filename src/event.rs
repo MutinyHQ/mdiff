@@ -78,6 +78,7 @@ impl EventReader {
 pub struct KeyContext {
     pub focus: FocusPanel,
     pub search_active: bool,
+    pub diff_search_active: bool,
     pub commit_dialog_open: bool,
     pub target_dialog_open: bool,
     pub comment_editor_open: bool,
@@ -195,11 +196,21 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
-    // Priority 3: Search mode
+    // Priority 3: Diff text search mode
+    if ctx.diff_search_active {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Enter => Some(Action::EndDiffSearch),
+            KeyCode::Backspace => Some(Action::DiffSearchBackspace),
+            KeyCode::Char(c) => Some(Action::DiffSearchChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 3.5: File search mode (navigator)
     if ctx.search_active {
         return match key.code {
-            KeyCode::Esc => Some(Action::EndSearch),
-            KeyCode::Enter => Some(Action::EndSearch),
+            KeyCode::Esc => Some(Action::CancelSearch),
+            KeyCode::Enter => Some(Action::ConfirmSearch),
             KeyCode::Backspace => Some(Action::SearchBackspace),
             KeyCode::Char(c) => Some(Action::SearchChar(c)),
             KeyCode::Up => Some(Action::NavigatorUp),
@@ -263,14 +274,24 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Tab => return Some(Action::ToggleViewMode),
         KeyCode::Char('w') if !ctx.visual_mode_active => return Some(Action::ToggleWhitespace),
 
-        KeyCode::Char('/') => return Some(Action::StartSearch),
+        KeyCode::Char('/') => {
+            return match ctx.focus {
+                FocusPanel::Navigator => Some(Action::StartSearch),
+                FocusPanel::DiffView => Some(Action::StartDiffSearch),
+            }
+        }
         KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
         KeyCode::Char('u') if !ctx.visual_mode_active => return Some(Action::UnstageFile),
         KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
         KeyCode::Char('R') => return Some(Action::RefreshDiff),
-        KeyCode::Char('n') if !ctx.visual_mode_active => return Some(Action::NextUnreviewed),
+        KeyCode::Char('n') if !ctx.visual_mode_active => {
+            return match ctx.focus {
+                FocusPanel::DiffView => Some(Action::DiffSearchNext),
+                FocusPanel::Navigator => Some(Action::NextUnreviewed),
+            }
+        }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         KeyCode::Char('?') => return Some(Action::ToggleHud),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
@@ -315,6 +336,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
+            KeyCode::Char('N') => Some(Action::DiffSearchPrev),
             _ => None,
         },
     }

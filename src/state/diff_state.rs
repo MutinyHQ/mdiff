@@ -44,6 +44,14 @@ pub struct DiffState {
     pub display_context: usize,
     /// Per-gap expansion state: gap_id -> extra lines revealed.
     pub gap_expansions: HashMap<usize, usize>,
+
+    // Diff text search
+    pub search_active: bool,
+    pub search_query: String,
+    /// Display row indices that match the search query.
+    pub search_matches: Vec<usize>,
+    /// Current position within `search_matches`.
+    pub search_match_index: Option<usize>,
 }
 
 impl DiffState {
@@ -60,6 +68,10 @@ impl DiffState {
             new_highlights: Vec::new(),
             display_context: 3,
             gap_expansions: HashMap::new(),
+            search_active: false,
+            search_query: String::new(),
+            search_matches: Vec::new(),
+            search_match_index: None,
         }
     }
 

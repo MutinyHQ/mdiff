@@ -30,11 +30,20 @@ pub enum Action {
     FocusNavigator,
     FocusDiffView,
 
-    // Search
+    // File search (navigator)
     StartSearch,
-    EndSearch,
+    ConfirmSearch,
+    CancelSearch,
     SearchChar(char),
     SearchBackspace,
+
+    // Diff text search
+    StartDiffSearch,
+    EndDiffSearch,
+    DiffSearchChar(char),
+    DiffSearchBackspace,
+    DiffSearchNext,
+    DiffSearchPrev,
 
     // Git mutations
     StageFile,

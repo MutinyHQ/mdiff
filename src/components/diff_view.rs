@@ -66,15 +66,34 @@ impl Component for DiffView {
     }
 }
 
-fn format_title(delta: &FileDelta, view_label: &str) -> String {
+fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String {
     let path_display = delta.path.to_string_lossy();
-    if let Some(ref old_path) = delta.old_path {
+    let base = if let Some(ref old_path) = delta.old_path {
         if *old_path != delta.path {
             let old_display = old_path.to_string_lossy();
-            return format!(" {old_display} \u{2192} {path_display} [{view_label}] ");
+            format!(" {old_display} \u{2192} {path_display} [{view_label}]")
+        } else {
+            format!(" {path_display} [{view_label}]")
         }
+    } else {
+        format!(" {path_display} [{view_label}]")
+    };
+
+    if state.diff.search_active || !state.diff.search_query.is_empty() {
+        let match_info = if state.diff.search_matches.is_empty() {
+            if state.diff.search_query.is_empty() {
+                String::new()
+            } else {
+                " (no matches)".to_string()
+            }
+        } else {
+            let idx = state.diff.search_match_index.map(|i| i + 1).unwrap_or(0);
+            format!(" ({}/{})", idx, state.diff.search_matches.len())
+        };
+        format!("{base} /{}{match_info} ", state.diff.search_query)
+    } else {
+        format!("{base} ")
     }
-    format!(" {path_display} [{view_label}] ")
 }
 
 /// Check if a display row index is within the current visual selection range.
@@ -104,6 +123,16 @@ struct RowHighlight {
     content_bg: Option<Color>,
 }
 
+/// Check if a display row is a search match.
+fn is_search_match(state: &AppState, display_row: usize) -> bool {
+    !state.diff.search_query.is_empty()
+        && state
+            .diff
+            .search_matches
+            .binary_search(&display_row)
+            .is_ok()
+}
+
 /// Compute row highlight for cursor or visual selection.
 fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
     let theme = &state.theme;
@@ -119,6 +148,12 @@ fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
             gutter_bg: Some(theme.accent),
             gutter_fg: Some(Color::Black),
             content_bg: None,
+        }
+    } else if is_search_match(state, display_row) {
+        RowHighlight {
+            gutter_bg: Some(theme.warning),
+            gutter_fg: Some(Color::Black),
+            content_bg: Some(theme.visual_select_bg),
         }
     } else {
         RowHighlight::default()
@@ -151,7 +186,7 @@ fn render_split(
     view_label: &str,
     theme: &Theme,
 ) {
-    let title = format_title(delta, view_label);
+    let title = format_title(delta, view_label, state);
 
     if delta.binary {
         let block = Block::default()
@@ -449,7 +484,7 @@ fn render_unified(
     view_label: &str,
     theme: &Theme,
 ) {
-    let title = format_title(delta, view_label);
+    let title = format_title(delta, view_label, state);
 
     if delta.binary {
         let block = Block::default()
