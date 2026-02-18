@@ -55,9 +55,7 @@ pub fn render_restore_confirm(frame: &mut Frame, state: &AppState) {
         .unwrap_or_default();
     let path_line = Line::from(vec![Span::styled(
         file_name,
-        Style::default()
-            .fg(theme.text)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
     )]);
     frame.render_widget(Paragraph::new(path_line), rows[1]);
 

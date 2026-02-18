@@ -1516,7 +1516,11 @@ impl App {
                     lines.push(format!("{}{}", prefix, line.content.trim_end()));
                 }
             }
-            diff_sections.push(format!("### {}\n```diff\n{}\n```", filename, lines.join("\n")));
+            diff_sections.push(format!(
+                "### {}\n```diff\n{}\n```",
+                filename,
+                lines.join("\n")
+            ));
         }
 
         let prompt = format!(
