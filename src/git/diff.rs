@@ -35,20 +35,44 @@ impl DiffEngine {
                 let obj = repo
                     .revparse_single(name)
                     .with_context(|| format!("Could not resolve: {name}"))?;
-                let commit = obj
+                let target_commit = obj
                     .peel_to_commit()
                     .with_context(|| format!("{name} does not point to a commit"))?;
-                let tree = commit.tree()?;
-                repo.diff_tree_to_workdir_with_index(Some(&tree), Some(&mut diff_opts))?
+                let base_tree = Self::merge_base_tree(repo, target_commit.id())?;
+                repo.diff_tree_to_workdir_with_index(Some(&base_tree), Some(&mut diff_opts))?
             }
             ComparisonTarget::Commit(oid) => {
-                let commit = repo.find_commit(*oid)?;
-                let tree = commit.tree()?;
-                repo.diff_tree_to_workdir_with_index(Some(&tree), Some(&mut diff_opts))?
+                let base_tree = Self::merge_base_tree(repo, *oid)?;
+                repo.diff_tree_to_workdir_with_index(Some(&base_tree), Some(&mut diff_opts))?
             }
         };
 
         Self::parse_diff(&diff)
+    }
+
+    /// Find the merge-base between HEAD and the given commit, returning the
+    /// merge-base's tree. This implements 3-dot diff semantics: showing only
+    /// the changes on the current branch since it diverged from the target.
+    /// Falls back to the target commit's tree if HEAD doesn't exist or no
+    /// merge-base is found.
+    fn merge_base_tree(repo: &Repository, target_oid: git2::Oid) -> Result<git2::Tree<'_>> {
+        let head_oid = match repo.head() {
+            Ok(head) => head.peel_to_commit()?.id(),
+            Err(_) => {
+                // No HEAD (empty repo) — fall back to target tree directly
+                return Ok(repo.find_commit(target_oid)?.tree()?);
+            }
+        };
+        match repo.merge_base(head_oid, target_oid) {
+            Ok(base_oid) => {
+                let base_commit = repo.find_commit(base_oid)?;
+                Ok(base_commit.tree()?)
+            }
+            Err(_) => {
+                // No common ancestor — fall back to target tree
+                Ok(repo.find_commit(target_oid)?.tree()?)
+            }
+        }
     }
 
     fn parse_diff(diff: &Diff<'_>) -> Result<Vec<FileDelta>> {
