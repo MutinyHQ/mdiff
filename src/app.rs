@@ -1138,6 +1138,13 @@ impl App {
                         // Height: full terminal minus context_bar(1) - hud(1) - block borders(2)
                         let pty_rows = term_rows.saturating_sub(4).max(10);
 
+                        let worktree_name = self
+                            .repo_path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let worktree_path = self.repo_path.clone();
+
                         let run = AgentRun {
                             id: run_id,
                             agent_name: agent.name.clone(),
@@ -1147,6 +1154,8 @@ impl App {
                             terminal: vt100::Parser::new(pty_rows, pty_cols, 10000),
                             status: AgentRunStatus::Running,
                             started_at: chrono::Utc::now().format("%H:%M").to_string(),
+                            worktree_name,
+                            worktree_path,
                         };
 
                         self.state.agent_outputs.add_run(run);
@@ -1212,6 +1221,25 @@ impl App {
                     runner.kill();
                     self.state.pty_focus = false;
                     self.set_status("Agent process killed".to_string(), false);
+                }
+            }
+            Action::AgentOutputsSwitchWorktree => {
+                if let Some(run) = self.state.agent_outputs.selected() {
+                    let new_path = run.worktree_path.clone();
+                    let name = run.worktree_name.clone();
+                    self.repo_path = new_path.clone();
+                    self.worker = DiffWorker::new(new_path.clone());
+                    self.git_cli = GitCli::new(&new_path);
+                    self.generation = 0;
+                    self.state.diff.deltas.clear();
+                    self.state.diff.selected_file = None;
+                    self.state.diff.scroll_offset = 0;
+                    self.state.navigator.entries.clear();
+                    self.state.navigator.filtered_indices.clear();
+                    self.state.review.reset();
+                    self.state.active_view = ActiveView::DiffExplorer;
+                    self.request_diff();
+                    self.set_status(format!("Switched to: {name}"), false);
                 }
             }
 

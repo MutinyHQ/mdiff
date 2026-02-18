@@ -93,7 +93,7 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState, t
             ),
         ]));
 
-        // Second line: time + status detail
+        // Second line: time + status detail + worktree
         if lines.len() < height {
             lines.push(Line::from(vec![
                 Span::styled("    ", row_style),
@@ -102,6 +102,10 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState, t
                     row_style.fg(theme.text_muted),
                 ),
                 Span::styled(status_detail, row_style.fg(status_color)),
+                Span::styled(
+                    format!(" [{}]", run.worktree_name),
+                    row_style.fg(theme.accent),
+                ),
             ]));
         }
     }
@@ -209,6 +213,18 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
                 )));
             }
         }
+    }
+
+    // Worktree hint (only when not in PTY focus)
+    if !state.pty_focus {
+        display_lines.push(Line::from(""));
+        display_lines.push(Line::from(vec![
+            Span::styled("[w] ", Style::default().fg(theme.accent)),
+            Span::styled(
+                format!("switch to {}", run.worktree_name),
+                Style::default().fg(theme.text_muted),
+            ),
+        ]));
     }
 
     let visible: Vec<Line> = display_lines.into_iter().take(inner_height).collect();

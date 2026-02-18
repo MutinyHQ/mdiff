@@ -263,6 +263,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentOutputsUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
             KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
+            KeyCode::Char('w') => Some(Action::AgentOutputsSwitchWorktree),
             KeyCode::Enter => Some(Action::EnterPtyFocus),
             KeyCode::Esc => Some(Action::SwitchToAgentOutputs), // toggle back
             _ => None,

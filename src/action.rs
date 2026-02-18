@@ -120,6 +120,7 @@ pub enum Action {
     AgentOutputsDown,
     AgentOutputsCopyPrompt,
     KillAgentProcess,
+    AgentOutputsSwitchWorktree,
 
     // PTY focus mode
     EnterPtyFocus,

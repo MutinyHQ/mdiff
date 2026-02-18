@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::path::PathBuf;
 
 use crate::config::AgentProviderConfig;
 
@@ -22,6 +23,8 @@ pub struct AgentRun {
     pub terminal: vt100::Parser,
     pub status: AgentRunStatus,
     pub started_at: String,
+    pub worktree_name: String,
+    pub worktree_path: PathBuf,
 }
 
 impl fmt::Debug for AgentRun {
@@ -33,6 +36,8 @@ impl fmt::Debug for AgentRun {
             .field("command", &self.command)
             .field("status", &self.status)
             .field("started_at", &self.started_at)
+            .field("worktree_name", &self.worktree_name)
+            .field("worktree_path", &self.worktree_path)
             .finish_non_exhaustive()
     }
 }
