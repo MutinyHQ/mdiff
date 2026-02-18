@@ -143,12 +143,13 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
         return;
     }
 
-    // Render the vt100 terminal screen
+    // Render the vt100 terminal screen.
+    // The app calls parser.set_scrollback(detail_scroll) before rendering,
+    // so screen.cell() already reflects the scrolled position.
     let screen = run.terminal.screen();
-    let (_term_rows, term_cols) = screen.size();
+    let (term_rows, term_cols) = screen.size();
     let (cursor_row, _) = screen.cursor_position();
 
-    // detail_scroll is offset from bottom (0 = live/follow cursor)
     let scroll_offset = outputs.detail_scroll;
 
     let mut display_lines: Vec<Line> = Vec::new();
@@ -165,17 +166,19 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // Determine how many terminal rows to show
     let lines_for_terminal = inner_height.saturating_sub(display_lines.len());
 
-    // Content on visible screen: rows 0..=cursor_row have content.
-    // The vt100 parser manages scrollback internally — older lines scroll off
-    // the visible screen. We render from the visible screen rows only.
-    let content_rows = (cursor_row as usize) + 1;
+    // When scrolled into the scrollback (scroll_offset > 0), the entire
+    // visible screen is filled with content — render from row 0.
+    // When at the bottom (scroll_offset == 0), only rows 0..=cursor_row
+    // have content; rows below the cursor are blank.
+    let content_rows = if scroll_offset > 0 {
+        term_rows as usize
+    } else {
+        (cursor_row as usize) + 1
+    };
 
-    // Determine the window of visible screen rows to render.
-    // scroll_offset=0 means show the latest (follow cursor), higher = scroll up.
-    let end_idx = content_rows.saturating_sub(scroll_offset);
-    let start_idx = end_idx.saturating_sub(lines_for_terminal);
-
-    for screen_row in start_idx..end_idx {
+    // Render from the top of the (scrollback-shifted) screen.
+    let rows_to_show = lines_for_terminal.min(content_rows);
+    for screen_row in 0..rows_to_show {
         display_lines.push(render_screen_row(
             screen,
             screen_row as u16,

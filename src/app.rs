@@ -127,6 +127,20 @@ impl App {
             }
             self.state.diff.viewport_height = vh;
 
+            // Position the vt100 scrollback before rendering so screen.cell()
+            // returns content from the scrollback buffer when scrolled up.
+            {
+                let scroll = self.state.agent_outputs.detail_scroll;
+                if let Some(run) = self
+                    .state
+                    .agent_outputs
+                    .runs
+                    .get_mut(self.state.agent_outputs.selected_run)
+                {
+                    run.terminal.set_scrollback(scroll);
+                }
+            }
+
             terminal.draw(|frame| {
                 let hud_h = hud_height(&self.state, frame.area().width);
                 let outer = Layout::default()
@@ -198,6 +212,23 @@ impl App {
                     render_settings_modal(frame, &self.state);
                 }
             })?;
+
+            // Reset scrollback to live view after rendering, and clamp
+            // detail_scroll to the actual scrollback depth if it overshot.
+            if let Some(run) = self
+                .state
+                .agent_outputs
+                .runs
+                .get_mut(self.state.agent_outputs.selected_run)
+            {
+                let actual = run.terminal.screen().scrollback();
+                if self.state.agent_outputs.detail_scroll > 0
+                    && actual < self.state.agent_outputs.detail_scroll
+                {
+                    self.state.agent_outputs.detail_scroll = actual;
+                }
+                run.terminal.set_scrollback(0);
+            }
 
             // Wait for at least one event, then drain all pending events
             // to avoid input lag from buffered scroll/key events.
@@ -1135,14 +1166,10 @@ impl App {
                 self.state.agent_outputs.select_down();
             }
             Action::AgentOutputsScrollUp => {
-                // detail_scroll is lines from bottom; increase to scroll up
-                if let Some(run) = self.state.agent_outputs.selected() {
-                    let (cursor_row, _) = run.terminal.screen().cursor_position();
-                    let content_rows = (cursor_row as usize) + 1;
-                    let max_scroll = content_rows.saturating_sub(1);
-                    if self.state.agent_outputs.detail_scroll < max_scroll {
-                        self.state.agent_outputs.detail_scroll += 1;
-                    }
+                // detail_scroll is lines from bottom; increase to scroll up.
+                // The actual limit is clamped after rendering via set_scrollback.
+                if self.state.agent_outputs.selected().is_some() {
+                    self.state.agent_outputs.detail_scroll += 1;
                 }
             }
             Action::AgentOutputsScrollDown => {
