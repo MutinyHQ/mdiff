@@ -1,16 +1,16 @@
 # mdiff
 
-A terminal UI for reviewing git diffs — with syntax highlighting, split/unified views, inline annotations, and agent-assisted code review.
+A terminal UI for reviewing git diffs and providing feedback to coding agents. Built for developers running multiple agents across worktrees who need a fast way to review changes, annotate code, and send structured feedback back.
 
 ## Features
 
 - **Split and unified diff views** — side-by-side or interleaved, toggle with `Tab`
 - **Syntax highlighting** — tree-sitter powered, supports Rust, TypeScript, JavaScript, Python, Go, Ruby, JSON, TOML, YAML, CSS, HTML, and Bash
-- **Git operations** — stage, unstage, restore files, and commit without leaving the TUI
 - **Inline annotations** — select diff lines in visual mode and attach review comments that persist across sessions
-- **Agent handoff** — launch a configured coding agent with a templated prompt containing the selected code, diff context, and your annotations; or copy the prompt to your clipboard for use in any existing agent session
+- **Prompt templating** — annotations and diff context are rendered into a structured prompt you can copy to clipboard (`y`) and paste into any agent session, or send directly to a configured agent (`Ctrl+A`)
+- **Worktree browser** — browse and switch between git worktrees with automatic detection of active coding agents (Claude Code, Codex, OpenCode, Gemini)
+- **Git operations** — stage, unstage, restore files, and commit without leaving the TUI
 - **Runtime target switching** — change the comparison ref (branch, tag, commit) at runtime with `t`
-- **Worktree browser** — browse and switch between git worktrees, with automatic detection of active coding agents (Claude Code, Codex, OpenCode, Gemini)
 - **Fuzzy file search** — quickly filter the file list with `/`
 - **Whitespace toggle** — hide whitespace-only changes with `w`
 
@@ -35,32 +35,34 @@ Pre-built binaries for macOS (Intel & Apple Silicon) and Linux (x86_64 & ARM) ar
 ## Usage
 
 ```bash
-# Diff HEAD vs working directory
+# Review what an agent changed on this worktree
 mdiff
 
-# Diff against a branch
+# Compare against main to see the full branch diff
 mdiff main
 
 # Diff against a specific commit
 mdiff abc1234
 
-# Open the worktree browser
+# Browse worktrees to check on multiple agents
 mdiff --wt
 
 # Start in unified view, ignoring whitespace
 mdiff --unified -w
 ```
 
-## Workflow: Annotate and Hand Off
+## Workflow
 
-1. Run `mdiff` to review your diff
-2. Navigate to a file, press `v` to enter visual mode, and select the lines you want to comment on
-3. Press `i` to open the comment editor and describe the change you want — a bug fix, a refactor, a question
-4. Repeat for as many files and regions as needed; annotations are saved per-target and persist across sessions
-5. When ready, either:
-   - Press `Ctrl+A` to pick a configured agent, which launches with a templated prompt containing the selected code, surrounding context, and all your annotations for that file
-   - Press `y` to copy the rendered prompt to your clipboard, then paste it into any existing agent session (Claude Code, Cursor, Copilot, etc.)
-6. Press `p` to preview the rendered prompt before sending
+mdiff fits into a workflow where you have multiple coding agents working in parallel across git worktrees. You review their output, leave feedback as annotations, and send that feedback back — either by copying a templated prompt into an existing agent session or by launching an agent directly.
+
+1. Open `mdiff` (or `mdiff --wt` to start in the worktree browser)
+2. Browse worktrees to see which agents are active and switch to one to review
+3. Navigate the diff, press `v` to select lines, and press `i` to annotate with your feedback
+4. Repeat across files — annotations persist per comparison target across sessions
+5. When ready to send feedback:
+   - Press `y` to copy the rendered prompt (diff context + annotations) to your clipboard, then paste it into your existing agent session
+   - Or press `Ctrl+A` to launch a configured agent directly with the prompt
+6. Press `p` to preview the prompt before sending
 
 ## Keybindings
 
