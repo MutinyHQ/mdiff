@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/MutinyHQ/mdiff/compare/v0.1.2...v0.1.3) - 2026-02-18
+
+### Added
+
+- add confirm modal for destructive restore command
+- wrap and scroll text input in all modals, add Shift+Enter for newlines
+
+### Fixed
+
+- always use all files and annotations for agent prompt, clear after dispatch
+
+### Other
+
+- cargo fmt
+
 ## [0.1.2](https://github.com/MutinyHQ/mdiff/compare/v0.1.1...v0.1.2) - 2026-02-18
 
 ### Other
