@@ -365,6 +365,8 @@ impl App {
             }
             self.state.pty_focus = false;
             self.pty_runner = None;
+            // Agent may have changed files — refresh diff
+            self.request_diff();
         }
     }
 
@@ -1070,11 +1072,13 @@ impl App {
                         let command = build_agent_command(&agent.command, &model, &prompt);
                         let run_id = self.state.agent_outputs.next_id;
 
-                        // Use terminal size for PTY, with reasonable defaults
+                        // Size PTY to match the actual rendered inner area:
+                        // Layout: 30% left sidebar | 70% detail pane, with borders
                         let (term_cols, term_rows) =
                             crossterm::terminal::size().unwrap_or((120, 40));
-                        // Use ~70% of width for the detail pane
-                        let pty_cols = (term_cols * 70 / 100).max(40);
+                        // Detail pane is 70% width minus 2 for block borders
+                        let pty_cols = (term_cols * 70 / 100).saturating_sub(2).max(40);
+                        // Height: full terminal minus context_bar(1) - hud(1) - block borders(2)
                         let pty_rows = term_rows.saturating_sub(4).max(10);
 
                         let run = AgentRun {
@@ -1093,6 +1097,7 @@ impl App {
                             Some(PtyRunner::spawn(run_id, &command, pty_rows, pty_cols));
                         self.state.agent_selector.open = false;
                         self.state.active_view = ActiveView::AgentOutputs;
+                        self.state.pty_focus = true;
 
                         // Clear annotations — they've been captured in the prompt
                         self.state.annotations = Default::default();
@@ -1363,7 +1368,7 @@ impl App {
                 // Resize PTY and active terminal parser to match new terminal size
                 if let Some(runner) = self.pty_runner.as_ref() {
                     let (term_cols, term_rows) = crossterm::terminal::size().unwrap_or((120, 40));
-                    let pty_cols = (term_cols * 70 / 100).max(40);
+                    let pty_cols = (term_cols * 70 / 100).saturating_sub(2).max(40);
                     let pty_rows = term_rows.saturating_sub(4).max(10);
                     runner.resize(pty_rows, pty_cols);
                     // Resize the terminal parser for the running agent
@@ -1604,14 +1609,22 @@ impl App {
                 merged.push(range);
             }
 
-            // Collect diff lines that fall within merged ranges
+            // Collect diff lines that fall within merged ranges.
+            // Track a running new-file position so deletion lines (which only
+            // have old_lineno) are placed correctly relative to annotations.
             let mut lines = Vec::new();
             for hunk in &delta.hunks {
                 let mut hunk_lines = Vec::new();
                 let mut any_in_range = false;
+                let mut new_pos: u32 = 0;
                 for line in &hunk.lines {
-                    let lineno = line.new_lineno.or(line.old_lineno).unwrap_or(0);
-                    let in_range = merged.iter().any(|(s, e)| lineno >= *s && lineno <= *e);
+                    if let Some(n) = line.new_lineno {
+                        new_pos = n;
+                    }
+                    let effective_lineno = line.new_lineno.unwrap_or(new_pos);
+                    let in_range = merged
+                        .iter()
+                        .any(|(s, e)| effective_lineno >= *s && effective_lineno <= *e);
                     if in_range {
                         any_in_range = true;
                         let prefix = match line.origin {
@@ -1707,7 +1720,6 @@ fn reconstruct_content(delta: &FileDelta, side: ContentSide) -> (String, usize) 
 
 /// Build the shell command for an agent by substituting `{model}` and `{rendered_prompt}`.
 fn build_agent_command(command_template: &str, model: &str, prompt: &str) -> String {
-    // Escape single quotes in the prompt for safe shell embedding
     let escaped_prompt = prompt.replace('\'', "'\\''");
     command_template
         .replace("{model}", model)

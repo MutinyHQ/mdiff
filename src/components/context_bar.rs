@@ -17,9 +17,9 @@ impl Component for ContextBar {
         let theme = &state.theme;
 
         let ws_label = if state.diff.options.ignore_whitespace {
-            "[ws:off]"
+            "[ignore ws]"
         } else {
-            "[ws:on]"
+            "[show ws]"
         };
 
         let view_label = match state.diff.options.view_mode {

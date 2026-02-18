@@ -92,7 +92,16 @@ pub struct KeyContext {
 
 /// Map a key event to an action based on current app context.
 pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
-    // Priority 0: Ctrl-C / Ctrl-D always quit, even inside modals
+    // Priority 0: PTY focus mode - forward ALL keys except Esc to the PTY.
+    // This must come first so Ctrl+C/D go to the agent, not quit mdiff.
+    if ctx.pty_focus {
+        return match key.code {
+            KeyCode::Esc => Some(Action::ExitPtyFocus),
+            _ => Some(Action::PtyInput(key)),
+        };
+    }
+
+    // Priority 0.5: Ctrl-C / Ctrl-D quit (not in PTY focus)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('c') | KeyCode::Char('d') => return Some(Action::Quit),
@@ -100,20 +109,12 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
     }
 
-    // Priority 0.5: Restore confirm dialog
+    // Priority 0.75: Restore confirm dialog
     if ctx.restore_confirm_open {
         return match key.code {
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::ConfirmRestore),
             KeyCode::Esc | KeyCode::Char('n') => Some(Action::CancelRestore),
             _ => None,
-        };
-    }
-
-    // Priority 0.75: PTY focus mode - forward all keys except Esc to the PTY
-    if ctx.pty_focus {
-        return match key.code {
-            KeyCode::Esc => Some(Action::ExitPtyFocus),
-            _ => Some(Action::PtyInput(key)),
         };
     }
 

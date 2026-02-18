@@ -65,7 +65,7 @@ fn known_agents() -> Vec<AgentProviderConfig> {
     vec![
         AgentProviderConfig {
             name: "claude".to_string(),
-            command: "claude -p --permission-mode acceptEdits --model {model} '{rendered_prompt}'"
+            command: "claude --permission-mode acceptEdits --model {model} '{rendered_prompt}'"
                 .to_string(),
             models: vec![
                 "claude-sonnet-4-6".to_string(),
@@ -77,14 +77,16 @@ fn known_agents() -> Vec<AgentProviderConfig> {
         },
         AgentProviderConfig {
             name: "codex".to_string(),
-            command: "codex exec --sandbox workspace-write --ask-for-approval untrusted '{rendered_prompt}'".to_string(),
+            command:
+                "codex --sandbox workspace-write --ask-for-approval untrusted '{rendered_prompt}'"
+                    .to_string(),
             models: vec![],
             default_model: String::new(),
             description: "OpenAI Codex CLI".to_string(),
         },
         AgentProviderConfig {
             name: "opencode".to_string(),
-            command: "opencode run -m {model} '{rendered_prompt}'".to_string(),
+            command: "opencode -m {model} '{rendered_prompt}'".to_string(),
             models: vec![
                 "anthropic/claude-sonnet-4-6".to_string(),
                 "openai/gpt-5.2-codex".to_string(),
@@ -95,7 +97,7 @@ fn known_agents() -> Vec<AgentProviderConfig> {
         },
         AgentProviderConfig {
             name: "gemini".to_string(),
-            command: "gemini -p --approval-mode auto_edit '{rendered_prompt}'".to_string(),
+            command: "gemini --approval-mode auto_edit '{rendered_prompt}'".to_string(),
             models: vec![
                 "gemini-3-flash-preview".to_string(),
                 "gemini-3-pro-preview".to_string(),
