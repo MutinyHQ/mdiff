@@ -1541,128 +1541,119 @@ impl App {
         }
     }
 
-    /// Collect all annotations across all files, formatted with file paths and line ranges.
-    fn comments_for_all_files(&self) -> String {
-        let mut parts = Vec::new();
-        for (file_path, anns) in &self.state.annotations.annotations {
-            for ann in anns {
-                if ann.anchor.line_start == ann.anchor.line_end {
-                    parts.push(format!(
-                        "- {} Line {}: {}",
-                        file_path, ann.anchor.line_start, ann.comment
-                    ));
-                } else {
-                    parts.push(format!(
-                        "- {} Lines {}-{}: {}",
-                        file_path, ann.anchor.line_start, ann.anchor.line_end, ann.comment
-                    ));
-                }
-            }
-        }
-        parts.join("\n")
-    }
-
-    /// Render a prompt covering all files in the diff with all annotations.
+    /// Render a prompt covering all annotated files.
     ///
-    /// Annotated files get scoped diffs (only lines near annotations).
-    /// Unannotated files get a one-line summary with status and +/- counts.
+    /// Each comment is interleaved with its surrounding diff context so the
+    /// relationship between code and comment is unambiguous.
     fn render_prompt_for_all_files(&self) -> Option<String> {
         if self.state.diff.deltas.is_empty() {
             return None;
         }
 
-        let comments = self.comments_for_all_files();
         let padding: u32 = 5;
-
-        let mut annotated_sections = Vec::new();
+        let mut file_sections = Vec::new();
 
         for delta in &self.state.diff.deltas {
             let filename = delta.path.to_string_lossy().to_string();
             let file_annotations = self.state.annotations.annotations.get(&filename);
-            let has_annotations = file_annotations.is_some_and(|anns| !anns.is_empty());
-
-            if !has_annotations {
+            if !file_annotations.is_some_and(|anns| !anns.is_empty()) {
                 continue;
             }
 
-            // Build the set of line ranges we care about (annotation ranges + padding)
             let anns = file_annotations.unwrap();
-            let mut visible_ranges: Vec<(u32, u32)> = anns
-                .iter()
-                .map(|a| {
-                    (
-                        a.anchor.line_start.saturating_sub(padding),
-                        a.anchor.line_end + padding,
-                    )
-                })
-                .collect();
-            // Sort and merge overlapping ranges
-            visible_ranges.sort_by_key(|r| r.0);
-            let mut merged: Vec<(u32, u32)> = Vec::new();
-            for range in visible_ranges {
-                if let Some(last) = merged.last_mut() {
-                    if range.0 <= last.1 + 1 {
-                        last.1 = last.1.max(range.1);
+
+            // Sort annotations by line_start and group those whose padded
+            // ranges overlap so nearby comments share one code block.
+            let mut sorted_anns: Vec<&Annotation> = anns.iter().collect();
+            sorted_anns.sort_by_key(|a| a.anchor.line_start);
+
+            let mut groups: Vec<(u32, u32, Vec<&Annotation>)> = Vec::new();
+            for ann in &sorted_anns {
+                let start = ann.anchor.line_start.saturating_sub(padding);
+                let end = ann.anchor.line_end + padding;
+                if let Some(last) = groups.last_mut() {
+                    if start <= last.1 + 1 {
+                        last.1 = last.1.max(end);
+                        last.2.push(ann);
                         continue;
                     }
                 }
-                merged.push(range);
+                groups.push((start, end, vec![ann]));
             }
 
-            // Collect diff lines that fall within merged ranges.
-            // Track a running new-file position so deletion lines (which only
-            // have old_lineno) are placed correctly relative to annotations.
-            let mut lines = Vec::new();
-            for hunk in &delta.hunks {
-                let mut hunk_lines = Vec::new();
-                let mut any_in_range = false;
-                let mut new_pos: u32 = 0;
-                for line in &hunk.lines {
-                    if let Some(n) = line.new_lineno {
-                        new_pos = n;
-                    }
-                    let effective_lineno = line.new_lineno.unwrap_or(new_pos);
-                    let in_range = merged
-                        .iter()
-                        .any(|(s, e)| effective_lineno >= *s && effective_lineno <= *e);
-                    if in_range {
-                        any_in_range = true;
-                        let prefix = match line.origin {
-                            DiffLineOrigin::Addition => "+",
-                            DiffLineOrigin::Deletion => "-",
-                            DiffLineOrigin::Context => " ",
-                        };
-                        hunk_lines.push(format!("{}{}", prefix, line.content.trim_end()));
+            let mut group_sections = Vec::new();
+            for (range_start, range_end, group_anns) in &groups {
+                // Collect diff lines that fall within this group's range.
+                // Track a running new-file position so deletion lines (which
+                // only have old_lineno) are placed correctly.
+                let mut diff_lines = Vec::new();
+                for hunk in &delta.hunks {
+                    let mut new_pos: u32 = 0;
+                    for line in &hunk.lines {
+                        if let Some(n) = line.new_lineno {
+                            new_pos = n;
+                        }
+                        let effective_lineno = line.new_lineno.unwrap_or(new_pos);
+                        if effective_lineno >= *range_start && effective_lineno <= *range_end {
+                            let prefix = match line.origin {
+                                DiffLineOrigin::Addition => "+",
+                                DiffLineOrigin::Deletion => "-",
+                                DiffLineOrigin::Context => " ",
+                            };
+                            let lineno_display = match line.new_lineno {
+                                Some(n) => format!("{:>4}", n),
+                                None => "    ".to_string(),
+                            };
+                            diff_lines.push(format!(
+                                "{} |{}{}",
+                                lineno_display,
+                                prefix,
+                                line.content.trim_end()
+                            ));
+                        }
                     }
                 }
-                if any_in_range {
-                    if !hunk.header.is_empty() {
-                        lines.push(hunk.header.trim_end().to_string());
-                    }
-                    lines.extend(hunk_lines);
+
+                if diff_lines.is_empty() {
+                    continue;
                 }
+
+                let mut section = format!("```diff\n{}\n```", diff_lines.join("\n"));
+                for ann in group_anns {
+                    let line_ref = if ann.anchor.line_start == ann.anchor.line_end {
+                        format!("Line {}", ann.anchor.line_start)
+                    } else {
+                        format!("Lines {}-{}", ann.anchor.line_start, ann.anchor.line_end)
+                    };
+                    section.push_str(&format!(
+                        "\n\n> **Comment ({}):** {}",
+                        line_ref, ann.comment
+                    ));
+                }
+
+                group_sections.push(section);
             }
 
-            annotated_sections.push(format!(
-                "### {}\n```diff\n{}\n```",
-                filename,
-                lines.join("\n")
-            ));
+            if !group_sections.is_empty() {
+                file_sections.push(format!(
+                    "### {}\n\n{}",
+                    filename,
+                    group_sections.join("\n\n")
+                ));
+            }
+        }
+
+        if file_sections.is_empty() {
+            return None;
         }
 
         let mut prompt = String::from(
             "You are reviewing a code change. A reviewer has left comments on the diff below. \
              Address each review comment by making the necessary code changes. If a comment asks \
              a question, answer it and make any implied fixes. Keep changes minimal and focused \
-             on what the reviewer asked for.\n\n\
-             ## Review Comments\n\n",
+             on what the reviewer asked for.\n\n",
         );
-        prompt.push_str(&comments);
-
-        if !annotated_sections.is_empty() {
-            prompt.push_str("\n\n## Annotated Files\n\n");
-            prompt.push_str(&annotated_sections.join("\n\n"));
-        }
+        prompt.push_str(&file_sections.join("\n\n"));
 
         Some(prompt)
     }
