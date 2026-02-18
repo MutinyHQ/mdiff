@@ -127,20 +127,6 @@ impl App {
             }
             self.state.diff.viewport_height = vh;
 
-            // Position the vt100 scrollback before rendering so screen.cell()
-            // returns content from the scrollback buffer when scrolled up.
-            {
-                let scroll = self.state.agent_outputs.detail_scroll;
-                if let Some(run) = self
-                    .state
-                    .agent_outputs
-                    .runs
-                    .get_mut(self.state.agent_outputs.selected_run)
-                {
-                    run.terminal.set_scrollback(scroll);
-                }
-            }
-
             terminal.draw(|frame| {
                 let hud_h = hud_height(&self.state, frame.area().width);
                 let outer = Layout::default()
@@ -213,23 +199,6 @@ impl App {
                 }
             })?;
 
-            // Reset scrollback to live view after rendering, and clamp
-            // detail_scroll to the actual scrollback depth if it overshot.
-            if let Some(run) = self
-                .state
-                .agent_outputs
-                .runs
-                .get_mut(self.state.agent_outputs.selected_run)
-            {
-                let actual = run.terminal.screen().scrollback();
-                if self.state.agent_outputs.detail_scroll > 0
-                    && actual < self.state.agent_outputs.detail_scroll
-                {
-                    self.state.agent_outputs.detail_scroll = actual;
-                }
-                run.terminal.set_scrollback(0);
-            }
-
             // Wait for at least one event, then drain all pending events
             // to avoid input lag from buffered scroll/key events.
             let first = events.next().await;
@@ -243,7 +212,6 @@ impl App {
 
             // Coalesce: collapse consecutive scroll actions into net movement
             let mut scroll_delta: i32 = 0;
-            let mut agent_scroll_delta: i32 = 0;
             let mut actions: Vec<Action> = Vec::new();
 
             for event in pending {
@@ -271,8 +239,6 @@ impl App {
                     match action {
                         Action::ScrollUp => scroll_delta -= 1,
                         Action::ScrollDown => scroll_delta += 1,
-                        Action::AgentOutputsScrollUp => agent_scroll_delta -= 1,
-                        Action::AgentOutputsScrollDown => agent_scroll_delta += 1,
                         other => actions.push(other),
                     }
                 }
@@ -286,17 +252,6 @@ impl App {
             } else if scroll_delta > 0 {
                 for _ in 0..scroll_delta {
                     self.update(Action::ScrollDown);
-                }
-            }
-
-            // Apply coalesced agent output scroll
-            if agent_scroll_delta < 0 {
-                for _ in 0..(-agent_scroll_delta) {
-                    self.update(Action::AgentOutputsScrollUp);
-                }
-            } else if agent_scroll_delta > 0 {
-                for _ in 0..agent_scroll_delta {
-                    self.update(Action::AgentOutputsScrollDown);
                 }
             }
 
@@ -381,12 +336,6 @@ impl App {
                         .find(|r| r.id == run_id)
                     {
                         run.terminal.process(&bytes);
-                    }
-                    // Auto-scroll to bottom when viewing the active run
-                    let selected_id = self.state.agent_outputs.selected().map(|r| r.id);
-                    if selected_id == Some(run_id) {
-                        // Reset detail_scroll to 0 = "follow mode" (bottom)
-                        self.state.agent_outputs.detail_scroll = 0;
                     }
                 }
             }
@@ -1179,18 +1128,6 @@ impl App {
             Action::AgentOutputsDown => {
                 self.state.agent_outputs.select_down();
             }
-            Action::AgentOutputsScrollUp => {
-                // detail_scroll is lines from bottom; increase to scroll up.
-                // The actual limit is clamped after rendering via set_scrollback.
-                if self.state.agent_outputs.selected().is_some() {
-                    self.state.agent_outputs.detail_scroll += 1;
-                }
-            }
-            Action::AgentOutputsScrollDown => {
-                // Decrease scroll offset (toward bottom/live output)
-                self.state.agent_outputs.detail_scroll =
-                    self.state.agent_outputs.detail_scroll.saturating_sub(1);
-            }
             Action::AgentOutputsCopyPrompt => {
                 if let Some(run) = self.state.agent_outputs.selected() {
                     let prompt = run.rendered_prompt.clone();
@@ -1431,14 +1368,14 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 if self.state.active_view == ActiveView::AgentOutputs {
-                    Some(Action::AgentOutputsScrollUp)
+                    None
                 } else {
                     Some(Action::ScrollUp)
                 }
             }
             MouseEventKind::ScrollDown => {
                 if self.state.active_view == ActiveView::AgentOutputs {
-                    Some(Action::AgentOutputsScrollDown)
+                    None
                 } else {
                     Some(Action::ScrollDown)
                 }

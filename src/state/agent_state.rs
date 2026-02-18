@@ -42,7 +42,6 @@ impl fmt::Debug for AgentRun {
 pub struct AgentOutputsState {
     pub runs: Vec<AgentRun>,
     pub selected_run: usize,
-    pub detail_scroll: usize,
     pub next_id: usize,
 }
 
@@ -50,7 +49,6 @@ impl AgentOutputsState {
     pub fn add_run(&mut self, run: AgentRun) {
         self.runs.insert(0, run);
         self.selected_run = 0;
-        self.detail_scroll = 0;
         self.next_id += 1;
     }
 
@@ -60,13 +58,11 @@ impl AgentOutputsState {
 
     pub fn select_up(&mut self) {
         self.selected_run = self.selected_run.saturating_sub(1);
-        self.detail_scroll = 0;
     }
 
     pub fn select_down(&mut self) {
         if !self.runs.is_empty() {
             self.selected_run = (self.selected_run + 1).min(self.runs.len() - 1);
-            self.detail_scroll = 0;
         }
     }
 }

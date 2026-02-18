@@ -21,7 +21,6 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
     } else if state.active_view == ActiveView::AgentOutputs {
         &[
             ("j/k", "select"),
-            ("J/K", "scroll"),
             ("Enter", "chat"),
             ("y", "copy"),
             ("^A", "re-run"),

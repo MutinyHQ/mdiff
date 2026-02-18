@@ -109,8 +109,6 @@ pub enum Action {
     SwitchToAgentOutputs,
     AgentOutputsUp,
     AgentOutputsDown,
-    AgentOutputsScrollUp,
-    AgentOutputsScrollDown,
     AgentOutputsCopyPrompt,
     KillAgentProcess,
 

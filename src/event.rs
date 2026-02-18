@@ -251,8 +251,6 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         return match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentOutputsUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
-            KeyCode::Char('K') => Some(Action::AgentOutputsScrollUp),
-            KeyCode::Char('J') => Some(Action::AgentOutputsScrollDown),
             KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
             KeyCode::Enter => Some(Action::EnterPtyFocus),
             KeyCode::Esc => Some(Action::SwitchToAgentOutputs), // toggle back

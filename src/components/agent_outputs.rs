@@ -147,10 +147,8 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // The app calls parser.set_scrollback(detail_scroll) before rendering,
     // so screen.cell() already reflects the scrolled position.
     let screen = run.terminal.screen();
-    let (term_rows, term_cols) = screen.size();
+    let (_term_rows, term_cols) = screen.size();
     let (cursor_row, _) = screen.cursor_position();
-
-    let scroll_offset = outputs.detail_scroll;
 
     let mut display_lines: Vec<Line> = Vec::new();
 
@@ -171,15 +169,8 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
     // Determine how many terminal rows to show
     let lines_for_terminal = inner_height.saturating_sub(display_lines.len());
 
-    // When scrolled into the scrollback (scroll_offset > 0), the entire
-    // visible screen is filled with content — render from row 0.
-    // When at the bottom (scroll_offset == 0), only rows 0..=cursor_row
-    // have content; rows below the cursor are blank.
-    let content_rows = if scroll_offset > 0 {
-        term_rows as usize
-    } else {
-        (cursor_row as usize) + 1
-    };
+    // Only rows 0..=cursor_row have content; rows below the cursor are blank.
+    let content_rows = (cursor_row as usize) + 1;
 
     // Render from the top of the (scrollback-shifted) screen.
     let rows_to_show = lines_for_terminal.min(content_rows);
@@ -192,8 +183,8 @@ fn render_run_detail(frame: &mut Frame, area: Rect, state: &AppState) {
         ));
     }
 
-    // Show status indicator at end if done and we're at the bottom
-    if scroll_offset == 0 {
+    // Show status indicator at end
+    {
         match &run.status {
             AgentRunStatus::Running => {
                 if state.pty_focus {
