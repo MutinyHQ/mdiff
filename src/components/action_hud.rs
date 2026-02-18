@@ -20,6 +20,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
         &[
             ("j/k", "select"),
             ("J/K", "scroll"),
+            ("Enter", "focus"),
             ("y", "copy"),
             ("^A", "re-run"),
             ("^K", "kill"),
@@ -53,6 +54,8 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("Space", "expand"),
             ("p", "preview"),
             ("g/G", "top/bot"),
+            ("m", "reviewed"),
+            ("n", "next unrev"),
             ("R", "refresh"),
             ("t", "target"),
             ("o", "outputs"),

@@ -527,11 +527,6 @@ impl App {
                 }
                 self.state.focus = FocusPanel::Navigator;
                 self.update_highlights();
-                // Auto-mark the file as reviewed
-                if let Some(delta) = self.state.diff.deltas.get(idx) {
-                    let path = delta.path.to_string_lossy().to_string();
-                    self.state.review.mark_reviewed(&path);
-                }
             }
             Action::ScrollUp => {
                 self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(1);
@@ -550,6 +545,7 @@ impl App {
                 if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
                     self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
                 }
+                self.check_auto_review();
             }
             Action::ScrollToTop => {
                 self.state.diff.cursor_row = 0;
@@ -560,6 +556,7 @@ impl App {
                 self.state.diff.cursor_row = max;
                 let vh = self.state.diff.viewport_height;
                 self.state.diff.scroll_offset = max.saturating_sub(vh.saturating_sub(1));
+                self.check_auto_review();
             }
             Action::ScrollPageUp => {
                 let vh = self.state.diff.viewport_height;
@@ -573,6 +570,7 @@ impl App {
                 if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
                     self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
                 }
+                self.check_auto_review();
             }
             Action::ToggleViewMode => {
                 self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
@@ -1507,6 +1505,21 @@ impl App {
         self.set_status(format!("Target: {label}"), false);
     }
 
+    /// Mark the current file as reviewed if the cursor has reached the last row
+    /// and the diff view is focused.
+    fn check_auto_review(&mut self) {
+        if self.state.focus != FocusPanel::DiffView {
+            return;
+        }
+        let max = self.current_display_map().len().saturating_sub(1);
+        if self.state.diff.cursor_row >= max {
+            if let Some(delta) = self.state.diff.selected_delta() {
+                let path = delta.path.to_string_lossy().to_string();
+                self.state.review.mark_reviewed(&path);
+            }
+        }
+    }
+
     fn selected_file_path(&self) -> Option<PathBuf> {
         self.state
             .diff
@@ -1527,11 +1540,6 @@ impl App {
                 self.state.selection.active = false;
                 // Reset context expansions for the new file
                 self.state.diff.gap_expansions.clear();
-                // Auto-mark the file as reviewed
-                if let Some(delta) = self.state.diff.deltas.get(delta_idx) {
-                    let path = delta.path.to_string_lossy().to_string();
-                    self.state.review.mark_reviewed(&path);
-                }
             }
         }
     }
