@@ -102,6 +102,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     if ctx.commit_dialog_open {
         return match key.code {
             KeyCode::Esc => Some(Action::CancelCommit),
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::CommitNewline)
+            }
             KeyCode::Enter => Some(Action::ConfirmCommit),
             KeyCode::Backspace => Some(Action::CommitBackspace),
             KeyCode::Char(c) => Some(Action::CommitChar(c)),
@@ -124,6 +127,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     if ctx.comment_editor_open {
         return match key.code {
             KeyCode::Esc => Some(Action::CancelComment),
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::CommentNewline)
+            }
             KeyCode::Enter => Some(Action::ConfirmComment),
             KeyCode::Backspace => Some(Action::CommentBackspace),
             KeyCode::Char(c) => Some(Action::CommentChar(c)),

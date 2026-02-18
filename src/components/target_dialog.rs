@@ -6,12 +6,12 @@ use ratatui::{
     Frame,
 };
 
+use super::text_input::render_text_input;
 use crate::state::AppState;
 
 pub fn render_target_dialog(frame: &mut Frame, state: &AppState) {
     let theme = &state.theme;
     let area = frame.area();
-    // Center a dialog box
     let dialog_width = 60.min(area.width.saturating_sub(4));
     let dialog_height = 9.min(area.height.saturating_sub(4));
 
@@ -20,7 +20,6 @@ pub fn render_target_dialog(frame: &mut Frame, state: &AppState) {
 
     let dialog_area = Rect::new(x, y, dialog_width, dialog_height);
 
-    // Clear background
     frame.render_widget(Clear, dialog_area);
 
     let block = Block::default()
@@ -36,7 +35,7 @@ pub fn render_target_dialog(frame: &mut Frame, state: &AppState) {
         .constraints([
             Constraint::Length(1), // current target
             Constraint::Length(1), // blank
-            Constraint::Length(1), // input line
+            Constraint::Min(1),    // input line (wraps if needed)
             Constraint::Length(1), // blank
             Constraint::Length(1), // hint text
             Constraint::Length(1), // key hints
@@ -55,10 +54,13 @@ pub fn render_target_dialog(frame: &mut Frame, state: &AppState) {
     ]);
     frame.render_widget(Paragraph::new(current), rows[0]);
 
-    // Input line with cursor
-    let input_text = format!(" {}\u{2588}", &state.target_dialog_input);
-    let input = Paragraph::new(input_text).style(Style::default().fg(theme.text));
-    frame.render_widget(input, rows[2]);
+    // Input with wrapping
+    render_text_input(
+        frame,
+        rows[2],
+        &state.target_dialog_input,
+        Style::default().fg(theme.text),
+    );
 
     // Hint
     let hint = Paragraph::new(Line::from(vec![Span::styled(

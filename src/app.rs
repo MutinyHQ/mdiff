@@ -736,6 +736,9 @@ impl App {
             Action::CommitBackspace => {
                 self.state.commit_message.pop();
             }
+            Action::CommitNewline => {
+                self.state.commit_message.push('\n');
+            }
 
             // Target dialog
             Action::OpenTargetDialog => {
@@ -845,6 +848,9 @@ impl App {
             }
             Action::CommentBackspace => {
                 self.state.comment_editor_text.pop();
+            }
+            Action::CommentNewline => {
+                self.state.comment_editor_text.push('\n');
             }
             // Annotations
             Action::DeleteAnnotation => {

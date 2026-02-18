@@ -10,6 +10,7 @@ pub mod navigator;
 pub mod prompt_preview;
 pub mod settings_modal;
 pub mod target_dialog;
+pub mod text_input;
 pub mod worktree_browser;
 
 use ratatui::{layout::Rect, Frame};

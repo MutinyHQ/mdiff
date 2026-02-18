@@ -43,6 +43,7 @@ pub enum Action {
     CancelCommit,
     CommitChar(char),
     CommitBackspace,
+    CommitNewline,
 
     // Target change
     OpenTargetDialog,
@@ -72,6 +73,7 @@ pub enum Action {
     CancelComment,
     CommentChar(char),
     CommentBackspace,
+    CommentNewline,
     // Annotations
     DeleteAnnotation,
     NextAnnotation,

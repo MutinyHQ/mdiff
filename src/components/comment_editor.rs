@@ -6,13 +6,14 @@ use ratatui::{
     Frame,
 };
 
+use super::text_input::render_text_input;
 use crate::state::AppState;
 
 pub fn render_comment_editor(frame: &mut Frame, state: &AppState) {
     let theme = &state.theme;
     let area = frame.area();
     let dialog_width = 60.min(area.width.saturating_sub(4));
-    let dialog_height = 9.min(area.height.saturating_sub(4));
+    let dialog_height = 12.min(area.height.saturating_sub(4));
 
     let x = (area.width.saturating_sub(dialog_width)) / 2;
     let y = (area.height.saturating_sub(dialog_height)) / 2;
@@ -35,16 +36,19 @@ pub fn render_comment_editor(frame: &mut Frame, state: &AppState) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),    // text area
+            Constraint::Min(3),    // text area (expands)
             Constraint::Length(1), // blank
             Constraint::Length(1), // hints
         ])
         .split(inner);
 
-    // Text input with cursor
-    let input_text = format!(" {}\u{2588}", &state.comment_editor_text);
-    let input = Paragraph::new(input_text).style(Style::default().fg(theme.text));
-    frame.render_widget(input, rows[0]);
+    // Text input with wrapping and scroll
+    render_text_input(
+        frame,
+        rows[0],
+        &state.comment_editor_text,
+        Style::default().fg(theme.text),
+    );
 
     // Hints
     let hints = Line::from(vec![
@@ -55,6 +59,13 @@ pub fn render_comment_editor(frame: &mut Frame, state: &AppState) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled("save  ", Style::default().fg(theme.text_muted)),
+        Span::styled(
+            "[S-Enter]",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("newline  ", Style::default().fg(theme.text_muted)),
         Span::styled(
             "[Esc]",
             Style::default()
