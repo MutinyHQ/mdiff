@@ -17,6 +17,7 @@ pub enum Action {
     ScrollPageDown,
     ToggleViewMode,
     ToggleWhitespace,
+    ToggleWrap,
 
     // Focus
     FocusNavigator,
@@ -37,6 +38,13 @@ pub enum Action {
     CancelCommit,
     CommitChar(char),
     CommitBackspace,
+
+    // Target change
+    OpenTargetDialog,
+    ConfirmTarget,
+    CancelTarget,
+    TargetChar(char),
+    TargetBackspace,
 
     // Worktree
     ToggleWorktreeBrowser,

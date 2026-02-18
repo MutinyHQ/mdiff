@@ -79,6 +79,7 @@ pub struct KeyContext {
     pub focus: FocusPanel,
     pub search_active: bool,
     pub commit_dialog_open: bool,
+    pub target_dialog_open: bool,
     pub comment_editor_open: bool,
     pub agent_selector_open: bool,
     pub annotation_menu_open: bool,
@@ -95,6 +96,17 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Enter => Some(Action::ConfirmCommit),
             KeyCode::Backspace => Some(Action::CommitBackspace),
             KeyCode::Char(c) => Some(Action::CommitChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 1.5: Target dialog mode
+    if ctx.target_dialog_open {
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelTarget),
+            KeyCode::Enter => Some(Action::ConfirmTarget),
+            KeyCode::Backspace => Some(Action::TargetBackspace),
+            KeyCode::Char(c) => Some(Action::TargetChar(c)),
             _ => None,
         };
     }
@@ -214,6 +226,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
         KeyCode::Char('g') if !ctx.visual_mode_active => return Some(Action::RefreshDiff),
+        KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         _ => {}
     }
 

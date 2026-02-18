@@ -43,6 +43,8 @@ pub struct AppState {
     pub should_quit: bool,
     pub commit_dialog_open: bool,
     pub commit_message: String,
+    pub target_dialog_open: bool,
+    pub target_dialog_input: String,
     pub status_message: Option<(String, bool)>, // (message, is_error)
     pub target_label: String,
 
@@ -82,6 +84,8 @@ impl AppState {
             should_quit: false,
             commit_dialog_open: false,
             commit_message: String::new(),
+            target_dialog_open: false,
+            target_dialog_input: String::new(),
             status_message: None,
             target_label: String::new(),
             selection: SelectionState::default(),

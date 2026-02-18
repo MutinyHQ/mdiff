@@ -4,6 +4,7 @@ pub mod agent_selector;
 pub mod annotation_menu;
 pub mod comment_editor;
 pub mod commit_dialog;
+pub mod target_dialog;
 pub mod context_bar;
 pub mod diff_view;
 pub mod navigator;

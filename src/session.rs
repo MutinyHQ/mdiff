@@ -27,8 +27,9 @@ fn session_dir(repo_path: &Path) -> PathBuf {
     repo_path.join(".mdiff")
 }
 
-fn session_file(repo_path: &Path) -> PathBuf {
-    session_dir(repo_path).join("session.json")
+fn session_file(repo_path: &Path, target_label: &str) -> PathBuf {
+    let sanitized = target_label.replace(['/', '\\', ':', ' '], "_");
+    session_dir(repo_path).join(format!("session_{sanitized}.json"))
 }
 
 /// Ensure `.mdiff/` is listed in `.gitignore`.
@@ -56,7 +57,7 @@ fn ensure_gitignore(repo_path: &Path) {
 
 /// Load annotations from the session file, if it exists and matches the target.
 pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
-    let path = session_file(repo_path);
+    let path = session_file(repo_path, target_label);
     let mut state = AnnotationState::default();
 
     let Ok(contents) = fs::read_to_string(&path) else {
@@ -114,6 +115,6 @@ pub fn save_session(repo_path: &Path, target_label: &str, annotations: &Annotati
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {
-        let _ = fs::write(session_file(repo_path), json);
+        let _ = fs::write(session_file(repo_path, target_label), json);
     }
 }

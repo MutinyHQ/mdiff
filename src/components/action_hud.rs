@@ -62,6 +62,7 @@ impl Component for ActionHud {
                 ("y", "yank"),
                 ("p", "preview"),
                 ("g", "refresh"),
+                ("t", "target"),
                 ("o", "outputs"),
                 ("^W", "worktree"),
                 ("^A", "agent"),

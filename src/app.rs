@@ -13,6 +13,7 @@ use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
+use crate::components::target_dialog::render_target_dialog;
 use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::DiffView;
 use crate::components::navigator::Navigator;
@@ -164,6 +165,9 @@ impl App {
                 action_hud.render(frame, outer[2], &self.state);
 
                 // Render modal overlays (in priority order)
+                if self.state.target_dialog_open {
+                    render_target_dialog(frame, &self.state);
+                }
                 if self.state.commit_dialog_open {
                     render_commit_dialog(frame, &self.state);
                 }
@@ -198,6 +202,7 @@ impl App {
                     focus: self.state.focus,
                     search_active: self.state.navigator.search_active,
                     commit_dialog_open: self.state.commit_dialog_open,
+                    target_dialog_open: self.state.target_dialog_open,
                     comment_editor_open: self.state.comment_editor_open,
                     agent_selector_open: self.state.agent_selector.open,
                     annotation_menu_open: self.state.annotation_menu_open,
@@ -670,6 +675,42 @@ impl App {
                 self.state.commit_message.pop();
             }
 
+            // Target dialog
+            Action::OpenTargetDialog => {
+                self.state.target_dialog_open = true;
+                self.state.target_dialog_input.clear();
+            }
+            Action::CancelTarget => {
+                self.state.target_dialog_open = false;
+                self.state.target_dialog_input.clear();
+            }
+            Action::TargetChar(c) => {
+                self.state.target_dialog_input.push(c);
+            }
+            Action::TargetBackspace => {
+                self.state.target_dialog_input.pop();
+            }
+            Action::ConfirmTarget => {
+                let input = self.state.target_dialog_input.trim().to_string();
+                if input.is_empty() {
+                    // Reset to HEAD vs workdir
+                    self.state.target_dialog_open = false;
+                    self.state.target_dialog_input.clear();
+                    self.apply_new_target(ComparisonTarget::HeadVsWorkdir, "HEAD".to_string());
+                } else {
+                    match self.validate_ref(&input) {
+                        Ok((target, label)) => {
+                            self.state.target_dialog_open = false;
+                            self.state.target_dialog_input.clear();
+                            self.apply_new_target(target, label);
+                        }
+                        Err(e) => {
+                            self.set_status(format!("Invalid ref '{}': {}", input, e), true);
+                        }
+                    }
+                }
+            }
+
             // Visual selection
             Action::EnterVisualMode => {
                 self.state.selection.active = true;
@@ -1113,6 +1154,51 @@ impl App {
         self.state.status_message = Some((msg, is_error));
         // ~3 seconds at 50ms tick rate
         self.status_clear_countdown = 60;
+    }
+
+    /// Validate a ref string against the repo. Returns the ComparisonTarget and a display label.
+    fn validate_ref(&self, input: &str) -> Result<(ComparisonTarget, String), String> {
+        let repo =
+            git2::Repository::open(&self.repo_path).map_err(|e| format!("open repo: {e}"))?;
+        repo.revparse_single(input)
+            .map_err(|e| format!("{e}"))?;
+        // Use parse_target for consistent ComparisonTarget construction
+        let target = parse_target(Some(input));
+        let label = match &target {
+            ComparisonTarget::HeadVsWorkdir => "HEAD".to_string(),
+            ComparisonTarget::Branch(name) => name.clone(),
+            ComparisonTarget::Commit(oid) => format!("{:.7}", oid),
+        };
+        Ok((target, label))
+    }
+
+    /// Switch to a new comparison target, preserving annotations per-target.
+    fn apply_new_target(&mut self, target: ComparisonTarget, label: String) {
+        // Save current session
+        session::save_session(
+            &self.repo_path,
+            &self.state.target_label,
+            &self.state.annotations,
+        );
+
+        // Update target
+        self.target = target;
+        self.state.target_label = label.clone();
+
+        // Load annotations for the new target
+        self.state.annotations = session::load_session(&self.repo_path, &label);
+
+        // Reset diff/navigator state
+        self.state.diff.deltas.clear();
+        self.state.diff.selected_file = None;
+        self.state.diff.scroll_offset = 0;
+        self.state.diff.cursor_row = 0;
+        self.state.navigator.entries.clear();
+        self.state.navigator.filtered_indices.clear();
+        self.state.selection.active = false;
+
+        self.request_diff();
+        self.set_status(format!("Target: {label}"), false);
     }
 
     fn selected_file_path(&self) -> Option<PathBuf> {
