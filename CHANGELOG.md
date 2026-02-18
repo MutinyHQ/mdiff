@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/MutinyHQ/mdiff/compare/v0.1.5...v0.1.6) - 2026-02-18
+
+### Added
+
+- forward mouse scroll to PTY in agent outputs view
+
+### Fixed
+
+- use content highlight instead of gutter color for search matches
+- set agent subprocess cwd to repo_path so agents start in the correct directory
+
 ## [0.1.5](https://github.com/MutinyHQ/mdiff/compare/v0.1.4...v0.1.5) - 2026-02-18
 
 ### Added
