@@ -4,6 +4,7 @@ pub mod app_state;
 pub mod diff_state;
 pub mod navigator_state;
 pub mod selection_state;
+pub mod settings_state;
 pub mod worktree_state;
 
 pub use agent_state::{AgentOutputsState, AgentSelectorState};

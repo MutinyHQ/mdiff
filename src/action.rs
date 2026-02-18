@@ -112,6 +112,14 @@ pub enum Action {
     // HUD
     ToggleHud,
 
+    // Settings modal
+    OpenSettings,
+    CloseSettings,
+    SettingsUp,
+    SettingsDown,
+    SettingsLeft,
+    SettingsRight,
+
     // Resize
     Resize,
 }

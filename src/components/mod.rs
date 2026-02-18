@@ -9,6 +9,7 @@ pub mod context_bar;
 pub mod diff_view;
 pub mod navigator;
 pub mod prompt_preview;
+pub mod settings_modal;
 pub mod worktree_browser;
 
 use ratatui::{layout::Rect, Frame};

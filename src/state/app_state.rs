@@ -1,7 +1,11 @@
+use crate::theme::Theme;
+
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState, NavigatorState,
     SelectionState, WorktreeState,
 };
+
+use super::settings_state::SettingsState;
 
 /// Snapshot of an annotation for the annotation menu (owned to avoid borrow issues).
 #[derive(Debug, Clone)]
@@ -72,10 +76,16 @@ pub struct AppState {
     // Agent
     pub agent_outputs: AgentOutputsState,
     pub agent_selector: AgentSelectorState,
+
+    // Theme
+    pub theme: Theme,
+
+    // Settings modal
+    pub settings: SettingsState,
 }
 
 impl AppState {
-    pub fn new(diff_options: DiffOptions) -> Self {
+    pub fn new(diff_options: DiffOptions, theme: Theme) -> Self {
         Self {
             active_view: ActiveView::DiffExplorer,
             focus: FocusPanel::Navigator,
@@ -102,6 +112,8 @@ impl AppState {
             editing_annotation: None,
             agent_outputs: AgentOutputsState::default(),
             agent_selector: AgentSelectorState::default(),
+            theme,
+            settings: SettingsState::default(),
         }
     }
 }

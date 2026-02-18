@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -14,10 +14,12 @@ pub struct WorktreeBrowser;
 
 impl Component for WorktreeBrowser {
     fn render(&self, frame: &mut Frame, area: Rect, state: &AppState) {
+        let theme = &state.theme;
+
         let block = Block::default()
             .title(" Worktree Browser ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(Style::default().fg(theme.accent));
 
         if state.worktree.worktrees.is_empty() {
             let msg = if state.worktree.loading {
@@ -26,7 +28,7 @@ impl Component for WorktreeBrowser {
                 " No worktrees found"
             };
             let paragraph = Paragraph::new(msg)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(theme.text_muted))
                 .block(block);
             frame.render_widget(paragraph, area);
             return;
@@ -53,20 +55,20 @@ impl Component for WorktreeBrowser {
 
                 let row_style = if is_selected {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(theme.accent)
                         .add_modifier(Modifier::BOLD)
-                        .bg(Color::Rgb(40, 40, 50))
+                        .bg(theme.selection_bg)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(theme.text)
                 };
 
                 let prefix = if is_selected { "\u{25b6}" } else { " " };
 
                 // Status indicator
                 let status_span = if wt.is_dirty {
-                    Span::styled("\u{25cf} ", Style::default().fg(Color::Red))
+                    Span::styled("\u{25cf} ", Style::default().fg(theme.error))
                 } else {
-                    Span::styled("\u{25cf} ", Style::default().fg(Color::Green))
+                    Span::styled("\u{25cf} ", Style::default().fg(theme.success))
                 };
 
                 // Name
@@ -81,14 +83,14 @@ impl Component for WorktreeBrowser {
                 let path_str = abbreviate_path(&wt.path);
                 let path_span = Span::styled(
                     format!("{:<30}", path_str),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(theme.text_muted),
                 );
 
                 // Branch
                 let branch = wt.head_ref.as_deref().unwrap_or("(detached)");
                 let branch_span = Span::styled(
                     format!("{:<20}", branch),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(theme.warning),
                 );
 
                 // Agent badge
@@ -96,7 +98,7 @@ impl Component for WorktreeBrowser {
                     Span::styled(
                         format!("[{}]", agent.agent_type.label()),
                         Style::default()
-                            .fg(Color::Magenta)
+                            .fg(theme.secondary)
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
@@ -125,32 +127,32 @@ impl Component for WorktreeBrowser {
             Span::styled(
                 " [Enter]",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("switch  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("switch  ", Style::default().fg(theme.text_muted)),
             Span::styled(
                 "[f]",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("freeze  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("freeze  ", Style::default().fg(theme.text_muted)),
             Span::styled(
                 "[r]",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("refresh  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("refresh  ", Style::default().fg(theme.text_muted)),
             Span::styled(
                 "[Esc]",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("back ", Style::default().fg(Color::DarkGray)),
-            Span::styled(scroll_info, Style::default().fg(Color::DarkGray)),
+            Span::styled("back ", Style::default().fg(theme.text_muted)),
+            Span::styled(scroll_info, Style::default().fg(theme.text_muted)),
         ]));
 
         let paragraph = Paragraph::new(lines).block(block);

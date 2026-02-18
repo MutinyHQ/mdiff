@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::state::agent_state::{AgentOutputsState, AgentRunStatus};
 use crate::state::AppState;
+use crate::theme::Theme;
 
 use super::Component;
 
@@ -15,37 +16,39 @@ pub struct AgentOutputs;
 
 impl Component for AgentOutputs {
     fn render(&self, frame: &mut Frame, area: Rect, state: &AppState) {
+        let theme = &state.theme;
+
         if state.agent_outputs.runs.is_empty() {
             let block = Block::default()
                 .title(" Agent Outputs ")
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan));
+                .border_style(Style::default().fg(theme.accent));
             let msg = Paragraph::new(" No agent runs yet. Use [Ctrl+A] to run an agent.")
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(theme.text_muted))
                 .block(block);
             frame.render_widget(msg, area);
             return;
         }
 
-        render_master_detail(frame, area, &state.agent_outputs);
+        render_master_detail(frame, area, &state.agent_outputs, theme);
     }
 }
 
-fn render_master_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
+fn render_master_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState, theme: &Theme) {
     let layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(area);
 
-    render_run_list(frame, layout[0], outputs);
-    render_run_detail(frame, layout[1], outputs);
+    render_run_list(frame, layout[0], outputs, theme);
+    render_run_detail(frame, layout[1], outputs, theme);
 }
 
-fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
+fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState, theme: &Theme) {
     let block = Block::default()
         .title(" Runs ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme.accent));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -61,13 +64,13 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
         let prefix = if is_selected { "\u{25b6}" } else { " " };
 
         let (status_icon, status_color) = match &run.status {
-            AgentRunStatus::Running => ("\u{25cf}", Color::Yellow),
-            AgentRunStatus::Success { .. } => ("\u{2713}", Color::Green),
-            AgentRunStatus::Failed { .. } => ("\u{2717}", Color::Red),
+            AgentRunStatus::Running => ("\u{25cf}", theme.warning),
+            AgentRunStatus::Success { .. } => ("\u{2713}", theme.success),
+            AgentRunStatus::Failed { .. } => ("\u{2717}", theme.error),
         };
 
         let row_style = if is_selected {
-            Style::default().bg(Color::Rgb(40, 40, 50))
+            Style::default().bg(theme.selection_bg)
         } else {
             Style::default()
         };
@@ -82,10 +85,10 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
         lines.push(Line::from(vec![
             Span::styled(format!("{prefix} "), row_style),
             Span::styled(format!("{status_icon} "), Style::default().fg(status_color)),
-            Span::styled(format!("#{} ", run.id), row_style.fg(Color::DarkGray)),
+            Span::styled(format!("#{} ", run.id), row_style.fg(theme.text_muted)),
             Span::styled(
                 format!("{}/{}", run.agent_name, run.model),
-                row_style.fg(Color::White),
+                row_style.fg(theme.text),
             ),
         ]));
 
@@ -95,7 +98,7 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
                 Span::styled("    ", row_style),
                 Span::styled(
                     format!("{} ", &run.started_at[..16.min(run.started_at.len())]),
-                    row_style.fg(Color::DarkGray),
+                    row_style.fg(theme.text_muted),
                 ),
                 Span::styled(status_detail, row_style.fg(status_color)),
             ]));
@@ -105,12 +108,12 @@ fn render_run_list(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState) {
+fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState, theme: &Theme) {
     let Some(run) = outputs.selected() else {
         let block = Block::default()
             .title(" Output ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme.text_muted));
         frame.render_widget(block, area);
         return;
     };
@@ -120,7 +123,7 @@ fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState)
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme.accent));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -129,7 +132,7 @@ fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState)
     display_lines.push(Line::from(Span::styled(
         format!("$ {}", run.command),
         Style::default()
-            .fg(Color::DarkGray)
+            .fg(theme.text_muted)
             .add_modifier(Modifier::ITALIC),
     )));
     display_lines.push(Line::from(""));
@@ -138,7 +141,7 @@ fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState)
     for line in &run.output_lines {
         display_lines.push(Line::from(Span::styled(
             line.clone(),
-            Style::default().fg(Color::White),
+            Style::default().fg(theme.text),
         )));
     }
 
@@ -148,21 +151,21 @@ fn render_run_detail(frame: &mut Frame, area: Rect, outputs: &AgentOutputsState)
             display_lines.push(Line::from(""));
             display_lines.push(Line::from(Span::styled(
                 "\u{25cf} Running...",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme.warning),
             )));
         }
         AgentRunStatus::Success { exit_code } => {
             display_lines.push(Line::from(""));
             display_lines.push(Line::from(Span::styled(
                 format!("\u{2713} Process exited with code {exit_code}"),
-                Style::default().fg(Color::Green),
+                Style::default().fg(theme.success),
             )));
         }
         AgentRunStatus::Failed { exit_code } => {
             display_lines.push(Line::from(""));
             display_lines.push(Line::from(Span::styled(
                 format!("\u{2717} Process exited with code {exit_code}"),
-                Style::default().fg(Color::Red),
+                Style::default().fg(theme.error),
             )));
         }
     }

@@ -18,9 +18,10 @@ use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::DiffView;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
+use crate::components::settings_modal::render_settings_modal;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
-use crate::config::{self, MdiffConfig};
+use crate::config::{self, MdiffConfig, PersistentSettings};
 use crate::context;
 use crate::display_map::{build_display_map, DisplayRowInfo};
 use crate::event::{map_key_to_action, Event, EventReader, KeyContext};
@@ -32,7 +33,9 @@ use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
 use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, DiffOptions, DiffViewMode};
+use crate::theme::{next_theme, prev_theme, Theme};
 use crate::template;
 use crate::tui::Tui;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
@@ -58,8 +61,11 @@ impl App {
         open_worktree_browser: bool,
         target: ComparisonTarget,
         repo_path: PathBuf,
+        config: MdiffConfig,
+        context_lines: Option<usize>,
     ) -> Self {
-        let mut state = AppState::new(diff_options);
+        let theme = config.theme.clone();
+        let mut state = AppState::new(diff_options, theme);
         state.target_label = match &target {
             ComparisonTarget::HeadVsWorkdir => "HEAD".to_string(),
             ComparisonTarget::Branch(name) => name.clone(),
@@ -68,6 +74,9 @@ impl App {
         if open_worktree_browser {
             state.active_view = ActiveView::WorktreeBrowser;
         }
+        if let Some(ctx) = context_lines {
+            state.diff.display_context = ctx;
+        }
 
         // Load session annotations
         state.annotations = session::load_session(&repo_path, &state.target_label);
@@ -75,7 +84,6 @@ impl App {
         let worker = DiffWorker::new(repo_path.clone());
         let highlight_engine = HighlightEngine::new();
         let git_cli = GitCli::new(&repo_path);
-        let config = config::load_config();
         Self {
             state,
             worker,
@@ -183,6 +191,9 @@ impl App {
                 if self.state.agent_selector.open {
                     render_agent_selector(frame, &self.state.agent_selector);
                 }
+                if self.state.settings.open {
+                    render_settings_modal(frame, &self.state);
+                }
             })?;
 
             // Wait for at least one event, then drain all pending events
@@ -209,6 +220,7 @@ impl App {
                     comment_editor_open: self.state.comment_editor_open,
                     agent_selector_open: self.state.agent_selector.open,
                     annotation_menu_open: self.state.annotation_menu_open,
+                    settings_open: self.state.settings.open,
                     visual_mode_active: self.state.selection.active,
                     active_view: self.state.active_view,
                 };
@@ -366,14 +378,15 @@ impl App {
         let (old_content, old_line_count) = reconstruct_content(delta, ContentSide::Old);
         let (new_content, new_line_count) = reconstruct_content(delta, ContentSide::New);
 
+        let syntax = &self.state.theme.syntax;
         self.state.diff.old_highlights = self
             .highlight_engine
-            .highlight_lines(&path, &old_content)
+            .highlight_lines(&path, &old_content, syntax)
             .unwrap_or_else(|| vec![Vec::new(); old_line_count + 1]);
 
         self.state.diff.new_highlights = self
             .highlight_engine
-            .highlight_lines(&path, &new_content)
+            .highlight_lines(&path, &new_content, syntax)
             .unwrap_or_else(|| vec![Vec::new(); new_line_count + 1]);
     }
 
@@ -455,7 +468,10 @@ impl App {
         // Auto-collapse HUD on first real command after expanding
         if self.state.hud_expanded {
             match action {
-                Action::Tick | Action::Resize | Action::ToggleHud => {}
+                Action::Tick | Action::Resize | Action::ToggleHud
+                | Action::OpenSettings | Action::CloseSettings
+                | Action::SettingsUp | Action::SettingsDown
+                | Action::SettingsLeft | Action::SettingsRight => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -1167,6 +1183,98 @@ impl App {
                     }
                 }
             }
+            // Settings modal
+            Action::OpenSettings => {
+                self.state.settings.open = true;
+                self.state.settings.selected_row = 0;
+            }
+            Action::CloseSettings => {
+                self.state.settings.open = false;
+                // Persist all settings to config.toml
+                config::save_settings(&PersistentSettings {
+                    theme: self.state.theme.name.clone(),
+                    unified: self.state.diff.options.view_mode == DiffViewMode::Unified,
+                    ignore_whitespace: self.state.diff.options.ignore_whitespace,
+                    context_lines: self.state.diff.display_context,
+                });
+            }
+            Action::SettingsUp => {
+                if self.state.settings.selected_row > 0 {
+                    self.state.settings.selected_row -= 1;
+                }
+            }
+            Action::SettingsDown => {
+                if self.state.settings.selected_row < SETTINGS_ROW_COUNT - 1 {
+                    self.state.settings.selected_row += 1;
+                }
+            }
+            Action::SettingsLeft => {
+                match self.state.settings.selected_row {
+                    0 => {
+                        // Prev theme
+                        let new_name = prev_theme(&self.state.theme.name);
+                        self.state.theme = Theme::from_name(new_name);
+                        self.update_highlights();
+                    }
+                    1 => {
+                        // Toggle view mode
+                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
+                            DiffViewMode::Split => DiffViewMode::Unified,
+                            DiffViewMode::Unified => DiffViewMode::Split,
+                        };
+                        self.state.diff.cursor_row = 0;
+                        self.state.diff.scroll_offset = 0;
+                        self.state.selection.active = false;
+                    }
+                    2 => {
+                        // Toggle whitespace
+                        self.state.diff.options.ignore_whitespace =
+                            !self.state.diff.options.ignore_whitespace;
+                        self.request_diff();
+                    }
+                    3 => {
+                        // Decrease context lines (min 1)
+                        if self.state.diff.display_context > 1 {
+                            self.state.diff.display_context -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Action::SettingsRight => {
+                match self.state.settings.selected_row {
+                    0 => {
+                        // Next theme
+                        let new_name = next_theme(&self.state.theme.name);
+                        self.state.theme = Theme::from_name(new_name);
+                        self.update_highlights();
+                    }
+                    1 => {
+                        // Toggle view mode
+                        self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
+                            DiffViewMode::Split => DiffViewMode::Unified,
+                            DiffViewMode::Unified => DiffViewMode::Split,
+                        };
+                        self.state.diff.cursor_row = 0;
+                        self.state.diff.scroll_offset = 0;
+                        self.state.selection.active = false;
+                    }
+                    2 => {
+                        // Toggle whitespace
+                        self.state.diff.options.ignore_whitespace =
+                            !self.state.diff.options.ignore_whitespace;
+                        self.request_diff();
+                    }
+                    3 => {
+                        // Increase context lines (max 20)
+                        if self.state.diff.display_context < 20 {
+                            self.state.diff.display_context += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
             Action::Resize => {}
         }
     }

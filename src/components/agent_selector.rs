@@ -22,6 +22,9 @@ pub fn render_agent_selector(frame: &mut Frame, selector: &AgentSelectorState) {
 
     frame.render_widget(Clear, dialog_area);
 
+    // Note: agent_selector doesn't have access to theme through state,
+    // so we keep using Color constants here. The accent color (Cyan) is
+    // a reasonable default since the selector is rendered from AgentSelectorState.
     let block = Block::default()
         .title(" Select Agent + Model ")
         .borders(Borders::ALL)

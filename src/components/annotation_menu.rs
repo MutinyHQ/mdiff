@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
@@ -9,6 +9,7 @@ use ratatui::{
 use crate::state::AppState;
 
 pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
+    let theme = &state.theme;
     let area = frame.area();
     let dialog_width = 60.min(area.width.saturating_sub(4));
     let dialog_height = 20.min(area.height.saturating_sub(4)).max(10);
@@ -32,7 +33,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Magenta));
+        .border_style(Style::default().fg(theme.secondary));
 
     let inner = block.inner(dialog_area);
     frame.render_widget(block, dialog_area);
@@ -75,16 +76,16 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
 
         let name_style = if is_selected {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::White)
+            Style::default().fg(theme.text)
         };
 
         let range_style = if is_selected {
-            Style::default().fg(Color::Yellow)
+            Style::default().fg(theme.warning)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme.text_muted)
         };
 
         lines.push(Line::from(vec![
@@ -98,7 +99,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
     // Separator
     let sep = "\u{2500}".repeat(inner.width as usize);
     frame.render_widget(
-        Paragraph::new(sep).style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(sep).style(Style::default().fg(theme.text_muted)),
         rows[1],
     );
 
@@ -108,7 +109,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
         .get(state.annotation_menu_selected)
     {
         let detail = Paragraph::new(format!(" {}", item.comment))
-            .style(Style::default().fg(Color::White))
+            .style(Style::default().fg(theme.text))
             .wrap(Wrap { trim: false });
         frame.render_widget(detail, rows[2]);
     }
@@ -118,31 +119,31 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
         Span::styled(
             " [j/k]",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("navigate ", Style::default().fg(Color::DarkGray)),
+        Span::styled("navigate ", Style::default().fg(theme.text_muted)),
         Span::styled(
             "[e]",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("edit ", Style::default().fg(Color::DarkGray)),
+        Span::styled("edit ", Style::default().fg(theme.text_muted)),
         Span::styled(
             "[d]",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("delete ", Style::default().fg(Color::DarkGray)),
+        Span::styled("delete ", Style::default().fg(theme.text_muted)),
         Span::styled(
             "[Esc]",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled("close", Style::default().fg(Color::DarkGray)),
+        Span::styled("close", Style::default().fg(theme.text_muted)),
     ]);
     frame.render_widget(Paragraph::new(hints), rows[3]);
 }

@@ -13,6 +13,7 @@ mod highlight;
 mod session;
 mod state;
 mod template;
+mod theme;
 mod tui;
 
 use anyhow::Result;
@@ -23,6 +24,7 @@ use crate::app::{parse_target, App};
 use crate::cli::Cli;
 use crate::git::RepoCache;
 use crate::state::DiffOptions;
+use crate::theme::Theme;
 
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
@@ -57,8 +59,20 @@ async fn main() -> Result<()> {
     drop(repo);
 
     let target = parse_target(cli.target.as_deref());
-    let diff_options = DiffOptions::new(cli.ignore_whitespace, cli.unified);
-    let mut app = App::new(diff_options, cli.worktree_browser, target, repo_path);
+
+    // Load config, apply CLI overrides
+    let mut config = config::load_config();
+    if let Some(ref theme_name) = cli.theme {
+        config.theme = Theme::from_name(theme_name);
+    }
+
+    // Merge CLI flags with config-file settings (CLI wins)
+    let unified = cli.unified || config.unified.unwrap_or(false);
+    let ignore_ws = cli.ignore_whitespace || config.ignore_whitespace.unwrap_or(false);
+    let context_lines = config.context_lines;
+
+    let diff_options = DiffOptions::new(ignore_ws, unified);
+    let mut app = App::new(diff_options, cli.worktree_browser, target, repo_path, config, context_lines);
 
     let mut terminal = tui::init()?;
     let result = app.run(&mut terminal).await;

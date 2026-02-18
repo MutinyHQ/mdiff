@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
     Frame,
@@ -8,6 +8,7 @@ use ratatui::{
 
 use crate::state::app_state::ActiveView;
 use crate::state::AppState;
+use crate::theme::Theme;
 
 use super::Component;
 
@@ -56,6 +57,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("o", "outputs"),
             ("^W", "worktree"),
             ("^A", "agent"),
+            (":", "settings"),
             ("?", "hide"),
         ]
     } else {
@@ -69,6 +71,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("o", "outputs"),
             ("^W", "worktree"),
             ("^A", "agent"),
+            (":", "settings"),
             ("?", "help"),
         ]
     }
@@ -81,7 +84,7 @@ fn binding_width(key: &str, desc: &str) -> usize {
 }
 
 /// Build wrapped lines of binding spans that fit within `max_width`.
-fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>) -> Vec<Line<'static>> {
+fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>, theme: &Theme) -> Vec<Line<'static>> {
     let max_w = max_width as usize;
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut current_spans: Vec<Span<'static>> = Vec::new();
@@ -101,19 +104,19 @@ fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>
             current_spans.push(Span::raw(" ".to_string()));
             current_width = 1;
         } else if i > 0 {
-            current_spans.push(Span::styled(" ".to_string(), Style::default().fg(Color::DarkGray)));
+            current_spans.push(Span::styled(" ".to_string(), Style::default().fg(theme.text_muted)));
             current_width += 1;
         }
 
         current_spans.push(Span::styled(
             format!("[{key}]"),
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ));
         current_spans.push(Span::styled(
             desc.to_string(),
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.text_muted),
         ));
         current_width += entry_width;
     }
@@ -126,7 +129,7 @@ fn build_lines(bindings: &[(&str, &str)], max_width: u16, ann_text: Option<&str>
             current_spans.push(Span::styled(
                 ann.to_string(),
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.warning)
                     .add_modifier(Modifier::BOLD),
             ));
         }
@@ -146,7 +149,7 @@ pub fn hud_height(state: &AppState, width: u16) -> u16 {
     }
     let bindings = bindings_for_state(state);
     let ann_text = annotation_text(state);
-    let lines = build_lines(bindings, width, ann_text.as_deref());
+    let lines = build_lines(bindings, width, ann_text.as_deref(), &state.theme);
     (lines.len() as u16).max(1)
 }
 
@@ -161,23 +164,25 @@ fn annotation_text(state: &AppState) -> Option<String> {
 
 impl Component for ActionHud {
     fn render(&self, frame: &mut Frame, area: Rect, state: &AppState) {
+        let theme = &state.theme;
+
         // Show status message if present, otherwise show keybindings
         if let Some((ref msg, is_error)) = state.status_message {
-            let color = if is_error { Color::Red } else { Color::Green };
+            let color = if is_error { theme.error } else { theme.success };
             let bar = Paragraph::new(Line::from(vec![
                 Span::raw(" "),
                 Span::styled(msg.as_str(), Style::default().fg(color)),
             ]))
-            .style(Style::default().bg(Color::Rgb(30, 30, 30)));
+            .style(Style::default().bg(theme.surface));
             frame.render_widget(bar, area);
             return;
         }
 
         let bindings = bindings_for_state(state);
         let ann_text = annotation_text(state);
-        let lines = build_lines(bindings, area.width, ann_text.as_deref());
+        let lines = build_lines(bindings, area.width, ann_text.as_deref(), theme);
 
-        let bar = Paragraph::new(lines).style(Style::default().bg(Color::Rgb(30, 30, 30)));
+        let bar = Paragraph::new(lines).style(Style::default().bg(theme.surface));
         frame.render_widget(bar, area);
     }
 }

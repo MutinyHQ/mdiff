@@ -2,6 +2,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::theme::{apply_overrides, Theme, ThemeOverrides};
+
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
 pub struct AgentProviderConfig {
@@ -22,6 +24,10 @@ pub struct MdiffConfig {
     pub agents_by_name: HashMap<String, usize>,
     pub prompt_template: String,
     pub context_padding: usize,
+    pub theme: Theme,
+    pub unified: Option<bool>,
+    pub ignore_whitespace: Option<bool>,
+    pub context_lines: Option<usize>,
 }
 
 impl Default for MdiffConfig {
@@ -37,6 +43,10 @@ impl Default for MdiffConfig {
             agents_by_name,
             prompt_template: DEFAULT_TEMPLATE.to_string(),
             context_padding: 5,
+            theme: Theme::from_name("one-dark"),
+            unified: None,
+            ignore_whitespace: None,
+            context_lines: None,
         }
     }
 }
@@ -135,6 +145,16 @@ struct ConfigFile {
     prompt_template: Option<String>,
     #[serde(default)]
     agents: Vec<AgentProviderConfig>,
+    #[serde(default)]
+    theme: Option<String>,
+    #[serde(default)]
+    colors: Option<ThemeOverrides>,
+    #[serde(default)]
+    unified: Option<bool>,
+    #[serde(default)]
+    ignore_whitespace: Option<bool>,
+    #[serde(default)]
+    context_lines: Option<usize>,
 }
 
 fn default_context_padding() -> usize {
@@ -186,6 +206,13 @@ pub fn load_config() -> MdiffConfig {
 
     let agents_by_name = build_agents_index(&agents);
 
+    // Load theme by name, apply color overrides
+    let theme_name = file.theme.as_deref().unwrap_or("one-dark");
+    let mut theme = Theme::from_name(theme_name);
+    if let Some(ref overrides) = file.colors {
+        apply_overrides(&mut theme, overrides);
+    }
+
     MdiffConfig {
         agents,
         agents_by_name,
@@ -193,5 +220,58 @@ pub fn load_config() -> MdiffConfig {
             .prompt_template
             .unwrap_or_else(|| DEFAULT_TEMPLATE.to_string()),
         context_padding: file.context_padding,
+        theme,
+        unified: file.unified,
+        ignore_whitespace: file.ignore_whitespace,
+        context_lines: file.context_lines,
     }
+}
+
+/// Settings that get persisted to config.toml when the settings modal closes.
+pub struct PersistentSettings {
+    pub theme: String,
+    pub unified: bool,
+    pub ignore_whitespace: bool,
+    pub context_lines: usize,
+}
+
+/// Save persistent settings to `~/.config/mdiff/config.toml`.
+/// Reads the existing file (if any), updates only the settings fields, and writes back.
+/// Preserves other config values (agents, prompt_template, color overrides).
+pub fn save_settings(settings: &PersistentSettings) {
+    let path = config_path();
+
+    // Read existing config as a TOML table to preserve unknown fields
+    let mut table = if let Ok(contents) = std::fs::read_to_string(&path) {
+        contents
+            .parse::<toml::Table>()
+            .unwrap_or_else(|_| toml::Table::new())
+    } else {
+        toml::Table::new()
+    };
+
+    table.insert(
+        "theme".to_string(),
+        toml::Value::String(settings.theme.clone()),
+    );
+    table.insert(
+        "unified".to_string(),
+        toml::Value::Boolean(settings.unified),
+    );
+    table.insert(
+        "ignore_whitespace".to_string(),
+        toml::Value::Boolean(settings.ignore_whitespace),
+    );
+    table.insert(
+        "context_lines".to_string(),
+        toml::Value::Integer(settings.context_lines as i64),
+    );
+
+    // Ensure directory exists
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let toml_string = toml::to_string_pretty(&table).unwrap_or_default();
+    let _ = std::fs::write(&path, toml_string);
 }

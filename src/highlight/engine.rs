@@ -4,6 +4,8 @@ use std::path::Path;
 use ratatui::style::Style;
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
+use crate::theme::SyntaxColors;
+
 use super::languages::{detect_language, language_entries};
 use super::theme::{highlight_names_vec, style_for_highlight};
 
@@ -34,7 +36,12 @@ impl HighlightEngine {
 
     /// Highlight a file's content and return per-line highlight spans.
     /// Returns None if the language is not recognized.
-    pub fn highlight_lines(&self, path: &Path, content: &str) -> Option<Vec<Vec<HighlightSpan>>> {
+    pub fn highlight_lines(
+        &self,
+        path: &Path,
+        content: &str,
+        syntax: &SyntaxColors,
+    ) -> Option<Vec<Vec<HighlightSpan>>> {
         let lang_name = detect_language(path)?;
         let config = self.configs.get(lang_name)?;
 
@@ -55,7 +62,7 @@ impl HighlightEngine {
                     add_spans_for_range(&lines, &mut result, start, end, current_style);
                 }
                 HighlightEvent::HighlightStart(highlight) => {
-                    current_style = style_for_highlight(highlight.0);
+                    current_style = style_for_highlight(highlight.0, syntax);
                 }
                 HighlightEvent::HighlightEnd => {
                     current_style = Style::default();

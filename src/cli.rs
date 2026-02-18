@@ -21,4 +21,8 @@ pub struct Cli {
     /// Start in unified (consolidated) view instead of split
     #[arg(long)]
     pub unified: bool,
+
+    /// Color theme (one-dark, github-dark, dracula, catppuccin-mocha, tokyo-night, solarized-dark)
+    #[arg(long)]
+    pub theme: Option<String>,
 }

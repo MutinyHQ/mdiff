@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -15,11 +15,12 @@ pub struct Navigator;
 impl Component for Navigator {
     fn render(&self, frame: &mut Frame, area: Rect, state: &AppState) {
         let is_focused = state.focus == FocusPanel::Navigator;
+        let theme = &state.theme;
 
         let border_style = if is_focused {
-            Style::default().fg(Color::Cyan)
+            Style::default().fg(theme.accent)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme.text_muted)
         };
 
         let visible = state.navigator.visible_entries();
@@ -43,7 +44,7 @@ impl Component for Navigator {
                 " No changes"
             };
             let paragraph = Paragraph::new(msg)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(theme.text_muted))
                 .block(block);
             frame.render_widget(paragraph, area);
             return;
@@ -69,13 +70,13 @@ impl Component for Navigator {
 
                 let style = if is_selected {
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(theme.accent)
                         .add_modifier(Modifier::BOLD)
-                        .bg(Color::Rgb(40, 40, 50))
+                        .bg(theme.selection_bg)
                 } else if is_active {
-                    Style::default().fg(Color::White).bg(Color::Rgb(35, 35, 45))
+                    Style::default().fg(theme.text).bg(theme.selection_inactive_bg)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(theme.text)
                 };
 
                 let prefix = if is_selected { "\u{25b6}" } else { " " };

@@ -83,6 +83,7 @@ pub struct KeyContext {
     pub comment_editor_open: bool,
     pub agent_selector_open: bool,
     pub annotation_menu_open: bool,
+    pub settings_open: bool,
     pub visual_mode_active: bool,
     pub active_view: ActiveView,
 }
@@ -126,6 +127,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Enter => Some(Action::ConfirmComment),
             KeyCode::Backspace => Some(Action::CommentBackspace),
             KeyCode::Char(c) => Some(Action::CommentChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 2.3: Settings modal
+    if ctx.settings_open {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::SettingsDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::SettingsUp),
+            KeyCode::Char('h') | KeyCode::Left => Some(Action::SettingsLeft),
+            KeyCode::Char('l') | KeyCode::Right => Some(Action::SettingsRight),
+            KeyCode::Esc | KeyCode::Char(':') => Some(Action::CloseSettings),
             _ => None,
         };
     }
@@ -234,6 +247,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('R') => return Some(Action::RefreshDiff),
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         KeyCode::Char('?') => return Some(Action::ToggleHud),
+        KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
         _ => {}
     }
 

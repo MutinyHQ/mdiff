@@ -10,6 +10,7 @@ use crate::display_map::{build_display_map, filter_hunk_lines, DisplayRowInfo, F
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
+use crate::theme::Theme;
 
 use super::Component;
 
@@ -18,11 +19,12 @@ pub struct DiffView;
 impl Component for DiffView {
     fn render(&self, frame: &mut Frame, area: Rect, state: &AppState) {
         let is_focused = state.focus == FocusPanel::DiffView;
+        let theme = &state.theme;
 
         let border_style = if is_focused {
-            Style::default().fg(Color::Cyan)
+            Style::default().fg(theme.accent)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(theme.text_muted)
         };
 
         let view_label = match state.diff.options.view_mode {
@@ -45,7 +47,7 @@ impl Component for DiffView {
             };
 
             let paragraph = Paragraph::new(content)
-                .style(Style::default().fg(Color::DarkGray))
+                .style(Style::default().fg(theme.text_muted))
                 .block(block);
             frame.render_widget(paragraph, area);
             return;
@@ -53,10 +55,10 @@ impl Component for DiffView {
 
         match state.diff.options.view_mode {
             DiffViewMode::Split => {
-                render_split(frame, area, delta, state, border_style, view_label)
+                render_split(frame, area, delta, state, border_style, view_label, theme)
             }
             DiffViewMode::Unified => {
-                render_unified(frame, area, delta, state, border_style, view_label)
+                render_unified(frame, area, delta, state, border_style, view_label, theme)
             }
         }
     }
@@ -94,7 +96,7 @@ fn is_cursor_row(state: &AppState, display_row: usize) -> bool {
 struct RowHighlight {
     /// Background for the gutter/line-number area.
     gutter_bg: Option<Color>,
-    /// Foreground for the gutter (overrides DarkGray when set).
+    /// Foreground for the gutter (overrides text_muted when set).
     gutter_fg: Option<Color>,
     /// Background override for content area. When set, replaces diff_bg.
     content_bg: Option<Color>,
@@ -102,8 +104,9 @@ struct RowHighlight {
 
 /// Compute row highlight for cursor or visual selection.
 fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
+    let theme = &state.theme;
     if is_row_selected(state, display_row) {
-        let bg = Some(Color::Rgb(70, 50, 100));
+        let bg = Some(theme.visual_select_bg);
         RowHighlight {
             gutter_bg: bg,
             gutter_fg: None,
@@ -111,7 +114,7 @@ fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
         }
     } else if is_cursor_row(state, display_row) {
         RowHighlight {
-            gutter_bg: Some(Color::Cyan),
+            gutter_bg: Some(theme.accent),
             gutter_fg: Some(Color::Black),
             content_bg: None,
         }
@@ -144,6 +147,7 @@ fn render_split(
     state: &AppState,
     border_style: Style,
     view_label: &str,
+    theme: &Theme,
 ) {
     let title = format_title(delta, view_label);
 
@@ -153,7 +157,7 @@ fn render_split(
             .borders(Borders::ALL)
             .border_style(border_style);
         let msg = Paragraph::new(" Binary file differs")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.text_muted))
             .block(block);
         frame.render_widget(msg, area);
         return;
@@ -192,6 +196,7 @@ fn render_split(
         &display_map,
         halves[0].width,
         true,
+        theme,
     );
 
     let left_para = Paragraph::new(left_lines);
@@ -212,6 +217,7 @@ fn build_split_lines<'a>(
     display_map: &[DisplayRowInfo],
     width: u16,
     wrap_enabled: bool,
+    theme: &Theme,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
     let mut left: Vec<Line> = Vec::new();
     let mut right: Vec<Line> = Vec::new();
@@ -231,8 +237,9 @@ fn build_split_lines<'a>(
             &hunk.header,
             hl,
             ann_marker,
+            theme,
         ));
-        right.push(make_hunk_header_line(gutter_width, &hunk.header, hl, false));
+        right.push(make_hunk_header_line(gutter_width, &hunk.header, hl, false, theme));
         display_row += 1;
 
         let (items, next_offset) = filter_hunk_lines(
@@ -250,11 +257,12 @@ fn build_split_lines<'a>(
                     hidden_count, ..
                 } => {
                     let hl = row_highlight(state, display_row);
-                    left.push(make_collapsed_indicator_line(gutter_width, *hidden_count, hl));
+                    left.push(make_collapsed_indicator_line(gutter_width, *hidden_count, hl, theme));
                     right.push(make_collapsed_indicator_line(
                         gutter_width,
                         *hidden_count,
                         hl,
+                        theme,
                     ));
                     display_row += 1;
                     i += 1;
@@ -277,6 +285,7 @@ fn build_split_lines<'a>(
                             None,
                             hl,
                             ann_marker,
+                            theme,
                         ));
                         right.push(make_highlighted_line(
                             &gutter_r,
@@ -285,6 +294,7 @@ fn build_split_lines<'a>(
                             None,
                             hl,
                             false,
+                            theme,
                         ));
                         display_row += 1;
                         i += 1;
@@ -350,12 +360,13 @@ fn build_split_lines<'a>(
                                     &gutter,
                                     &line.content,
                                     spans,
-                                    Some(Color::Rgb(40, 0, 0)),
+                                    Some(theme.diff_del_bg),
                                     hl,
                                     ann_marker,
+                                    theme,
                                 ));
                             } else {
-                                left.push(make_empty_line(gutter_width, hl));
+                                left.push(make_empty_line(gutter_width, hl, theme));
                             }
 
                             if j < adds.len() {
@@ -367,12 +378,13 @@ fn build_split_lines<'a>(
                                     &gutter,
                                     &line.content,
                                     spans,
-                                    Some(Color::Rgb(0, 30, 0)),
+                                    Some(theme.diff_add_bg),
                                     hl,
                                     false,
+                                    theme,
                                 ));
                             } else {
-                                right.push(make_empty_line(gutter_width, hl));
+                                right.push(make_empty_line(gutter_width, hl, theme));
                             }
 
                             display_row += 1;
@@ -386,14 +398,15 @@ fn build_split_lines<'a>(
 
                         let gutter = format_lineno(line.new_lineno, gutter_width);
                         let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                        left.push(make_empty_line(gutter_width, hl));
+                        left.push(make_empty_line(gutter_width, hl, theme));
                         right.push(make_highlighted_line(
                             &gutter,
                             &line.content,
                             spans,
-                            Some(Color::Rgb(0, 30, 0)),
+                            Some(theme.diff_add_bg),
                             hl,
                             ann_marker,
+                            theme,
                         ));
                         display_row += 1;
                         i += 1;
@@ -407,8 +420,8 @@ fn build_split_lines<'a>(
     let right_visible: Vec<Line> = right.into_iter().skip(scroll).take(height).collect();
 
     (
-        wrap_lines_for_display(left_visible, width, gutter_width + 1, wrap_enabled),
-        wrap_lines_for_display(right_visible, width, gutter_width + 1, wrap_enabled),
+        wrap_lines_for_display(left_visible, width, gutter_width + 1, wrap_enabled, theme),
+        wrap_lines_for_display(right_visible, width, gutter_width + 1, wrap_enabled, theme),
     )
 }
 
@@ -419,6 +432,7 @@ fn render_unified(
     state: &AppState,
     border_style: Style,
     view_label: &str,
+    theme: &Theme,
 ) {
     let title = format_title(delta, view_label);
 
@@ -428,7 +442,7 @@ fn render_unified(
             .borders(Borders::ALL)
             .border_style(border_style);
         let msg = Paragraph::new(" Binary file differs")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.text_muted))
             .block(block);
         frame.render_widget(msg, area);
         return;
@@ -468,6 +482,7 @@ fn render_unified(
             &hunk.header,
             hl,
             ann_marker,
+            theme,
         ));
         display_row += 1;
 
@@ -489,6 +504,7 @@ fn render_unified(
                         gutter_width,
                         *hidden_count,
                         hl,
+                        theme,
                     ));
                     display_row += 1;
                 }
@@ -516,6 +532,7 @@ fn render_unified(
                                 None,
                                 hl,
                                 ann_marker,
+                                theme,
                             ));
                         }
                         DiffLineOrigin::Addition => {
@@ -528,9 +545,10 @@ fn render_unified(
                                 "+",
                                 &line.content,
                                 spans,
-                                Some(Color::Rgb(0, 30, 0)),
+                                Some(theme.diff_add_bg),
                                 hl,
                                 ann_marker,
+                                theme,
                             ));
                         }
                         DiffLineOrigin::Deletion => {
@@ -543,9 +561,10 @@ fn render_unified(
                                 "-",
                                 &line.content,
                                 spans,
-                                Some(Color::Rgb(40, 0, 0)),
+                                Some(theme.diff_del_bg),
                                 hl,
                                 ann_marker,
+                                theme,
                             ));
                         }
                     }
@@ -567,6 +586,7 @@ fn render_unified(
         inner.width,
         unified_gutter_width,
         true,
+        theme,
     );
     let paragraph = Paragraph::new(wrapped);
     frame.render_widget(paragraph, inner);
@@ -596,17 +616,18 @@ fn make_hunk_header_line<'a>(
     header: &str,
     hl: RowHighlight,
     ann_marker: bool,
+    theme: &Theme,
 ) -> Line<'a> {
     let marker = if ann_marker { "\u{2502}" } else { " " };
     let gutter_text = format!("{:>gutter_width$}{marker}", "...");
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
     if let Some(bg) = hl.gutter_bg {
         gutter_style = gutter_style.bg(bg);
     }
-    let mut content_style = Style::default().fg(Color::DarkGray);
+    let mut content_style = Style::default().fg(theme.text_muted);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
@@ -622,10 +643,11 @@ fn make_hunk_header_line_unified<'a>(
     header: &str,
     hl: RowHighlight,
     ann_marker: bool,
+    theme: &Theme,
 ) -> Line<'a> {
     let marker = if ann_marker { "\u{2502}" } else { " " };
     let gutter_text = format!("{:>gutter_width$}{marker}", "...");
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
@@ -633,7 +655,7 @@ fn make_hunk_header_line_unified<'a>(
         gutter_style = gutter_style.bg(bg);
     }
     let mut content_style = Style::default()
-        .fg(Color::Magenta)
+        .fg(theme.diff_hunk_header_fg)
         .add_modifier(Modifier::BOLD);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
@@ -653,14 +675,15 @@ fn make_highlighted_line<'a>(
     diff_bg: Option<Color>,
     hl: RowHighlight,
     ann_marker: bool,
+    theme: &Theme,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
     let content_bg = hl.content_bg.or(diff_bg);
     let gutter_text = format_gutter_with_marker(gutter, ann_marker);
 
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if ann_marker {
-        gutter_style = gutter_style.fg(Color::Yellow);
+        gutter_style = gutter_style.fg(theme.cursor_line_fg);
     }
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
@@ -671,7 +694,7 @@ fn make_highlighted_line<'a>(
     let gutter_span = Span::styled(gutter_text, gutter_style);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, content_bg)
+        apply_highlights(trimmed, spans, content_bg, theme)
     } else {
         // Fallback: no highlighting
         let mut style = Style::default();
@@ -679,18 +702,18 @@ fn make_highlighted_line<'a>(
             style = style.bg(bg_color);
             if hl.content_bg.is_none() {
                 // Use diff-specific fg colors only when not selected
-                if bg_color == Color::Rgb(40, 0, 0) {
-                    style = style.fg(Color::Red);
-                } else if bg_color == Color::Rgb(0, 30, 0) {
-                    style = style.fg(Color::Green);
+                if bg_color == theme.diff_del_bg {
+                    style = style.fg(theme.diff_del_fg);
+                } else if bg_color == theme.diff_add_bg {
+                    style = style.fg(theme.diff_add_fg);
                 } else {
-                    style = style.fg(Color::White);
+                    style = style.fg(theme.text);
                 }
             } else {
-                style = style.fg(Color::White);
+                style = style.fg(theme.text);
             }
         } else {
-            style = style.fg(Color::White);
+            style = style.fg(theme.text);
         }
         vec![Span::styled(trimmed.to_string(), style)]
     };
@@ -705,9 +728,10 @@ fn apply_highlights<'a>(
     text: &str,
     hl_spans: &[HighlightSpan],
     bg: Option<Color>,
+    theme: &Theme,
 ) -> Vec<Span<'a>> {
     if hl_spans.is_empty() || text.is_empty() {
-        let mut style = Style::default().fg(Color::White);
+        let mut style = Style::default().fg(theme.text);
         if let Some(bg_color) = bg {
             style = style.bg(bg_color);
         }
@@ -724,7 +748,7 @@ fn apply_highlights<'a>(
 
         if start > pos {
             // Gap before this span — use default style
-            let mut style = Style::default().fg(Color::Rgb(171, 178, 191));
+            let mut style = Style::default().fg(theme.diff_context_fg);
             if let Some(bg_color) = bg {
                 style = style.bg(bg_color);
             }
@@ -744,7 +768,7 @@ fn apply_highlights<'a>(
 
     // Remaining text after last span
     if pos < text_len {
-        let mut style = Style::default().fg(Color::Rgb(171, 178, 191));
+        let mut style = Style::default().fg(theme.diff_context_fg);
         if let Some(bg_color) = bg {
             style = style.bg(bg_color);
         }
@@ -754,10 +778,10 @@ fn apply_highlights<'a>(
     result
 }
 
-fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight) -> Line<'a> {
+fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight, theme: &Theme) -> Line<'a> {
     let mut gutter_style = Style::default()
-        .fg(Color::DarkGray)
-        .bg(Color::Rgb(20, 20, 20));
+        .fg(theme.text_muted)
+        .bg(theme.collapsed_bg);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
@@ -765,8 +789,8 @@ fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight) -> Line<'a> {
         gutter_style = gutter_style.bg(bg);
     }
     let mut content_style = Style::default()
-        .fg(Color::DarkGray)
-        .bg(Color::Rgb(20, 20, 20));
+        .fg(theme.text_muted)
+        .bg(theme.collapsed_bg);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
@@ -786,14 +810,15 @@ fn make_unified_highlighted<'a>(
     diff_bg: Option<Color>,
     hl: RowHighlight,
     ann_marker: bool,
+    theme: &Theme,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
     let content_bg = hl.content_bg.or(diff_bg);
 
     let marker = if ann_marker { "\u{2502}" } else { " " };
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if ann_marker {
-        gutter_style = gutter_style.fg(Color::Yellow);
+        gutter_style = gutter_style.fg(theme.cursor_line_fg);
     }
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
@@ -805,13 +830,13 @@ fn make_unified_highlighted<'a>(
 
     let prefix_style = match prefix {
         "+" => Style::default()
-            .fg(Color::Green)
+            .fg(theme.diff_add_fg)
             .bg(content_bg.unwrap_or_default()),
         "-" => Style::default()
-            .fg(Color::Red)
+            .fg(theme.diff_del_fg)
             .bg(content_bg.unwrap_or_default()),
         _ => {
-            let mut s = Style::default().fg(Color::DarkGray);
+            let mut s = Style::default().fg(theme.text_muted);
             if let Some(bg_color) = content_bg {
                 s = s.bg(bg_color);
             }
@@ -821,9 +846,9 @@ fn make_unified_highlighted<'a>(
     let prefix_span = Span::styled(prefix.to_string(), prefix_style);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, content_bg)
+        apply_highlights(trimmed, spans, content_bg, theme)
     } else {
-        let mut style = Style::default().fg(Color::White);
+        let mut style = Style::default().fg(theme.text);
         if let Some(bg_color) = content_bg {
             style = style.bg(bg_color);
         }
@@ -840,16 +865,17 @@ fn make_collapsed_indicator_line<'a>(
     gutter_width: usize,
     hidden_count: usize,
     hl: RowHighlight,
+    theme: &Theme,
 ) -> Line<'a> {
     let gutter_text = format!("{:>gutter_width$} ", "\u{22ef}");
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
     if let Some(bg) = hl.gutter_bg {
         gutter_style = gutter_style.bg(bg);
     }
-    let mut content_style = Style::default().fg(Color::DarkGray);
+    let mut content_style = Style::default().fg(theme.text_muted);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
@@ -865,19 +891,20 @@ fn make_collapsed_indicator_line_unified<'a>(
     gutter_width: usize,
     hidden_count: usize,
     hl: RowHighlight,
+    theme: &Theme,
 ) -> Line<'a> {
     let gutter_text = format!(
         "{:>gutter_width$} {:>gutter_width$} ",
         "\u{22ef}", "\u{22ef}"
     );
-    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    let mut gutter_style = Style::default().fg(theme.text_muted);
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
     if let Some(bg) = hl.gutter_bg {
         gutter_style = gutter_style.bg(bg);
     }
-    let mut content_style = Style::default().fg(Color::DarkGray);
+    let mut content_style = Style::default().fg(theme.text_muted);
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
@@ -896,6 +923,7 @@ fn wrap_lines_for_display<'a>(
     width: u16,
     gutter_width: usize,
     wrap_enabled: bool,
+    theme: &Theme,
 ) -> Vec<Line<'a>> {
     if !wrap_enabled || width == 0 {
         return lines;
@@ -937,7 +965,7 @@ fn wrap_lines_for_display<'a>(
 
         // Build the continuation gutter
         let cont_gutter = format!("{}\u{21aa}", " ".repeat(gutter_width.saturating_sub(1)));
-        let cont_gutter_style = Style::default().fg(Color::DarkGray);
+        let cont_gutter_style = Style::default().fg(theme.text_muted);
 
         // Split chars into chunks of content_width
         let mut offset = 0;
