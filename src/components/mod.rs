@@ -8,6 +8,7 @@ pub mod context_bar;
 pub mod diff_view;
 pub mod navigator;
 pub mod prompt_preview;
+pub mod restore_confirm;
 pub mod settings_modal;
 pub mod target_dialog;
 pub mod text_input;

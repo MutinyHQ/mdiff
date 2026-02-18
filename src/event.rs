@@ -83,6 +83,7 @@ pub struct KeyContext {
     pub comment_editor_open: bool,
     pub agent_selector_open: bool,
     pub annotation_menu_open: bool,
+    pub restore_confirm_open: bool,
     pub settings_open: bool,
     pub visual_mode_active: bool,
     pub active_view: ActiveView,
@@ -96,6 +97,15 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('c') | KeyCode::Char('d') => return Some(Action::Quit),
             _ => {}
         }
+    }
+
+    // Priority 0.5: Restore confirm dialog
+    if ctx.restore_confirm_open {
+        return match key.code {
+            KeyCode::Enter | KeyCode::Char('y') => Some(Action::ConfirmRestore),
+            KeyCode::Esc | KeyCode::Char('n') => Some(Action::CancelRestore),
+            _ => None,
+        };
     }
 
     // Priority 1: Commit dialog mode

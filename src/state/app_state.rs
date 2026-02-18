@@ -77,6 +77,9 @@ pub struct AppState {
     pub agent_outputs: AgentOutputsState,
     pub agent_selector: AgentSelectorState,
 
+    // Restore confirm
+    pub restore_confirm_open: bool,
+
     // Theme
     pub theme: Theme,
 
@@ -112,6 +115,7 @@ impl AppState {
             editing_annotation: None,
             agent_outputs: AgentOutputsState::default(),
             agent_selector: AgentSelectorState::default(),
+            restore_confirm_open: false,
             theme,
             settings: SettingsState::default(),
         }

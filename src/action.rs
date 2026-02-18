@@ -45,6 +45,10 @@ pub enum Action {
     CommitBackspace,
     CommitNewline,
 
+    // Restore confirm
+    ConfirmRestore,
+    CancelRestore,
+
     // Target change
     OpenTargetDialog,
     ConfirmTarget,

@@ -3,6 +3,13 @@ use std::collections::HashMap;
 use crate::git::types::{DiffLine, DiffLineOrigin, FileDelta};
 use crate::state::DiffViewMode;
 
+/// Direction a collapsed indicator expands toward when activated.
+#[derive(Debug, Clone, Copy)]
+pub enum ExpandDirection {
+    Down, // ▼ — reveals lines below (after previous change)
+    Up,   // ▲ — reveals lines above (before next change)
+}
+
 /// A filtered item from a hunk: either a visible line or a collapsed indicator.
 pub enum FilteredItem<'a> {
     Line {
@@ -12,6 +19,7 @@ pub enum FilteredItem<'a> {
     CollapsedIndicator {
         hidden_count: usize,
         gap_id: usize,
+        direction: ExpandDirection,
     },
 }
 
@@ -101,12 +109,14 @@ pub fn filter_hunk_lines<'a>(
                 items.push(FilteredItem::CollapsedIndicator {
                     hidden_count: hidden,
                     gap_id: top_gap_id,
+                    direction: ExpandDirection::Down,
                 });
 
                 // Bottom indicator (expands upward)
                 items.push(FilteredItem::CollapsedIndicator {
                     hidden_count: hidden,
                     gap_id: bottom_gap_id,
+                    direction: ExpandDirection::Up,
                 });
 
                 // Lines before next change (bottom side)
@@ -150,9 +160,15 @@ pub fn filter_hunk_lines<'a>(
                 }
 
                 let hidden = total - total_show;
+                let direction = if !has_change_before {
+                    ExpandDirection::Up
+                } else {
+                    ExpandDirection::Down
+                };
                 items.push(FilteredItem::CollapsedIndicator {
                     hidden_count: hidden,
                     gap_id,
+                    direction,
                 });
 
                 let last_start = run_end - show_bottom;
@@ -193,6 +209,8 @@ pub struct DisplayRowInfo {
     pub gap_id: Option<usize>,
     /// Number of hidden lines (only meaningful for collapsed indicators).
     pub hidden_count: usize,
+    /// Expand direction for collapsed indicators.
+    pub expand_direction: Option<ExpandDirection>,
 }
 
 /// Build a display map for the split view.

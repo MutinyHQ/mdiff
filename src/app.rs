@@ -17,6 +17,7 @@ use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::DiffView;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
+use crate::components::restore_confirm::render_restore_confirm;
 use crate::components::settings_modal::render_settings_modal;
 use crate::components::target_dialog::render_target_dialog;
 use crate::components::worktree_browser::WorktreeBrowser;
@@ -191,6 +192,9 @@ impl App {
                 if self.state.agent_selector.open {
                     render_agent_selector(frame, &self.state.agent_selector);
                 }
+                if self.state.restore_confirm_open {
+                    render_restore_confirm(frame, &self.state);
+                }
                 if self.state.settings.open {
                     render_settings_modal(frame, &self.state);
                 }
@@ -220,6 +224,7 @@ impl App {
                     comment_editor_open: self.state.comment_editor_open,
                     agent_selector_open: self.state.agent_selector.open,
                     annotation_menu_open: self.state.annotation_menu_open,
+                    restore_confirm_open: self.state.restore_confirm_open,
                     settings_open: self.state.settings.open,
                     visual_mode_active: self.state.selection.active,
                     active_view: self.state.active_view,
@@ -692,6 +697,12 @@ impl App {
                 }
             }
             Action::RestoreFile => {
+                if self.selected_file_path().is_some() {
+                    self.state.restore_confirm_open = true;
+                }
+            }
+            Action::ConfirmRestore => {
+                self.state.restore_confirm_open = false;
                 if let Some(path) = self.selected_file_path() {
                     match self.git_cli.restore_file(&path) {
                         Ok(()) => {
@@ -703,6 +714,9 @@ impl App {
                         }
                     }
                 }
+            }
+            Action::CancelRestore => {
+                self.state.restore_confirm_open = false;
             }
             Action::OpenCommitDialog => {
                 self.state.commit_dialog_open = true;
