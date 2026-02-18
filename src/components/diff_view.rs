@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::display_map::{build_display_map, DisplayRowInfo};
+use crate::display_map::{build_display_map, filter_hunk_lines, DisplayRowInfo, FilteredItem};
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
@@ -175,7 +175,12 @@ fn render_split(
     let new_hl = &state.diff.new_highlights;
 
     // Build display map for selection/annotation checking
-    let display_map = build_display_map(delta, DiffViewMode::Split);
+    let display_map = build_display_map(
+        delta,
+        DiffViewMode::Split,
+        state.diff.display_context,
+        &state.diff.gap_expansions,
+    );
 
     let (left_lines, right_lines) = build_split_lines(
         delta,
@@ -185,6 +190,8 @@ fn render_split(
         new_hl,
         state,
         &display_map,
+        halves[0].width,
+        true,
     );
 
     let left_para = Paragraph::new(left_lines);
@@ -203,6 +210,8 @@ fn build_split_lines<'a>(
     new_hl: &[Vec<HighlightSpan>],
     state: &AppState,
     display_map: &[DisplayRowInfo],
+    width: u16,
+    wrap_enabled: bool,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
     let mut left: Vec<Line> = Vec::new();
     let mut right: Vec<Line> = Vec::new();
@@ -342,7 +351,10 @@ fn build_split_lines<'a>(
     let left_visible: Vec<Line> = left.into_iter().skip(scroll).take(height).collect();
     let right_visible: Vec<Line> = right.into_iter().skip(scroll).take(height).collect();
 
-    (left_visible, right_visible)
+    (
+        wrap_lines_for_display(left_visible, width, gutter_width + 1, wrap_enabled),
+        wrap_lines_for_display(right_visible, width, gutter_width + 1, wrap_enabled),
+    )
 }
 
 fn render_unified(
@@ -378,7 +390,12 @@ fn render_unified(
     let new_hl = &state.diff.new_highlights;
 
     // Build display map for selection/annotation checking
-    let display_map = build_display_map(delta, DiffViewMode::Unified);
+    let display_map = build_display_map(
+        delta,
+        DiffViewMode::Unified,
+        state.diff.display_context,
+        &state.diff.gap_expansions,
+    );
 
     let gutter_width = 5;
     let mut lines: Vec<Line> = Vec::new();
@@ -461,7 +478,15 @@ fn render_unified(
         .skip(state.diff.scroll_offset)
         .take(inner.height as usize)
         .collect();
-    let paragraph = Paragraph::new(visible);
+    // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
+    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
+    let wrapped = wrap_lines_for_display(
+        visible,
+        inner.width,
+        unified_gutter_width,
+        true,
+    );
+    let paragraph = Paragraph::new(wrapped);
     frame.render_widget(paragraph, inner);
 }
 
@@ -726,4 +751,105 @@ fn make_unified_highlighted<'a>(
     let mut all_spans = vec![gutter_span, prefix_span];
     all_spans.extend(content_spans);
     Line::from(all_spans)
+}
+
+/// Wrap lines that exceed the available width, producing continuation lines with a ↪ gutter.
+/// `gutter_width` is the total width of the gutter area (line numbers + marker).
+/// Content spans (all spans after the first gutter span) are split across visual lines.
+fn wrap_lines_for_display<'a>(
+    lines: Vec<Line<'a>>,
+    width: u16,
+    gutter_width: usize,
+    wrap_enabled: bool,
+) -> Vec<Line<'a>> {
+    if !wrap_enabled || width == 0 {
+        return lines;
+    }
+    let max_width = width as usize;
+    let content_width = max_width.saturating_sub(gutter_width);
+    if content_width == 0 {
+        return lines;
+    }
+
+    let mut result: Vec<Line<'a>> = Vec::new();
+
+    for line in lines {
+        let line_width: usize = line.spans.iter().map(|s| s.width()).sum();
+        if line_width <= max_width {
+            result.push(line);
+            continue;
+        }
+
+        // Separate gutter (first span) from content (remaining spans)
+        let mut spans_iter = line.spans.into_iter();
+        let gutter_span = match spans_iter.next() {
+            Some(s) => s,
+            None => {
+                result.push(Line::default());
+                continue;
+            }
+        };
+        let content_spans: Vec<Span<'a>> = spans_iter.collect();
+
+        // Flatten content spans into (char, Style) pairs for splitting
+        let mut chars: Vec<(char, Style)> = Vec::new();
+        for span in &content_spans {
+            let style = span.style;
+            for ch in span.content.chars() {
+                chars.push((ch, style));
+            }
+        }
+
+        // Build the continuation gutter
+        let cont_gutter = format!("{}\u{21aa}", " ".repeat(gutter_width.saturating_sub(1)));
+        let cont_gutter_style = Style::default().fg(Color::DarkGray);
+
+        // Split chars into chunks of content_width
+        let mut offset = 0;
+        let mut is_first = true;
+        while offset < chars.len() {
+            let end = (offset + content_width).min(chars.len());
+            let chunk = &chars[offset..end];
+
+            // Build spans from the chunk, coalescing adjacent chars with the same style
+            let mut chunk_spans: Vec<Span<'a>> = Vec::new();
+            let mut current_text = String::new();
+            let mut current_style = chunk[0].1;
+
+            for &(ch, style) in chunk {
+                if style == current_style {
+                    current_text.push(ch);
+                } else {
+                    if !current_text.is_empty() {
+                        chunk_spans.push(Span::styled(current_text, current_style));
+                        current_text = String::new();
+                    }
+                    current_style = style;
+                    current_text.push(ch);
+                }
+            }
+            if !current_text.is_empty() {
+                chunk_spans.push(Span::styled(current_text, current_style));
+            }
+
+            let mut line_spans = Vec::new();
+            if is_first {
+                line_spans.push(gutter_span.clone());
+                is_first = false;
+            } else {
+                line_spans.push(Span::styled(cont_gutter.clone(), cont_gutter_style));
+            }
+            line_spans.extend(chunk_spans);
+            result.push(Line::from(line_spans));
+
+            offset = end;
+        }
+
+        // Edge case: if content was empty but gutter was wide
+        if is_first {
+            result.push(Line::from(vec![gutter_span]));
+        }
+    }
+
+    result
 }

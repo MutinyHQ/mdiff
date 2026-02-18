@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::git::types::FileDelta;
 use crate::highlight::HighlightSpan;
 
@@ -38,6 +40,10 @@ pub struct DiffState {
     pub old_highlights: Vec<Vec<HighlightSpan>>,
     /// Per-line highlight spans for the new side, indexed by 1-based line number.
     pub new_highlights: Vec<Vec<HighlightSpan>>,
+    /// Number of context lines to show around each change (default 3).
+    pub display_context: usize,
+    /// Per-gap expansion state: gap_id -> extra lines revealed.
+    pub gap_expansions: HashMap<usize, usize>,
 }
 
 impl DiffState {
@@ -52,6 +58,8 @@ impl DiffState {
             loading: false,
             old_highlights: Vec::new(),
             new_highlights: Vec::new(),
+            display_context: 3,
+            gap_expansions: HashMap::new(),
         }
     }
 

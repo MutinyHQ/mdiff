@@ -379,7 +379,12 @@ impl App {
         let Some(delta) = self.state.diff.selected_delta() else {
             return Vec::new();
         };
-        build_display_map(delta, self.state.diff.options.view_mode)
+        build_display_map(
+            delta,
+            self.state.diff.options.view_mode,
+            self.state.diff.display_context,
+            &self.state.diff.gap_expansions,
+        )
     }
 
     /// Convert the current visual selection to a LineAnchor using the display map.
@@ -519,6 +524,7 @@ impl App {
                     !self.state.diff.options.ignore_whitespace;
                 self.request_diff();
             }
+
             Action::FocusNavigator => {
                 self.state.focus = FocusPanel::Navigator;
             }
@@ -1093,6 +1099,9 @@ impl App {
                         self.state.status_message = None;
                     }
                 }
+            }
+            Action::ExpandContext => {
+                // TODO: expand context around the current cursor position
             }
             Action::Resize => {}
         }

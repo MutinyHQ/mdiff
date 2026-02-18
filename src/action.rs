@@ -17,7 +17,8 @@ pub enum Action {
     ScrollPageDown,
     ToggleViewMode,
     ToggleWhitespace,
-    ToggleWrap,
+
+    ExpandContext,
 
     // Focus
     FocusNavigator,

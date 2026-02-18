@@ -219,6 +219,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     match key.code {
         KeyCode::Tab => return Some(Action::ToggleViewMode),
         KeyCode::Char('w') if !ctx.visual_mode_active => return Some(Action::ToggleWhitespace),
+
         KeyCode::Char('/') => return Some(Action::StartSearch),
         KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
         KeyCode::Char('u') if !ctx.visual_mode_active => return Some(Action::UnstageFile),
@@ -257,6 +258,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Left | KeyCode::Char('h') => Some(Action::FocusNavigator),
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
+            KeyCode::Char(' ') => Some(Action::ExpandContext),
             KeyCode::Char('v') => Some(Action::EnterVisualMode),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),

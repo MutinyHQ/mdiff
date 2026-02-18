@@ -53,6 +53,7 @@ impl Component for ActionHud {
                 ("/", "search"),
                 ("Tab", "view"),
                 ("w", "ws"),
+
                 ("s", "stage"),
                 ("u", "unstage"),
                 ("r", "restore"),
@@ -60,6 +61,7 @@ impl Component for ActionHud {
                 ("v", "visual"),
                 ("a", "annotate"),
                 ("y", "yank"),
+                ("Space", "expand"),
                 ("p", "preview"),
                 ("g", "refresh"),
                 ("t", "target"),
