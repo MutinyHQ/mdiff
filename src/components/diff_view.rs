@@ -218,6 +218,7 @@ fn build_split_lines<'a>(
     let mut display_row: usize = 0;
 
     let gutter_width = 5;
+    let mut gap_id_offset = 0;
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
@@ -234,116 +235,170 @@ fn build_split_lines<'a>(
         right.push(make_hunk_header_line(gutter_width, &hunk.header, hl, false));
         display_row += 1;
 
-        let mut i = 0;
-        let lines = &hunk.lines;
-        while i < lines.len() {
-            match lines[i].origin {
-                DiffLineOrigin::Context => {
-                    let line = &lines[i];
-                    let hl = row_highlight(state, display_row);
-                    let ann_marker = display_map
-                        .get(display_row)
-                        .is_some_and(|info| has_annotation(state, delta, info));
+        let (items, next_offset) = filter_hunk_lines(
+            &hunk.lines,
+            state.diff.display_context,
+            &state.diff.gap_expansions,
+            gap_id_offset,
+        );
+        gap_id_offset = next_offset;
 
-                    let gutter_l = format_lineno(line.old_lineno, gutter_width);
-                    let gutter_r = format_lineno(line.new_lineno, gutter_width);
-                    let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
-                    let new_spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                    left.push(make_highlighted_line(
-                        &gutter_l,
-                        &line.content,
-                        old_spans,
-                        None,
+        let mut i = 0;
+        while i < items.len() {
+            match &items[i] {
+                FilteredItem::CollapsedIndicator {
+                    hidden_count, ..
+                } => {
+                    let hl = row_highlight(state, display_row);
+                    left.push(make_collapsed_indicator_line(gutter_width, *hidden_count, hl));
+                    right.push(make_collapsed_indicator_line(
+                        gutter_width,
+                        *hidden_count,
                         hl,
-                        ann_marker,
-                    ));
-                    right.push(make_highlighted_line(
-                        &gutter_r,
-                        &line.content,
-                        new_spans,
-                        None,
-                        hl,
-                        false,
                     ));
                     display_row += 1;
                     i += 1;
                 }
-                DiffLineOrigin::Deletion => {
-                    let del_start = i;
-                    while i < lines.len() && lines[i].origin == DiffLineOrigin::Deletion {
-                        i += 1;
-                    }
-                    let add_start = i;
-                    while i < lines.len() && lines[i].origin == DiffLineOrigin::Addition {
-                        i += 1;
-                    }
-
-                    let dels = &lines[del_start..add_start];
-                    let adds = &lines[add_start..i];
-                    let max = dels.len().max(adds.len());
-
-                    for j in 0..max {
+                FilteredItem::Line { line, .. } => match line.origin {
+                    DiffLineOrigin::Context => {
                         let hl = row_highlight(state, display_row);
                         let ann_marker = display_map
                             .get(display_row)
                             .is_some_and(|info| has_annotation(state, delta, info));
 
-                        if j < dels.len() {
-                            let line = &dels[j];
-                            let gutter = format_lineno(line.old_lineno, gutter_width);
-                            let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
-                            left.push(make_highlighted_line(
-                                &gutter,
-                                &line.content,
-                                spans,
-                                Some(Color::Rgb(40, 0, 0)),
-                                hl,
-                                ann_marker,
-                            ));
-                        } else {
-                            left.push(make_empty_line(gutter_width, hl));
-                        }
-
-                        if j < adds.len() {
-                            let line = &adds[j];
-                            let gutter = format_lineno(line.new_lineno, gutter_width);
-                            let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                            right.push(make_highlighted_line(
-                                &gutter,
-                                &line.content,
-                                spans,
-                                Some(Color::Rgb(0, 30, 0)),
-                                hl,
-                                false,
-                            ));
-                        } else {
-                            right.push(make_empty_line(gutter_width, hl));
-                        }
-
+                        let gutter_l = format_lineno(line.old_lineno, gutter_width);
+                        let gutter_r = format_lineno(line.new_lineno, gutter_width);
+                        let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                        let new_spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                        left.push(make_highlighted_line(
+                            &gutter_l,
+                            &line.content,
+                            old_spans,
+                            None,
+                            hl,
+                            ann_marker,
+                        ));
+                        right.push(make_highlighted_line(
+                            &gutter_r,
+                            &line.content,
+                            new_spans,
+                            None,
+                            hl,
+                            false,
+                        ));
                         display_row += 1;
+                        i += 1;
                     }
-                }
-                DiffLineOrigin::Addition => {
-                    let line = &lines[i];
-                    let hl = row_highlight(state, display_row);
-                    let ann_marker = display_map
-                        .get(display_row)
-                        .is_some_and(|info| has_annotation(state, delta, info));
+                    DiffLineOrigin::Deletion => {
+                        // Collect consecutive deletions from filtered items
+                        let del_start = i;
+                        while i < items.len() {
+                            if let FilteredItem::Line { line: l, .. } = &items[i] {
+                                if l.origin == DiffLineOrigin::Deletion {
+                                    i += 1;
+                                    continue;
+                                }
+                            }
+                            break;
+                        }
+                        // Collect consecutive additions
+                        let add_start = i;
+                        while i < items.len() {
+                            if let FilteredItem::Line { line: l, .. } = &items[i] {
+                                if l.origin == DiffLineOrigin::Addition {
+                                    i += 1;
+                                    continue;
+                                }
+                            }
+                            break;
+                        }
 
-                    let gutter = format_lineno(line.new_lineno, gutter_width);
-                    let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                    left.push(make_empty_line(gutter_width, hl));
-                    right.push(make_highlighted_line(
-                        &gutter,
-                        &line.content,
-                        spans,
-                        Some(Color::Rgb(0, 30, 0)),
-                        hl,
-                        ann_marker,
-                    ));
-                    display_row += 1;
-                    i += 1;
-                }
+                        let dels: Vec<_> = items[del_start..add_start]
+                            .iter()
+                            .filter_map(|item| {
+                                if let FilteredItem::Line { line, .. } = item {
+                                    Some(*line)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        let adds: Vec<_> = items[add_start..i]
+                            .iter()
+                            .filter_map(|item| {
+                                if let FilteredItem::Line { line, .. } = item {
+                                    Some(*line)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        let max = dels.len().max(adds.len());
+
+                        for j in 0..max {
+                            let hl = row_highlight(state, display_row);
+                            let ann_marker = display_map
+                                .get(display_row)
+                                .is_some_and(|info| has_annotation(state, delta, info));
+
+                            if j < dels.len() {
+                                let line = dels[j];
+                                let gutter = format_lineno(line.old_lineno, gutter_width);
+                                let spans =
+                                    line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                                left.push(make_highlighted_line(
+                                    &gutter,
+                                    &line.content,
+                                    spans,
+                                    Some(Color::Rgb(40, 0, 0)),
+                                    hl,
+                                    ann_marker,
+                                ));
+                            } else {
+                                left.push(make_empty_line(gutter_width, hl));
+                            }
+
+                            if j < adds.len() {
+                                let line = adds[j];
+                                let gutter = format_lineno(line.new_lineno, gutter_width);
+                                let spans =
+                                    line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                                right.push(make_highlighted_line(
+                                    &gutter,
+                                    &line.content,
+                                    spans,
+                                    Some(Color::Rgb(0, 30, 0)),
+                                    hl,
+                                    false,
+                                ));
+                            } else {
+                                right.push(make_empty_line(gutter_width, hl));
+                            }
+
+                            display_row += 1;
+                        }
+                    }
+                    DiffLineOrigin::Addition => {
+                        let hl = row_highlight(state, display_row);
+                        let ann_marker = display_map
+                            .get(display_row)
+                            .is_some_and(|info| has_annotation(state, delta, info));
+
+                        let gutter = format_lineno(line.new_lineno, gutter_width);
+                        let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                        left.push(make_empty_line(gutter_width, hl));
+                        right.push(make_highlighted_line(
+                            &gutter,
+                            &line.content,
+                            spans,
+                            Some(Color::Rgb(0, 30, 0)),
+                            hl,
+                            ann_marker,
+                        ));
+                        display_row += 1;
+                        i += 1;
+                    }
+                },
             }
         }
     }
@@ -400,6 +455,7 @@ fn render_unified(
     let gutter_width = 5;
     let mut lines: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
+    let mut gap_id_offset = 0;
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
@@ -415,61 +471,87 @@ fn render_unified(
         ));
         display_row += 1;
 
-        for line in &hunk.lines {
-            let hl = row_highlight(state, display_row);
-            let ann_marker = display_map
-                .get(display_row)
-                .is_some_and(|info| has_annotation(state, delta, info));
+        let (items, next_offset) = filter_hunk_lines(
+            &hunk.lines,
+            state.diff.display_context,
+            &state.diff.gap_expansions,
+            gap_id_offset,
+        );
+        gap_id_offset = next_offset;
 
-            let (old_g, new_g) = (
-                format_lineno(line.old_lineno, gutter_width),
-                format_lineno(line.new_lineno, gutter_width),
-            );
+        for item in &items {
+            match item {
+                FilteredItem::CollapsedIndicator {
+                    hidden_count, ..
+                } => {
+                    let hl = row_highlight(state, display_row);
+                    lines.push(make_collapsed_indicator_line_unified(
+                        gutter_width,
+                        *hidden_count,
+                        hl,
+                    ));
+                    display_row += 1;
+                }
+                FilteredItem::Line { line, .. } => {
+                    let hl = row_highlight(state, display_row);
+                    let ann_marker = display_map
+                        .get(display_row)
+                        .is_some_and(|info| has_annotation(state, delta, info));
 
-            match line.origin {
-                DiffLineOrigin::Context => {
-                    let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                    lines.push(make_unified_highlighted(
-                        &old_g,
-                        &new_g,
-                        " ",
-                        &line.content,
-                        spans,
-                        None,
-                        hl,
-                        ann_marker,
-                    ));
-                }
-                DiffLineOrigin::Addition => {
-                    let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                    let blank = " ".repeat(gutter_width);
-                    lines.push(make_unified_highlighted(
-                        &blank,
-                        &new_g,
-                        "+",
-                        &line.content,
-                        spans,
-                        Some(Color::Rgb(0, 30, 0)),
-                        hl,
-                        ann_marker,
-                    ));
-                }
-                DiffLineOrigin::Deletion => {
-                    let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
-                    let blank = " ".repeat(gutter_width);
-                    lines.push(make_unified_highlighted(
-                        &old_g,
-                        &blank,
-                        "-",
-                        &line.content,
-                        spans,
-                        Some(Color::Rgb(40, 0, 0)),
-                        hl,
-                        ann_marker,
-                    ));
+                    let (old_g, new_g) = (
+                        format_lineno(line.old_lineno, gutter_width),
+                        format_lineno(line.new_lineno, gutter_width),
+                    );
+
+                    match line.origin {
+                        DiffLineOrigin::Context => {
+                            let spans =
+                                line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                            lines.push(make_unified_highlighted(
+                                &old_g,
+                                &new_g,
+                                " ",
+                                &line.content,
+                                spans,
+                                None,
+                                hl,
+                                ann_marker,
+                            ));
+                        }
+                        DiffLineOrigin::Addition => {
+                            let spans =
+                                line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                            let blank = " ".repeat(gutter_width);
+                            lines.push(make_unified_highlighted(
+                                &blank,
+                                &new_g,
+                                "+",
+                                &line.content,
+                                spans,
+                                Some(Color::Rgb(0, 30, 0)),
+                                hl,
+                                ann_marker,
+                            ));
+                        }
+                        DiffLineOrigin::Deletion => {
+                            let spans =
+                                line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                            let blank = " ".repeat(gutter_width);
+                            lines.push(make_unified_highlighted(
+                                &old_g,
+                                &blank,
+                                "-",
+                                &line.content,
+                                spans,
+                                Some(Color::Rgb(40, 0, 0)),
+                                hl,
+                                ann_marker,
+                            ));
+                        }
+                    }
+                    display_row += 1;
                 }
             }
-            display_row += 1;
         }
     }
 
@@ -751,6 +833,59 @@ fn make_unified_highlighted<'a>(
     let mut all_spans = vec![gutter_span, prefix_span];
     all_spans.extend(content_spans);
     Line::from(all_spans)
+}
+
+/// Build a collapsed indicator line for split view.
+fn make_collapsed_indicator_line<'a>(
+    gutter_width: usize,
+    hidden_count: usize,
+    hl: RowHighlight,
+) -> Line<'a> {
+    let gutter_text = format!("{:>gutter_width$} ", "\u{22ef}");
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default().fg(Color::DarkGray);
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    let label = format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    Line::from(vec![
+        Span::styled(gutter_text, gutter_style),
+        Span::styled(label, content_style),
+    ])
+}
+
+/// Build a collapsed indicator line for unified view.
+fn make_collapsed_indicator_line_unified<'a>(
+    gutter_width: usize,
+    hidden_count: usize,
+    hl: RowHighlight,
+) -> Line<'a> {
+    let gutter_text = format!(
+        "{:>gutter_width$} {:>gutter_width$} ",
+        "\u{22ef}", "\u{22ef}"
+    );
+    let mut gutter_style = Style::default().fg(Color::DarkGray);
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default().fg(Color::DarkGray);
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    let label = format!("\u{2500}\u{2500}\u{2500} {hidden_count} lines hidden \u{2500}\u{2500}\u{2500}");
+    Line::from(vec![
+        Span::styled(gutter_text, gutter_style),
+        Span::styled(label, content_style),
+    ])
 }
 
 /// Wrap lines that exceed the available width, producing continuation lines with a ↪ gutter.

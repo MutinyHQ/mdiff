@@ -17,6 +17,7 @@ impl DiffEngine {
         diff_opts.include_untracked(true);
         diff_opts.recurse_untracked_dirs(true);
         diff_opts.show_untracked_content(true);
+        diff_opts.context_lines(999_999);
 
         let diff = match target {
             ComparisonTarget::HeadVsWorkdir => {
