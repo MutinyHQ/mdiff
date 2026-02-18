@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::action::Action;
-use crate::agent_runner::{AgentEvent, AgentRunner};
 use crate::async_diff::{DiffRequest, DiffWorker};
 use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
@@ -30,10 +29,12 @@ use crate::git::commands::GitCli;
 use crate::git::types::{ComparisonTarget, DiffLineOrigin, FileDelta};
 use crate::git::worktree;
 use crate::highlight::HighlightEngine;
+use crate::pty_runner::{key_event_to_bytes, PtyEvent, PtyRunner};
 use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
 use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::review_state::compute_diff_hashes;
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, DiffOptions, DiffViewMode};
 use crate::template;
@@ -53,7 +54,7 @@ pub struct App {
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
     config: MdiffConfig,
-    agent_runner: Option<AgentRunner>,
+    pty_runner: Option<PtyRunner>,
 }
 
 impl App {
@@ -97,7 +98,7 @@ impl App {
             repo_path,
             nav_area: Cell::new(Rect::default()),
             config,
-            agent_runner: None,
+            pty_runner: None,
         }
     }
 
@@ -118,7 +119,7 @@ impl App {
 
         loop {
             self.poll_diff_results();
-            self.poll_agent_output();
+            self.poll_pty_output();
 
             // Update viewport height for cursor auto-scroll calculations
             let term_size = terminal.size()?;
@@ -228,6 +229,7 @@ impl App {
                     settings_open: self.state.settings.open,
                     visual_mode_active: self.state.selection.active,
                     active_view: self.state.active_view,
+                    pty_focus: self.state.pty_focus,
                 };
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
@@ -293,6 +295,8 @@ impl App {
             self.state.diff.loading = false;
             match result.deltas {
                 Ok(deltas) => {
+                    let new_hashes = compute_diff_hashes(&deltas);
+                    self.state.review.on_diff_refresh(new_hashes);
                     self.state.navigator.update_from_deltas(&deltas);
                     self.state.diff.deltas = deltas;
                     if !self.state.diff.deltas.is_empty() && self.state.diff.selected_file.is_none()
@@ -309,20 +313,23 @@ impl App {
         }
     }
 
-    fn poll_agent_output(&mut self) {
-        // Collect events first, then process them (avoids borrow conflicts)
-        let Some(runner) = self.agent_runner.as_mut() else {
+    fn poll_pty_output(&mut self) {
+        let Some(runner) = self.pty_runner.as_mut() else {
             return;
         };
+
+        // Collect PTY output events
         let mut events = Vec::new();
         while let Some(event) = runner.try_recv() {
             events.push(event);
         }
 
-        let mut done = false;
+        // Check if the child process has exited
+        let exit_code = runner.try_wait();
+
         for event in events {
             match event {
-                AgentEvent::OutputLine(run_id, line) => {
+                PtyEvent::Output(run_id, bytes) => {
                     if let Some(run) = self
                         .state
                         .agent_outputs
@@ -330,24 +337,16 @@ impl App {
                         .iter_mut()
                         .find(|r| r.id == run_id)
                     {
-                        run.output_lines.push(line);
+                        run.terminal.process(&bytes);
                     }
-                    // Auto-scroll detail if we're viewing this run
+                    // Auto-scroll to bottom when viewing the active run
                     let selected_id = self.state.agent_outputs.selected().map(|r| r.id);
                     if selected_id == Some(run_id) {
-                        if let Some(run) = self
-                            .state
-                            .agent_outputs
-                            .runs
-                            .iter()
-                            .find(|r| r.id == run_id)
-                        {
-                            self.state.agent_outputs.detail_scroll =
-                                run.output_lines.len().saturating_sub(1);
-                        }
+                        // Reset detail_scroll to 0 = "follow mode" (bottom)
+                        self.state.agent_outputs.detail_scroll = 0;
                     }
                 }
-                AgentEvent::Done(run_id, exit_code) => {
+                PtyEvent::Done(run_id, code) => {
                     if let Some(run) = self
                         .state
                         .agent_outputs
@@ -355,19 +354,37 @@ impl App {
                         .iter_mut()
                         .find(|r| r.id == run_id)
                     {
-                        run.status = if exit_code == 0 {
-                            AgentRunStatus::Success { exit_code }
+                        run.status = if code == 0 {
+                            AgentRunStatus::Success { exit_code: code }
                         } else {
-                            AgentRunStatus::Failed { exit_code }
+                            AgentRunStatus::Failed { exit_code: code }
                         };
                     }
-                    done = true;
+                    self.state.pty_focus = false;
+                    self.pty_runner = None;
+                    return;
                 }
             }
         }
 
-        if done {
-            self.agent_runner = None;
+        // Also check if child exited (may not have sent Done event via reader)
+        if let Some(code) = exit_code {
+            // Find the running agent run and mark it done
+            if let Some(run) = self
+                .state
+                .agent_outputs
+                .runs
+                .iter_mut()
+                .find(|r| matches!(r.status, AgentRunStatus::Running))
+            {
+                run.status = if code == 0 {
+                    AgentRunStatus::Success { exit_code: code }
+                } else {
+                    AgentRunStatus::Failed { exit_code: code }
+                };
+            }
+            self.state.pty_focus = false;
+            self.pty_runner = None;
         }
     }
 
@@ -528,6 +545,11 @@ impl App {
                 }
                 self.state.focus = FocusPanel::Navigator;
                 self.update_highlights();
+                // Auto-mark the file as reviewed
+                if let Some(delta) = self.state.diff.deltas.get(idx) {
+                    let path = delta.path.to_string_lossy().to_string();
+                    self.state.review.mark_reviewed(&path);
+                }
             }
             Action::ScrollUp => {
                 self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(1);
@@ -642,6 +664,7 @@ impl App {
                     self.state.diff.scroll_offset = 0;
                     self.state.navigator.entries.clear();
                     self.state.navigator.filtered_indices.clear();
+                    self.state.review.reset();
                     self.state.active_view = ActiveView::DiffExplorer;
                     self.request_diff();
                     self.set_status(format!("Switched to: {}", wt.name), false);
@@ -1046,6 +1069,10 @@ impl App {
                 if self.config.agents.is_empty() {
                     self.set_status("No agents configured".to_string(), true);
                 } else {
+                    self.state
+                        .agent_selector
+                        .last_models
+                        .clone_from(&self.config.agent_models);
                     self.state.agent_selector.populate(&self.config.agents);
                     self.state.agent_selector.rerun_prompt = None;
                     self.state.agent_selector.open = true;
@@ -1086,13 +1113,20 @@ impl App {
                         let command = build_agent_command(&agent.command, &model, &prompt);
                         let run_id = self.state.agent_outputs.next_id;
 
+                        // Use terminal size for PTY, with reasonable defaults
+                        let (term_cols, term_rows) =
+                            crossterm::terminal::size().unwrap_or((120, 40));
+                        // Use ~70% of width for the detail pane
+                        let pty_cols = (term_cols * 70 / 100).max(40);
+                        let pty_rows = term_rows.saturating_sub(4).max(10);
+
                         let run = AgentRun {
                             id: run_id,
                             agent_name: agent.name.clone(),
                             model: model.clone(),
                             command: command.clone(),
                             rendered_prompt: prompt,
-                            output_lines: Vec::new(),
+                            terminal: vt100::Parser::new(pty_rows, pty_cols, 10000),
                             status: AgentRunStatus::Running,
                             started_at: chrono::Utc::now().format("%H:%M").to_string(),
                             source_file: String::new(),
@@ -1100,7 +1134,8 @@ impl App {
                         };
 
                         self.state.agent_outputs.add_run(run);
-                        self.agent_runner = Some(AgentRunner::spawn(run_id, &command));
+                        self.pty_runner =
+                            Some(PtyRunner::spawn(run_id, &command, pty_rows, pty_cols));
                         self.state.agent_selector.open = false;
                         self.state.active_view = ActiveView::AgentOutputs;
 
@@ -1111,6 +1146,12 @@ impl App {
                             &self.state.target_label,
                             &self.state.annotations,
                         );
+
+                        // Persist last-used model for this agent
+                        self.config
+                            .agent_models
+                            .insert(agent.name.clone(), model.clone());
+                        config::save_agent_model(&agent.name, &model);
 
                         self.set_status(format!("Running {}/{}", agent.name, model), false);
                     } else {
@@ -1134,16 +1175,19 @@ impl App {
                 self.state.agent_outputs.select_down();
             }
             Action::AgentOutputsScrollUp => {
-                self.state.agent_outputs.detail_scroll =
-                    self.state.agent_outputs.detail_scroll.saturating_sub(1);
-            }
-            Action::AgentOutputsScrollDown => {
+                // detail_scroll is lines from bottom; increase to scroll up into history
                 if let Some(run) = self.state.agent_outputs.selected() {
-                    let max = run.output_lines.len().saturating_sub(1);
-                    if self.state.agent_outputs.detail_scroll < max {
+                    let scrollback = run.terminal.screen().scrollback();
+                    let max_scroll = scrollback + run.terminal.screen().size().0 as usize;
+                    if self.state.agent_outputs.detail_scroll < max_scroll {
                         self.state.agent_outputs.detail_scroll += 1;
                     }
                 }
+            }
+            Action::AgentOutputsScrollDown => {
+                // Decrease scroll offset (toward bottom/live output)
+                self.state.agent_outputs.detail_scroll =
+                    self.state.agent_outputs.detail_scroll.saturating_sub(1);
             }
             Action::AgentOutputsCopyPrompt => {
                 if let Some(run) = self.state.agent_outputs.selected() {
@@ -1157,9 +1201,69 @@ impl App {
                 }
             }
             Action::KillAgentProcess => {
-                if let Some(runner) = self.agent_runner.as_mut() {
+                if let Some(runner) = self.pty_runner.as_mut() {
                     runner.kill();
+                    self.state.pty_focus = false;
                     self.set_status("Agent process killed".to_string(), false);
+                }
+            }
+
+            // Review state
+            Action::ToggleFileReviewed => {
+                if let Some(delta_idx) = self.state.navigator.selected_delta_index() {
+                    if let Some(delta) = self.state.diff.deltas.get(delta_idx) {
+                        let path = delta.path.to_string_lossy().to_string();
+                        self.state.review.toggle_reviewed(&path);
+                    }
+                }
+            }
+            Action::NextUnreviewed => {
+                use crate::state::review_state::FileReviewStatus;
+                let visible = self.state.navigator.visible_entries();
+                if visible.is_empty() {
+                    return;
+                }
+                let current = self.state.navigator.selected;
+                let len = visible.len();
+                // Search from current+1, wrapping around
+                for offset in 1..=len {
+                    let idx = (current + offset) % len;
+                    let path = &visible[idx].1.path;
+                    let status = self.state.review.status(path);
+                    if matches!(
+                        status,
+                        FileReviewStatus::Unreviewed
+                            | FileReviewStatus::ChangedSinceReview
+                            | FileReviewStatus::New
+                    ) {
+                        self.state.navigator.selected = idx;
+                        self.sync_selection();
+                        return;
+                    }
+                }
+                self.set_status("All files reviewed".to_string(), false);
+            }
+
+            // PTY focus mode
+            Action::EnterPtyFocus => {
+                // Only enter focus if there's a running agent
+                if self.pty_runner.is_some() {
+                    if let Some(run) = self.state.agent_outputs.selected() {
+                        if matches!(run.status, AgentRunStatus::Running) {
+                            self.state.pty_focus = true;
+                        }
+                    }
+                }
+            }
+            Action::ExitPtyFocus => {
+                self.state.pty_focus = false;
+            }
+            Action::PtyInput(key) => {
+                if let Some(runner) = self.pty_runner.as_mut() {
+                    let bytes = key_event_to_bytes(&key);
+                    if !bytes.is_empty() {
+                        runner.write_input(&bytes);
+                    }
                 }
             }
 
@@ -1299,7 +1403,25 @@ impl App {
                 }
             }
 
-            Action::Resize => {}
+            Action::Resize => {
+                // Resize PTY and active terminal parser to match new terminal size
+                if let Some(runner) = self.pty_runner.as_ref() {
+                    let (term_cols, term_rows) = crossterm::terminal::size().unwrap_or((120, 40));
+                    let pty_cols = (term_cols * 70 / 100).max(40);
+                    let pty_rows = term_rows.saturating_sub(4).max(10);
+                    runner.resize(pty_rows, pty_cols);
+                    // Resize the terminal parser for the running agent
+                    if let Some(run) = self
+                        .state
+                        .agent_outputs
+                        .runs
+                        .iter_mut()
+                        .find(|r| matches!(r.status, AgentRunStatus::Running))
+                    {
+                        run.terminal.set_size(pty_rows, pty_cols);
+                    }
+                }
+            }
         }
     }
 
@@ -1392,7 +1514,7 @@ impl App {
         // Load annotations for the new target
         self.state.annotations = session::load_session(&self.repo_path, &label);
 
-        // Reset diff/navigator state
+        // Reset diff/navigator/review state
         self.state.diff.deltas.clear();
         self.state.diff.selected_file = None;
         self.state.diff.scroll_offset = 0;
@@ -1400,6 +1522,7 @@ impl App {
         self.state.navigator.entries.clear();
         self.state.navigator.filtered_indices.clear();
         self.state.selection.active = false;
+        self.state.review.reset();
 
         self.request_diff();
         self.set_status(format!("Target: {label}"), false);
@@ -1425,6 +1548,11 @@ impl App {
                 self.state.selection.active = false;
                 // Reset context expansions for the new file
                 self.state.diff.gap_expansions.clear();
+                // Auto-mark the file as reviewed
+                if let Some(delta) = self.state.diff.deltas.get(delta_idx) {
+                    let path = delta.path.to_string_lossy().to_string();
+                    self.state.review.mark_reviewed(&path);
+                }
             }
         }
     }

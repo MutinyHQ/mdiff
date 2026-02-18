@@ -1,3 +1,5 @@
+use crossterm::event::KeyEvent;
+
 /// Central action enum — all state mutations flow through here.
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -111,6 +113,15 @@ pub enum Action {
     AgentOutputsScrollDown,
     AgentOutputsCopyPrompt,
     KillAgentProcess,
+
+    // PTY focus mode
+    EnterPtyFocus,
+    ExitPtyFocus,
+    PtyInput(KeyEvent),
+
+    // Review state
+    ToggleFileReviewed,
+    NextUnreviewed,
 
     // Refresh
     RefreshDiff,

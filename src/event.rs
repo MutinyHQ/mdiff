@@ -87,6 +87,7 @@ pub struct KeyContext {
     pub settings_open: bool,
     pub visual_mode_active: bool,
     pub active_view: ActiveView,
+    pub pty_focus: bool,
 }
 
 /// Map a key event to an action based on current app context.
@@ -105,6 +106,14 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::ConfirmRestore),
             KeyCode::Esc | KeyCode::Char('n') => Some(Action::CancelRestore),
             _ => None,
+        };
+    }
+
+    // Priority 0.75: PTY focus mode - forward all keys except Esc to the PTY
+    if ctx.pty_focus {
+        return match key.code {
+            KeyCode::Esc => Some(Action::ExitPtyFocus),
+            _ => Some(Action::PtyInput(key)),
         };
     }
 
@@ -244,6 +253,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('K') => Some(Action::AgentOutputsScrollUp),
             KeyCode::Char('J') => Some(Action::AgentOutputsScrollDown),
             KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
+            KeyCode::Enter => Some(Action::EnterPtyFocus),
             KeyCode::Esc => Some(Action::SwitchToAgentOutputs), // toggle back
             _ => None,
         };
@@ -261,6 +271,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
         KeyCode::Char('R') => return Some(Action::RefreshDiff),
+        KeyCode::Char('n') if !ctx.visual_mode_active => return Some(Action::NextUnreviewed),
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         KeyCode::Char('?') => return Some(Action::ToggleHud),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
@@ -287,6 +298,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigatorDown),
             KeyCode::Char('g') => Some(Action::NavigatorTop),
             KeyCode::Char('G') => Some(Action::NavigatorBottom),
+            KeyCode::Char('m') => Some(Action::ToggleFileReviewed),
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => Some(Action::FocusDiffView),
             _ => None,
         },

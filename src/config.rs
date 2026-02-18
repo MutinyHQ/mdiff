@@ -28,6 +28,8 @@ pub struct MdiffConfig {
     pub unified: Option<bool>,
     pub ignore_whitespace: Option<bool>,
     pub context_lines: Option<usize>,
+    /// Last-used model per agent name (e.g. "claude" -> "claude-opus-4-6").
+    pub agent_models: HashMap<String, String>,
 }
 
 impl Default for MdiffConfig {
@@ -47,6 +49,7 @@ impl Default for MdiffConfig {
             unified: None,
             ignore_whitespace: None,
             context_lines: None,
+            agent_models: HashMap::new(),
         }
     }
 }
@@ -155,6 +158,8 @@ struct ConfigFile {
     ignore_whitespace: Option<bool>,
     #[serde(default)]
     context_lines: Option<usize>,
+    #[serde(default)]
+    agent_models: HashMap<String, String>,
 }
 
 fn default_context_padding() -> usize {
@@ -224,6 +229,7 @@ pub fn load_config() -> MdiffConfig {
         unified: file.unified,
         ignore_whitespace: file.ignore_whitespace,
         context_lines: file.context_lines,
+        agent_models: file.agent_models,
     }
 }
 
@@ -268,6 +274,37 @@ pub fn save_settings(settings: &PersistentSettings) {
     );
 
     // Ensure directory exists
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let toml_string = toml::to_string_pretty(&table).unwrap_or_default();
+    let _ = std::fs::write(&path, toml_string);
+}
+
+/// Save the last-used model for a specific agent to config.toml.
+pub fn save_agent_model(agent_name: &str, model: &str) {
+    let path = config_path();
+
+    let mut table = if let Ok(contents) = std::fs::read_to_string(&path) {
+        contents
+            .parse::<toml::Table>()
+            .unwrap_or_else(|_| toml::Table::new())
+    } else {
+        toml::Table::new()
+    };
+
+    let agent_models = table
+        .entry("agent_models")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+
+    if let toml::Value::Table(ref mut t) = agent_models {
+        t.insert(
+            agent_name.to_string(),
+            toml::Value::String(model.to_string()),
+        );
+    }
+
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }

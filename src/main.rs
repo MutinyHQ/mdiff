@@ -1,4 +1,5 @@
 mod action;
+#[allow(dead_code)]
 mod agent_runner;
 mod app;
 mod async_diff;
@@ -10,6 +11,7 @@ mod display_map;
 mod event;
 mod git;
 mod highlight;
+mod pty_runner;
 mod session;
 mod state;
 mod template;

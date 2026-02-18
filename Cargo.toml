@@ -67,3 +67,7 @@ arboard = "3"
 
 # Fuzzy search (for Phase 5)
 nucleo = "0.5"
+
+# PTY + terminal emulation
+portable-pty = "0.8"
+vt100 = "0.15"

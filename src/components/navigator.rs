@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::state::review_state::FileReviewStatus;
 use crate::state::{app_state::FocusPanel, AppState};
 
 use super::Component;
@@ -82,8 +83,19 @@ impl Component for Navigator {
                 };
 
                 let prefix = if is_selected { "\u{25b6}" } else { " " };
+
+                // Review status icon
+                let review_status = state.review.status(&entry.path);
+                let (review_icon, review_color) = match review_status {
+                    FileReviewStatus::Reviewed => ("\u{2713}", theme.success), // ✓
+                    FileReviewStatus::Unreviewed => ("\u{25cb}", theme.text_muted), // ○
+                    FileReviewStatus::ChangedSinceReview => ("\u{25cf}", theme.warning), // ●
+                    FileReviewStatus::New => ("\u{2605}", theme.accent),       // ★
+                };
+
                 Line::from(vec![
                     Span::styled(format!("{prefix} "), style),
+                    Span::styled(format!("{review_icon} "), Style::default().fg(review_color)),
                     Span::styled(entry.display.clone(), style),
                 ])
             })

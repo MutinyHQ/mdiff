@@ -2,7 +2,7 @@ use crate::theme::Theme;
 
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState, NavigatorState,
-    SelectionState, WorktreeState,
+    ReviewState, SelectionState, WorktreeState,
 };
 
 use super::settings_state::SettingsState;
@@ -77,6 +77,12 @@ pub struct AppState {
     pub agent_outputs: AgentOutputsState,
     pub agent_selector: AgentSelectorState,
 
+    // PTY focus mode
+    pub pty_focus: bool,
+
+    // Review state tracking
+    pub review: ReviewState,
+
     // Restore confirm
     pub restore_confirm_open: bool,
 
@@ -115,6 +121,8 @@ impl AppState {
             editing_annotation: None,
             agent_outputs: AgentOutputsState::default(),
             agent_selector: AgentSelectorState::default(),
+            pty_focus: false,
+            review: ReviewState::default(),
             restore_confirm_open: false,
             theme,
             settings: SettingsState::default(),

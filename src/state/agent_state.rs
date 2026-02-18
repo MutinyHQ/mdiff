@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::fmt;
+
 use crate::config::AgentProviderConfig;
 
 /// Status of an agent process run.
@@ -9,19 +12,31 @@ pub enum AgentRunStatus {
 }
 
 /// A single agent execution run.
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+/// Note: vt100::Parser is neither Clone nor Debug, so we implement Debug manually.
 pub struct AgentRun {
     pub id: usize,
     pub agent_name: String,
     pub model: String,
     pub command: String,
     pub rendered_prompt: String,
-    pub output_lines: Vec<String>,
+    pub terminal: vt100::Parser,
     pub status: AgentRunStatus,
     pub started_at: String,
     pub source_file: String,
     pub source_lines: (u32, u32),
+}
+
+impl fmt::Debug for AgentRun {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AgentRun")
+            .field("id", &self.id)
+            .field("agent_name", &self.agent_name)
+            .field("model", &self.model)
+            .field("command", &self.command)
+            .field("status", &self.status)
+            .field("started_at", &self.started_at)
+            .finish_non_exhaustive()
+    }
 }
 
 /// State for the agent outputs tab.
@@ -43,6 +58,10 @@ impl AgentOutputsState {
 
     pub fn selected(&self) -> Option<&AgentRun> {
         self.runs.get(self.selected_run)
+    }
+
+    pub fn selected_mut(&mut self) -> Option<&mut AgentRun> {
+        self.runs.get_mut(self.selected_run)
     }
 
     pub fn select_up(&mut self) {
@@ -68,6 +87,8 @@ pub struct AgentSelectorState {
     pub agents: Vec<AgentProviderConfig>,
     pub filtered_indices: Vec<usize>,
     pub rerun_prompt: Option<String>,
+    /// Last-used model per agent name, loaded from config.
+    pub last_models: HashMap<String, String>,
 }
 
 impl AgentSelectorState {
@@ -76,8 +97,8 @@ impl AgentSelectorState {
         self.agents = agents.to_vec();
         self.filter.clear();
         self.selected_agent = 0;
-        self.selected_model = 0;
         self.refilter();
+        self.restore_model_for_selected();
     }
 
     pub fn refilter(&mut self) {
@@ -136,12 +157,29 @@ impl AgentSelectorState {
 
     pub fn select_up(&mut self) {
         self.selected_agent = self.selected_agent.saturating_sub(1);
-        self.selected_model = 0;
+        self.restore_model_for_selected();
     }
 
     pub fn select_down(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.selected_agent = (self.selected_agent + 1).min(self.filtered_indices.len() - 1);
+            self.restore_model_for_selected();
+        }
+    }
+
+    /// Set `selected_model` to the last-used model index for the currently selected agent.
+    fn restore_model_for_selected(&mut self) {
+        let Some(agent) = self.selected_agent_config() else {
+            self.selected_model = 0;
+            return;
+        };
+        if let Some(last_model) = self.last_models.get(&agent.name) {
+            self.selected_model = agent
+                .models
+                .iter()
+                .position(|m| m == last_model)
+                .unwrap_or(0);
+        } else {
             self.selected_model = 0;
         }
     }
