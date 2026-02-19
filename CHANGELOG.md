@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/MutinyHQ/mdiff/compare/v0.1.8...v0.1.9) - 2026-02-19
+
+### Fixed
+
+- truncate file paths from the left in navigator on narrow screens
+- synchronize line wrapping in split diff view
+
 ## [0.1.8](https://github.com/MutinyHQ/mdiff/compare/v0.1.7...v0.1.8) - 2026-02-18
 
 ### Added
