@@ -469,9 +469,13 @@ fn build_split_lines<'a>(
     let left_visible: Vec<Line> = left.into_iter().skip(scroll).take(height).collect();
     let right_visible: Vec<Line> = right.into_iter().skip(scroll).take(height).collect();
 
-    (
-        wrap_lines_for_display(left_visible, width, gutter_width + 1, wrap_enabled, theme),
-        wrap_lines_for_display(right_visible, width, gutter_width + 1, wrap_enabled, theme),
+    wrap_split_lines_synchronized(
+        left_visible,
+        right_visible,
+        width,
+        gutter_width + 1,
+        wrap_enabled,
+        theme,
     )
 }
 
@@ -963,6 +967,46 @@ fn make_collapsed_indicator_line_unified<'a>(
         Span::styled(gutter_text, gutter_style),
         Span::styled(label, content_style),
     ])
+}
+
+/// Wrap left and right split-view lines in lockstep so each logical row occupies the same
+/// number of visual rows on both sides. Without this, independent wrapping desynchronises the
+/// two panels — a long line on one side pushes subsequent rows down, causing the cursor row
+/// to appear at different vertical positions (or be clipped on one side but visible on the other).
+fn wrap_split_lines_synchronized<'a>(
+    left_lines: Vec<Line<'a>>,
+    right_lines: Vec<Line<'a>>,
+    width: u16,
+    gutter_width: usize,
+    wrap_enabled: bool,
+    theme: &Theme,
+) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
+    if !wrap_enabled || width == 0 {
+        return (left_lines, right_lines);
+    }
+
+    let mut left_result: Vec<Line<'a>> = Vec::new();
+    let mut right_result: Vec<Line<'a>> = Vec::new();
+
+    for (left_line, right_line) in left_lines.into_iter().zip(right_lines.into_iter()) {
+        let left_wrapped =
+            wrap_lines_for_display(vec![left_line], width, gutter_width, wrap_enabled, theme);
+        let right_wrapped =
+            wrap_lines_for_display(vec![right_line], width, gutter_width, wrap_enabled, theme);
+
+        let max_height = left_wrapped.len().max(right_wrapped.len());
+
+        let left_pad = max_height - left_wrapped.len();
+        let right_pad = max_height - right_wrapped.len();
+
+        left_result.extend(left_wrapped);
+        left_result.extend(std::iter::repeat_with(Line::default).take(left_pad));
+
+        right_result.extend(right_wrapped);
+        right_result.extend(std::iter::repeat_with(Line::default).take(right_pad));
+    }
+
+    (left_result, right_result)
 }
 
 /// Wrap lines that exceed the available width, producing continuation lines with a ↪ gutter.
