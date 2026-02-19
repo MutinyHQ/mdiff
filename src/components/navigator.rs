@@ -52,6 +52,10 @@ impl Component for Navigator {
         }
 
         let inner_height = area.height.saturating_sub(2) as usize;
+        // Available width for the display text after prefix ("▶ ") and review icon ("✓ ")
+        let inner_width = area.width.saturating_sub(2) as usize; // block borders
+        let prefix_width = 5; // "▶ " (3) + "✓ " (2, icon is 1 char + space)
+        let max_display_width = inner_width.saturating_sub(prefix_width);
         let selected = state.navigator.selected;
 
         let scroll = if selected >= inner_height {
@@ -93,10 +97,20 @@ impl Component for Navigator {
                     FileReviewStatus::New => ("\u{2605}", theme.accent),       // ★
                 };
 
+                // Truncate from the left so the filename (rightmost segment) is visible
+                let char_count = entry.display.chars().count();
+                let display = if char_count > max_display_width && max_display_width > 1 {
+                    let skip = char_count - (max_display_width - 1);
+                    let truncated: String = entry.display.chars().skip(skip).collect();
+                    format!("\u{2026}{truncated}")
+                } else {
+                    entry.display.clone()
+                };
+
                 Line::from(vec![
                     Span::styled(format!("{prefix} "), style),
                     Span::styled(format!("{review_icon} "), Style::default().fg(review_color)),
-                    Span::styled(entry.display.clone(), style),
+                    Span::styled(display, style),
                 ])
             })
             .collect();
