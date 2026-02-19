@@ -32,6 +32,7 @@ pub struct DiffState {
     pub options: DiffOptions,
     pub deltas: Vec<FileDelta>,
     pub selected_file: Option<usize>,
+    /// Visual row offset from the top of the diff viewport.
     pub scroll_offset: usize,
     pub cursor_row: usize,
     pub viewport_height: usize,
@@ -44,6 +45,13 @@ pub struct DiffState {
     pub display_context: usize,
     /// Per-gap expansion state: gap_id -> extra lines revealed.
     pub gap_expansions: HashMap<usize, usize>,
+
+    /// Visual row offsets for each logical display row.
+    pub visual_row_offsets: Vec<usize>,
+    /// Visual row heights for each logical display row.
+    pub visual_row_heights: Vec<usize>,
+    /// Total visual rows after wrapping.
+    pub visual_total_rows: usize,
 
     // Diff text search
     pub search_active: bool,
@@ -68,6 +76,9 @@ impl DiffState {
             new_highlights: Vec::new(),
             display_context: 3,
             gap_expansions: HashMap::new(),
+            visual_row_offsets: Vec::new(),
+            visual_row_heights: Vec::new(),
+            visual_total_rows: 0,
             search_active: false,
             search_query: String::new(),
             search_matches: Vec::new(),

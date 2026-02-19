@@ -13,7 +13,9 @@ use crate::components::annotation_menu::render_annotation_menu;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
 use crate::components::context_bar::ContextBar;
-use crate::components::diff_view::DiffView;
+use crate::components::diff_view::{
+    compute_split_visual_row_metrics, compute_unified_visual_row_metrics, DiffView,
+};
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::restore_confirm::render_restore_confirm;
@@ -153,13 +155,17 @@ impl App {
                                 ])
                                 .split(main[1]);
 
-                            self.diff_viewport_height
-                                .set(vsplit[0].height.saturating_sub(2) as usize);
+                            let vh = vsplit[0].height.saturating_sub(2) as usize;
+                            self.diff_viewport_height.set(vh);
+                            self.state.diff.viewport_height = vh;
+                            self.update_diff_visual_metrics(vsplit[0]);
                             diff_view.render(frame, vsplit[0], &self.state);
                             render_prompt_preview(frame, vsplit[1], &self.state);
                         } else {
-                            self.diff_viewport_height
-                                .set(main[1].height.saturating_sub(2) as usize);
+                            let vh = main[1].height.saturating_sub(2) as usize;
+                            self.diff_viewport_height.set(vh);
+                            self.state.diff.viewport_height = vh;
+                            self.update_diff_visual_metrics(main[1]);
                             diff_view.render(frame, main[1], &self.state);
                         }
                     }
@@ -402,6 +408,95 @@ impl App {
         )
     }
 
+    fn update_diff_visual_metrics(&mut self, area: Rect) {
+        let Some(delta) = self.state.diff.selected_delta() else {
+            self.state.diff.visual_row_offsets.clear();
+            self.state.diff.visual_row_heights.clear();
+            self.state.diff.visual_total_rows = 0;
+            self.state.diff.scroll_offset = 0;
+            self.state.diff.cursor_row = 0;
+            return;
+        };
+
+        let inner = Rect {
+            x: area.x.saturating_add(1),
+            y: area.y.saturating_add(1),
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
+
+        let metrics = match self.state.diff.options.view_mode {
+            DiffViewMode::Split => {
+                let halves = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(inner);
+                compute_split_visual_row_metrics(
+                    delta,
+                    &self.state,
+                    halves[0].width,
+                    halves[1].width,
+                )
+            }
+            DiffViewMode::Unified => {
+                compute_unified_visual_row_metrics(delta, &self.state, inner.width)
+            }
+        };
+
+        self.state.diff.visual_row_offsets = metrics.row_offsets;
+        self.state.diff.visual_row_heights = metrics.row_heights;
+        self.state.diff.visual_total_rows = metrics.total_rows;
+        self.clamp_diff_view_state();
+    }
+
+    fn clamp_diff_view_state(&mut self) {
+        let total_rows = self.state.diff.visual_total_rows;
+        let max_row = self.current_display_map().len().saturating_sub(1);
+        if self.state.diff.cursor_row > max_row {
+            self.state.diff.cursor_row = max_row;
+        }
+        let vh = self.state.diff.viewport_height.max(1);
+        let max_scroll = total_rows.saturating_sub(vh);
+        if self.state.diff.scroll_offset > max_scroll {
+            self.state.diff.scroll_offset = max_scroll;
+        }
+        self.ensure_cursor_visible();
+    }
+
+    fn visual_offset_for_row(&self, row: usize) -> usize {
+        self.state
+            .diff
+            .visual_row_offsets
+            .get(row)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn row_for_visual_offset(&self, offset: usize) -> usize {
+        let offsets = &self.state.diff.visual_row_offsets;
+        if offsets.is_empty() {
+            return 0;
+        }
+        let idx = match offsets.binary_search(&offset) {
+            Ok(i) => i,
+            Err(i) => i.saturating_sub(1),
+        };
+        idx.min(offsets.len().saturating_sub(1))
+    }
+
+    fn ensure_cursor_visible(&mut self) {
+        if self.state.diff.visual_row_offsets.is_empty() {
+            return;
+        }
+        let vh = self.state.diff.viewport_height.max(1);
+        let cursor_visual = self.visual_offset_for_row(self.state.diff.cursor_row);
+        if cursor_visual < self.state.diff.scroll_offset {
+            self.state.diff.scroll_offset = cursor_visual;
+        } else if cursor_visual >= self.state.diff.scroll_offset + vh {
+            self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh - 1);
+        }
+    }
+
     /// Convert the current visual selection to a LineAnchor using the display map.
     fn selection_to_anchor(&self) -> Option<LineAnchor> {
         let delta = self.state.diff.selected_delta()?;
@@ -505,21 +600,14 @@ impl App {
             }
             Action::ScrollUp => {
                 self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(1);
-                // Auto-scroll if cursor goes above viewport
-                if self.state.diff.cursor_row < self.state.diff.scroll_offset {
-                    self.state.diff.scroll_offset = self.state.diff.cursor_row;
-                }
+                self.ensure_cursor_visible();
             }
             Action::ScrollDown => {
                 let max = self.current_display_map().len().saturating_sub(1);
                 if self.state.diff.cursor_row < max {
                     self.state.diff.cursor_row += 1;
                 }
-                // Auto-scroll if cursor goes below viewport
-                let vh = self.state.diff.viewport_height;
-                if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
-                    self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
-                }
+                self.ensure_cursor_visible();
                 self.check_auto_review();
             }
             Action::ScrollToTop => {
@@ -529,22 +617,26 @@ impl App {
             Action::ScrollToBottom => {
                 let max = self.current_display_map().len().saturating_sub(1);
                 self.state.diff.cursor_row = max;
-                let vh = self.state.diff.viewport_height;
-                self.state.diff.scroll_offset = max.saturating_sub(vh.saturating_sub(1));
+                let vh = self.state.diff.viewport_height.max(1);
+                self.state.diff.scroll_offset =
+                    self.state.diff.visual_total_rows.saturating_sub(vh);
+                self.ensure_cursor_visible();
                 self.check_auto_review();
             }
             Action::ScrollPageUp => {
-                let vh = self.state.diff.viewport_height;
-                self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(vh);
-                self.state.diff.scroll_offset = self.state.diff.scroll_offset.saturating_sub(vh);
+                let vh = self.state.diff.viewport_height.max(1);
+                let new_scroll = self.state.diff.scroll_offset.saturating_sub(vh);
+                self.state.diff.cursor_row = self.row_for_visual_offset(new_scroll);
+                self.state.diff.scroll_offset =
+                    self.visual_offset_for_row(self.state.diff.cursor_row);
             }
             Action::ScrollPageDown => {
-                let vh = self.state.diff.viewport_height;
-                let max = self.current_display_map().len().saturating_sub(1);
-                self.state.diff.cursor_row = (self.state.diff.cursor_row + vh).min(max);
-                if self.state.diff.cursor_row >= self.state.diff.scroll_offset + vh {
-                    self.state.diff.scroll_offset = self.state.diff.cursor_row - vh + 1;
-                }
+                let vh = self.state.diff.viewport_height.max(1);
+                let max_scroll = self.state.diff.visual_total_rows.saturating_sub(vh);
+                let new_scroll = (self.state.diff.scroll_offset + vh).min(max_scroll);
+                self.state.diff.cursor_row = self.row_for_visual_offset(new_scroll);
+                self.state.diff.scroll_offset =
+                    self.visual_offset_for_row(self.state.diff.cursor_row);
                 self.check_auto_review();
             }
             Action::ToggleViewMode => {
@@ -569,11 +661,11 @@ impl App {
             Action::FocusDiffView => {
                 self.state.focus = FocusPanel::DiffView;
                 // Ensure cursor is within visible viewport
-                let vh = self.state.diff.viewport_height;
+                let vh = self.state.diff.viewport_height.max(1);
                 let scroll = self.state.diff.scroll_offset;
-                if self.state.diff.cursor_row < scroll || self.state.diff.cursor_row >= scroll + vh
-                {
-                    self.state.diff.cursor_row = scroll;
+                let cursor_visual = self.visual_offset_for_row(self.state.diff.cursor_row);
+                if cursor_visual < scroll || cursor_visual >= scroll + vh {
+                    self.state.diff.cursor_row = self.row_for_visual_offset(scroll);
                 }
             }
             Action::StartSearch => {
@@ -628,11 +720,12 @@ impl App {
                     self.state.diff.search_match_index = Some(next);
                     let row = self.state.diff.search_matches[next];
                     self.state.diff.cursor_row = row;
-                    let vh = self.state.diff.viewport_height;
-                    if row < self.state.diff.scroll_offset
-                        || row >= self.state.diff.scroll_offset + vh
+                    let vh = self.state.diff.viewport_height.max(1);
+                    let cursor_visual = self.visual_offset_for_row(row);
+                    if cursor_visual < self.state.diff.scroll_offset
+                        || cursor_visual >= self.state.diff.scroll_offset + vh
                     {
-                        self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
+                        self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
                     }
                 }
             }
@@ -646,11 +739,12 @@ impl App {
                     self.state.diff.search_match_index = Some(prev);
                     let row = self.state.diff.search_matches[prev];
                     self.state.diff.cursor_row = row;
-                    let vh = self.state.diff.viewport_height;
-                    if row < self.state.diff.scroll_offset
-                        || row >= self.state.diff.scroll_offset + vh
+                    let vh = self.state.diff.viewport_height.max(1);
+                    let cursor_visual = self.visual_offset_for_row(row);
+                    if cursor_visual < self.state.diff.scroll_offset
+                        || cursor_visual >= self.state.diff.scroll_offset + vh
                     {
-                        self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
+                        self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
                     }
                 }
             }
@@ -842,9 +936,9 @@ impl App {
             }
             Action::ExtendSelectionUp => {
                 self.state.selection.cursor = self.state.selection.cursor.saturating_sub(1);
-                // Auto-scroll if cursor goes above viewport
-                if self.state.selection.cursor < self.state.diff.scroll_offset {
-                    self.state.diff.scroll_offset = self.state.selection.cursor;
+                let cursor_visual = self.visual_offset_for_row(self.state.selection.cursor);
+                if cursor_visual < self.state.diff.scroll_offset {
+                    self.state.diff.scroll_offset = cursor_visual;
                 }
             }
             Action::ExtendSelectionDown => {
@@ -853,10 +947,10 @@ impl App {
                 if self.state.selection.cursor < max {
                     self.state.selection.cursor += 1;
                 }
-                // Auto-scroll if cursor goes below viewport
-                let vh = self.state.diff.viewport_height;
-                if self.state.selection.cursor >= self.state.diff.scroll_offset + vh {
-                    self.state.diff.scroll_offset = self.state.selection.cursor - vh + 1;
+                let vh = self.state.diff.viewport_height.max(1);
+                let cursor_visual = self.visual_offset_for_row(self.state.selection.cursor);
+                if cursor_visual >= self.state.diff.scroll_offset + vh {
+                    self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh - 1);
                 }
             }
 
@@ -933,8 +1027,9 @@ impl App {
                     .unwrap_or_default();
                 // Use current scroll position to approximate current line
                 let display_map = self.current_display_map();
+                let current_row = self.row_for_visual_offset(self.state.diff.scroll_offset);
                 let current_lineno = display_map
-                    .get(self.state.diff.scroll_offset)
+                    .get(current_row)
                     .and_then(|info| info.new_lineno.or(info.old_lineno))
                     .unwrap_or(0);
 
@@ -955,8 +1050,9 @@ impl App {
                     .map(|d| d.path.to_string_lossy().to_string())
                     .unwrap_or_default();
                 let display_map = self.current_display_map();
+                let current_row = self.row_for_visual_offset(self.state.diff.scroll_offset);
                 let current_lineno = display_map
-                    .get(self.state.diff.scroll_offset)
+                    .get(current_row)
                     .and_then(|info| info.new_lineno.or(info.old_lineno))
                     .unwrap_or(0);
 
@@ -1690,9 +1786,12 @@ impl App {
             self.state.diff.search_match_index = Some(idx);
             let row = self.state.diff.search_matches[idx];
             self.state.diff.cursor_row = row;
-            let vh = self.state.diff.viewport_height;
-            if row < self.state.diff.scroll_offset || row >= self.state.diff.scroll_offset + vh {
-                self.state.diff.scroll_offset = row.saturating_sub(vh / 4);
+            let vh = self.state.diff.viewport_height.max(1);
+            let cursor_visual = self.visual_offset_for_row(row);
+            if cursor_visual < self.state.diff.scroll_offset
+                || cursor_visual >= self.state.diff.scroll_offset + vh
+            {
+                self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
             }
         }
     }
@@ -1704,7 +1803,8 @@ impl App {
             let matches =
                 info.new_lineno == Some(target_lineno) || info.old_lineno == Some(target_lineno);
             if matches {
-                self.state.diff.scroll_offset = row_idx;
+                self.state.diff.cursor_row = row_idx;
+                self.state.diff.scroll_offset = self.visual_offset_for_row(row_idx);
                 return;
             }
         }

@@ -123,6 +123,12 @@ struct RowHighlight {
     content_bg: Option<Color>,
 }
 
+pub(crate) struct VisualRowMetrics {
+    pub row_offsets: Vec<usize>,
+    pub row_heights: Vec<usize>,
+    pub total_rows: usize,
+}
+
 /// Check if a display row is a search match.
 fn is_search_match(state: &AppState, display_row: usize) -> bool {
     !state.diff.search_query.is_empty()
@@ -254,6 +260,88 @@ fn build_split_lines<'a>(
     display_map: &[DisplayRowInfo],
     width: u16,
     wrap_enabled: bool,
+    theme: &Theme,
+) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
+    let gutter_width = 5;
+    let (left_lines, right_lines) =
+        build_split_lines_core(delta, old_hl, new_hl, state, display_map, theme);
+
+    wrap_split_lines_synchronized_with_scroll(
+        left_lines,
+        right_lines,
+        width,
+        gutter_width + 1,
+        wrap_enabled,
+        scroll,
+        height,
+        theme,
+    )
+}
+
+fn render_unified(
+    frame: &mut Frame,
+    area: Rect,
+    delta: &FileDelta,
+    state: &AppState,
+    border_style: Style,
+    view_label: &str,
+    theme: &Theme,
+) {
+    let title = format_title(delta, view_label, state);
+
+    if delta.binary {
+        let block = Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(border_style);
+        let msg = Paragraph::new(" Binary file differs")
+            .style(Style::default().fg(theme.text_muted))
+            .block(block);
+        frame.render_widget(msg, area);
+        return;
+    }
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(border_style);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let old_hl = &state.diff.old_highlights;
+    let new_hl = &state.diff.new_highlights;
+
+    // Build display map for selection/annotation checking
+    let display_map = build_display_map(
+        delta,
+        DiffViewMode::Unified,
+        state.diff.display_context,
+        &state.diff.gap_expansions,
+    );
+
+    let gutter_width = 5;
+    // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
+    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
+    let lines = build_unified_lines_core(delta, old_hl, new_hl, state, &display_map, theme);
+    let wrapped = wrap_lines_for_display_with_scroll(
+        lines,
+        inner.width,
+        unified_gutter_width,
+        true,
+        state.diff.scroll_offset,
+        inner.height as usize,
+        theme,
+    );
+    let paragraph = Paragraph::new(wrapped);
+    frame.render_widget(paragraph, inner);
+}
+
+fn build_split_lines_core<'a>(
+    delta: &'a FileDelta,
+    old_hl: &[Vec<HighlightSpan>],
+    new_hl: &[Vec<HighlightSpan>],
+    state: &AppState,
+    display_map: &[DisplayRowInfo],
     theme: &Theme,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
     let mut left: Vec<Line> = Vec::new();
@@ -466,60 +554,17 @@ fn build_split_lines<'a>(
         }
     }
 
-    let left_visible: Vec<Line> = left.into_iter().skip(scroll).take(height).collect();
-    let right_visible: Vec<Line> = right.into_iter().skip(scroll).take(height).collect();
-
-    wrap_split_lines_synchronized(
-        left_visible,
-        right_visible,
-        width,
-        gutter_width + 1,
-        wrap_enabled,
-        theme,
-    )
+    (left, right)
 }
 
-fn render_unified(
-    frame: &mut Frame,
-    area: Rect,
-    delta: &FileDelta,
+fn build_unified_lines_core<'a>(
+    delta: &'a FileDelta,
+    old_hl: &[Vec<HighlightSpan>],
+    new_hl: &[Vec<HighlightSpan>],
     state: &AppState,
-    border_style: Style,
-    view_label: &str,
+    display_map: &[DisplayRowInfo],
     theme: &Theme,
-) {
-    let title = format_title(delta, view_label, state);
-
-    if delta.binary {
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(border_style);
-        let msg = Paragraph::new(" Binary file differs")
-            .style(Style::default().fg(theme.text_muted))
-            .block(block);
-        frame.render_widget(msg, area);
-        return;
-    }
-
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(border_style);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let old_hl = &state.diff.old_highlights;
-    let new_hl = &state.diff.new_highlights;
-
-    // Build display map for selection/annotation checking
-    let display_map = build_display_map(
-        delta,
-        DiffViewMode::Unified,
-        state.diff.display_context,
-        &state.diff.gap_expansions,
-    );
-
+) -> Vec<Line<'a>> {
     let gutter_width = 5;
     let mut lines: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
@@ -628,16 +673,7 @@ fn render_unified(
         }
     }
 
-    let visible: Vec<Line> = lines
-        .into_iter()
-        .skip(state.diff.scroll_offset)
-        .take(inner.height as usize)
-        .collect();
-    // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
-    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
-    let wrapped = wrap_lines_for_display(visible, inner.width, unified_gutter_width, true, theme);
-    let paragraph = Paragraph::new(wrapped);
-    frame.render_widget(paragraph, inner);
+    lines
 }
 
 // Helper functions
@@ -973,140 +1009,379 @@ fn make_collapsed_indicator_line_unified<'a>(
 /// number of visual rows on both sides. Without this, independent wrapping desynchronises the
 /// two panels — a long line on one side pushes subsequent rows down, causing the cursor row
 /// to appear at different vertical positions (or be clipped on one side but visible on the other).
-fn wrap_split_lines_synchronized<'a>(
+fn wrap_split_lines_synchronized_with_scroll<'a>(
     left_lines: Vec<Line<'a>>,
     right_lines: Vec<Line<'a>>,
     width: u16,
     gutter_width: usize,
     wrap_enabled: bool,
+    start_visual: usize,
+    height: usize,
     theme: &Theme,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
+    if height == 0 {
+        return (Vec::new(), Vec::new());
+    }
     if !wrap_enabled || width == 0 {
-        return (left_lines, right_lines);
+        let left_visible: Vec<Line> = left_lines
+            .into_iter()
+            .skip(start_visual)
+            .take(height)
+            .collect();
+        let right_visible: Vec<Line> = right_lines
+            .into_iter()
+            .skip(start_visual)
+            .take(height)
+            .collect();
+        return (left_visible, right_visible);
     }
 
+    let mut remaining_skip = start_visual;
+    let mut remaining_height = height;
     let mut left_result: Vec<Line<'a>> = Vec::new();
     let mut right_result: Vec<Line<'a>> = Vec::new();
 
     for (left_line, right_line) in left_lines.into_iter().zip(right_lines.into_iter()) {
         let left_wrapped =
-            wrap_lines_for_display(vec![left_line], width, gutter_width, wrap_enabled, theme);
+            wrap_single_line_for_display(left_line, width, gutter_width, wrap_enabled, theme);
         let right_wrapped =
-            wrap_lines_for_display(vec![right_line], width, gutter_width, wrap_enabled, theme);
+            wrap_single_line_for_display(right_line, width, gutter_width, wrap_enabled, theme);
 
         let max_height = left_wrapped.len().max(right_wrapped.len());
 
-        let left_pad = max_height - left_wrapped.len();
-        let right_pad = max_height - right_wrapped.len();
+        if remaining_skip >= max_height {
+            remaining_skip -= max_height;
+            continue;
+        }
 
-        left_result.extend(left_wrapped);
-        left_result.extend(std::iter::repeat_with(Line::default).take(left_pad));
+        let start = remaining_skip;
+        remaining_skip = 0;
 
-        right_result.extend(right_wrapped);
-        right_result.extend(std::iter::repeat_with(Line::default).take(right_pad));
+        for i in start..max_height {
+            if remaining_height == 0 {
+                return (left_result, right_result);
+            }
+
+            let left_line = left_wrapped.get(i).cloned().unwrap_or_else(Line::default);
+            let right_line = right_wrapped.get(i).cloned().unwrap_or_else(Line::default);
+
+            left_result.push(left_line);
+            right_result.push(right_line);
+            remaining_height -= 1;
+        }
+
+        if remaining_height == 0 {
+            return (left_result, right_result);
+        }
     }
 
     (left_result, right_result)
 }
 
-/// Wrap lines that exceed the available width, producing continuation lines with a ↪ gutter.
-/// `gutter_width` is the total width of the gutter area (line numbers + marker).
-/// Content spans (all spans after the first gutter span) are split across visual lines.
-fn wrap_lines_for_display<'a>(
+fn wrap_lines_for_display_with_scroll<'a>(
     lines: Vec<Line<'a>>,
+    width: u16,
+    gutter_width: usize,
+    wrap_enabled: bool,
+    start_visual: usize,
+    height: usize,
+    theme: &Theme,
+) -> Vec<Line<'a>> {
+    if height == 0 {
+        return Vec::new();
+    }
+
+    let mut remaining_skip = start_visual;
+    let mut remaining_height = height;
+    let mut result: Vec<Line<'a>> = Vec::new();
+
+    for line in lines {
+        let wrapped = wrap_single_line_for_display(line, width, gutter_width, wrap_enabled, theme);
+        if remaining_skip >= wrapped.len() {
+            remaining_skip -= wrapped.len();
+            continue;
+        }
+
+        let start = remaining_skip;
+        remaining_skip = 0;
+        for (idx, line) in wrapped.into_iter().enumerate() {
+            if idx < start {
+                continue;
+            }
+            if remaining_height == 0 {
+                return result;
+            }
+            result.push(line);
+            remaining_height -= 1;
+        }
+
+        if remaining_height == 0 {
+            return result;
+        }
+    }
+
+    result
+}
+
+fn wrap_single_line_for_display<'a>(
+    line: Line<'a>,
     width: u16,
     gutter_width: usize,
     wrap_enabled: bool,
     theme: &Theme,
 ) -> Vec<Line<'a>> {
     if !wrap_enabled || width == 0 {
-        return lines;
+        return vec![line];
     }
     let max_width = width as usize;
     let content_width = max_width.saturating_sub(gutter_width);
     if content_width == 0 {
-        return lines;
+        return vec![line];
     }
 
+    let line_width: usize = line.spans.iter().map(|s| s.width()).sum();
+    if line_width <= max_width {
+        return vec![line];
+    }
+
+    // Separate gutter (first span) from content (remaining spans)
+    let mut spans_iter = line.spans.into_iter();
+    let gutter_span = match spans_iter.next() {
+        Some(s) => s,
+        None => {
+            return vec![Line::default()];
+        }
+    };
+    let content_spans: Vec<Span<'a>> = spans_iter.collect();
+
+    // Flatten content spans into (char, Style) pairs for splitting
+    let mut chars: Vec<(char, Style)> = Vec::new();
+    for span in &content_spans {
+        let style = span.style;
+        for ch in span.content.chars() {
+            chars.push((ch, style));
+        }
+    }
+
+    // Build the continuation gutter
+    let cont_gutter = format!("{}\u{21aa}", " ".repeat(gutter_width.saturating_sub(1)));
+    let cont_gutter_style = gutter_span.style.fg(theme.text_muted);
+
+    // Split chars into chunks of content_width
     let mut result: Vec<Line<'a>> = Vec::new();
+    let mut offset = 0;
+    let mut is_first = true;
+    while offset < chars.len() {
+        let end = (offset + content_width).min(chars.len());
+        let chunk = &chars[offset..end];
 
-    for line in lines {
-        let line_width: usize = line.spans.iter().map(|s| s.width()).sum();
-        if line_width <= max_width {
-            result.push(line);
-            continue;
-        }
+        // Build spans from the chunk, coalescing adjacent chars with the same style
+        let mut chunk_spans: Vec<Span<'a>> = Vec::new();
+        let mut current_text = String::new();
+        let mut current_style = chunk[0].1;
 
-        // Separate gutter (first span) from content (remaining spans)
-        let mut spans_iter = line.spans.into_iter();
-        let gutter_span = match spans_iter.next() {
-            Some(s) => s,
-            None => {
-                result.push(Line::default());
-                continue;
-            }
-        };
-        let content_spans: Vec<Span<'a>> = spans_iter.collect();
-
-        // Flatten content spans into (char, Style) pairs for splitting
-        let mut chars: Vec<(char, Style)> = Vec::new();
-        for span in &content_spans {
-            let style = span.style;
-            for ch in span.content.chars() {
-                chars.push((ch, style));
-            }
-        }
-
-        // Build the continuation gutter
-        let cont_gutter = format!("{}\u{21aa}", " ".repeat(gutter_width.saturating_sub(1)));
-        let cont_gutter_style = Style::default().fg(theme.text_muted);
-
-        // Split chars into chunks of content_width
-        let mut offset = 0;
-        let mut is_first = true;
-        while offset < chars.len() {
-            let end = (offset + content_width).min(chars.len());
-            let chunk = &chars[offset..end];
-
-            // Build spans from the chunk, coalescing adjacent chars with the same style
-            let mut chunk_spans: Vec<Span<'a>> = Vec::new();
-            let mut current_text = String::new();
-            let mut current_style = chunk[0].1;
-
-            for &(ch, style) in chunk {
-                if style == current_style {
-                    current_text.push(ch);
-                } else {
-                    if !current_text.is_empty() {
-                        chunk_spans.push(Span::styled(current_text, current_style));
-                        current_text = String::new();
-                    }
-                    current_style = style;
-                    current_text.push(ch);
-                }
-            }
-            if !current_text.is_empty() {
-                chunk_spans.push(Span::styled(current_text, current_style));
-            }
-
-            let mut line_spans = Vec::new();
-            if is_first {
-                line_spans.push(gutter_span.clone());
-                is_first = false;
+        for &(ch, style) in chunk {
+            if style == current_style {
+                current_text.push(ch);
             } else {
-                line_spans.push(Span::styled(cont_gutter.clone(), cont_gutter_style));
+                if !current_text.is_empty() {
+                    chunk_spans.push(Span::styled(current_text, current_style));
+                    current_text = String::new();
+                }
+                current_style = style;
+                current_text.push(ch);
             }
-            line_spans.extend(chunk_spans);
-            result.push(Line::from(line_spans));
-
-            offset = end;
+        }
+        if !current_text.is_empty() {
+            chunk_spans.push(Span::styled(current_text, current_style));
         }
 
-        // Edge case: if content was empty but gutter was wide
+        let mut line_spans = Vec::new();
         if is_first {
-            result.push(Line::from(vec![gutter_span]));
+            line_spans.push(gutter_span.clone());
+            is_first = false;
+        } else {
+            line_spans.push(Span::styled(cont_gutter.clone(), cont_gutter_style));
         }
+        line_spans.extend(chunk_spans);
+        result.push(Line::from(line_spans));
+
+        offset = end;
+    }
+
+    // Edge case: if content was empty but gutter was wide
+    if is_first {
+        result.push(Line::from(vec![gutter_span]));
     }
 
     result
+}
+
+pub(crate) fn compute_split_visual_row_metrics(
+    delta: &FileDelta,
+    state: &AppState,
+    left_width: u16,
+    right_width: u16,
+) -> VisualRowMetrics {
+    let display_map = build_display_map(
+        delta,
+        DiffViewMode::Split,
+        state.diff.display_context,
+        &state.diff.gap_expansions,
+    );
+    let (left_lines, right_lines) = build_split_lines_core(
+        delta,
+        &state.diff.old_highlights,
+        &state.diff.new_highlights,
+        state,
+        &display_map,
+        &state.theme,
+    );
+    let gutter_width = 5;
+    let mut row_offsets = Vec::with_capacity(left_lines.len());
+    let mut row_heights = Vec::with_capacity(left_lines.len());
+    let mut total_rows = 0;
+
+    for (left, right) in left_lines.into_iter().zip(right_lines.into_iter()) {
+        let left_height =
+            wrap_single_line_for_display(left, left_width, gutter_width + 1, true, &state.theme)
+                .len();
+        let right_height =
+            wrap_single_line_for_display(right, right_width, gutter_width + 1, true, &state.theme)
+                .len();
+        let row_height = left_height.max(right_height).max(1);
+        row_offsets.push(total_rows);
+        row_heights.push(row_height);
+        total_rows += row_height;
+    }
+
+    VisualRowMetrics {
+        row_offsets,
+        row_heights,
+        total_rows,
+    }
+}
+
+pub(crate) fn compute_unified_visual_row_metrics(
+    delta: &FileDelta,
+    state: &AppState,
+    width: u16,
+) -> VisualRowMetrics {
+    let display_map = build_display_map(
+        delta,
+        DiffViewMode::Unified,
+        state.diff.display_context,
+        &state.diff.gap_expansions,
+    );
+    let lines = build_unified_lines_core(
+        delta,
+        &state.diff.old_highlights,
+        &state.diff.new_highlights,
+        state,
+        &display_map,
+        &state.theme,
+    );
+    let gutter_width = 5;
+    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
+    let mut row_offsets = Vec::with_capacity(lines.len());
+    let mut row_heights = Vec::with_capacity(lines.len());
+    let mut total_rows = 0;
+
+    for line in lines {
+        let row_height =
+            wrap_single_line_for_display(line, width, unified_gutter_width, true, &state.theme)
+                .len()
+                .max(1);
+        row_offsets.push(total_rows);
+        row_heights.push(row_height);
+        total_rows += row_height;
+    }
+
+    VisualRowMetrics {
+        row_offsets,
+        row_heights,
+        total_rows,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compute_split_visual_row_metrics, compute_unified_visual_row_metrics};
+    use crate::git::types::{DiffLine, DiffLineOrigin, FileDelta, FileStatus, Hunk};
+    use crate::state::{AppState, DiffOptions};
+    use crate::theme::Theme;
+    use std::path::PathBuf;
+
+    fn make_delta(lines: Vec<DiffLine>) -> FileDelta {
+        FileDelta {
+            path: PathBuf::from("src/lib.rs"),
+            old_path: None,
+            status: FileStatus::Modified,
+            hunks: vec![Hunk {
+                header: "@@ -1,1 +1,1 @@".to_string(),
+                lines,
+            }],
+            additions: 0,
+            deletions: 0,
+            binary: false,
+        }
+    }
+
+    #[test]
+    fn split_metrics_use_max_wrap_height() {
+        let mut state = AppState::new(DiffOptions::new(false, false), Theme::from_name("one-dark"));
+        state.diff.old_highlights = vec![Vec::new(); 2];
+        state.diff.new_highlights = vec![Vec::new(); 2];
+
+        let long_line = "x".repeat(200);
+        let delta = make_delta(vec![
+            DiffLine {
+                origin: DiffLineOrigin::Deletion,
+                old_lineno: Some(1),
+                new_lineno: None,
+                content: long_line.clone(),
+            },
+            DiffLine {
+                origin: DiffLineOrigin::Addition,
+                old_lineno: None,
+                new_lineno: Some(1),
+                content: "ok".to_string(),
+            },
+        ]);
+
+        let metrics = compute_split_visual_row_metrics(&delta, &state, 12, 12);
+
+        assert_eq!(metrics.row_offsets.len(), 2);
+        assert_eq!(metrics.row_heights.len(), 2);
+        assert!(metrics.row_heights[1] > 1, "paired row should wrap");
+        assert_eq!(
+            metrics.total_rows,
+            metrics.row_heights.iter().sum::<usize>()
+        );
+    }
+
+    #[test]
+    fn unified_metrics_account_for_wrapping() {
+        let mut state = AppState::new(DiffOptions::new(false, true), Theme::from_name("one-dark"));
+        state.diff.old_highlights = vec![Vec::new(); 2];
+        state.diff.new_highlights = vec![Vec::new(); 2];
+
+        let long_line = "x".repeat(200);
+        let delta = make_delta(vec![DiffLine {
+            origin: DiffLineOrigin::Context,
+            old_lineno: Some(1),
+            new_lineno: Some(1),
+            content: long_line,
+        }]);
+
+        let metrics = compute_unified_visual_row_metrics(&delta, &state, 16);
+
+        assert_eq!(metrics.row_offsets.len(), 2);
+        assert_eq!(metrics.row_heights.len(), 2);
+        assert!(metrics.row_heights[1] > 1, "content row should wrap");
+        assert_eq!(
+            metrics.total_rows,
+            metrics.row_heights.iter().sum::<usize>()
+        );
+    }
 }
