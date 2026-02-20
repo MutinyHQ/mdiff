@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/MutinyHQ/mdiff/compare/v0.1.9...v0.1.10) - 2026-02-20
+
+### Added
+
+- 3-column split layout with shared center gutter
+- side-aware annotation anchors and shell text navigation
+
+### Fixed
+
+- suppress clippy too_many_arguments warning
+- align diff scrolling with visual rows
+
+### Other
+
+- extract WrapConfig struct from wrap function args
+
 ## [0.1.9](https://github.com/MutinyHQ/mdiff/compare/v0.1.8...v0.1.9) - 2026-02-19
 
 ### Fixed
