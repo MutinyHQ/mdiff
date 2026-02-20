@@ -1,5 +1,7 @@
 use crate::git::types::FileDelta;
 
+use super::TextBuffer;
+
 #[derive(Debug)]
 pub struct NavigatorEntry {
     pub display: String,
@@ -13,7 +15,7 @@ pub struct NavigatorState {
     pub entries: Vec<NavigatorEntry>,
     pub filtered_indices: Vec<usize>,
     pub search_active: bool,
-    pub search_query: String,
+    pub search_query: TextBuffer,
     /// Saved selection index before search started (for cancel/restore).
     pre_search_selected: Option<usize>,
 }
@@ -25,7 +27,7 @@ impl NavigatorState {
             entries: Vec::new(),
             filtered_indices: Vec::new(),
             search_active: false,
-            search_query: String::new(),
+            search_query: TextBuffer::new(),
             pre_search_selected: None,
         }
     }
@@ -58,7 +60,7 @@ impl NavigatorState {
         if self.search_query.is_empty() {
             self.filtered_indices = (0..self.entries.len()).collect();
         } else {
-            let query_lower = self.search_query.to_lowercase();
+            let query_lower = self.search_query.text().to_lowercase();
             self.filtered_indices = self
                 .entries
                 .iter()
@@ -139,13 +141,13 @@ impl NavigatorState {
     }
 
     pub fn search_push(&mut self, c: char) {
-        self.search_query.push(c);
+        self.search_query.insert_char(c);
         self.selected = 0;
         self.refilter();
     }
 
     pub fn search_pop(&mut self) {
-        self.search_query.pop();
+        self.search_query.delete_back();
         self.selected = 0;
         self.refilter();
     }

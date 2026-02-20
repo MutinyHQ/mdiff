@@ -28,7 +28,11 @@ impl Component for Navigator {
         let total = visible.len();
 
         let title = if state.navigator.search_active {
-            format!(" /{} ", state.navigator.search_query)
+            let q = state.navigator.search_query.text();
+            let ci = state.navigator.search_query.cursor_char_index();
+            let before: String = q.chars().take(ci).collect();
+            let after: String = q.chars().skip(ci).collect();
+            format!(" /{}\u{2588}{} ", before, after)
         } else {
             format!(" Files ({total}) ")
         };

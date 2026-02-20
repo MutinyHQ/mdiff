@@ -14,11 +14,23 @@ struct SessionFile {
     annotations: Vec<AnnotationEntry>,
 }
 
+/// V2 annotation entry with separate old/new ranges.
 #[derive(Serialize, Deserialize)]
 struct AnnotationEntry {
     file_path: String,
-    line_start: u32,
-    line_end: u32,
+    #[serde(default)]
+    old_start: Option<u32>,
+    #[serde(default)]
+    old_end: Option<u32>,
+    #[serde(default)]
+    new_start: Option<u32>,
+    #[serde(default)]
+    new_end: Option<u32>,
+    // V1 compat fields (only present in v1 files)
+    #[serde(default)]
+    line_start: Option<u32>,
+    #[serde(default)]
+    line_end: Option<u32>,
     comment: String,
     created_at: String,
 }
@@ -56,6 +68,7 @@ fn ensure_gitignore(repo_path: &Path) {
 }
 
 /// Load annotations from the session file, if it exists and matches the target.
+/// Accepts both v1 (line_start/line_end) and v2 (old/new ranges) formats.
 pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
     let path = session_file(repo_path, target_label);
     let mut state = AnnotationState::default();
@@ -68,16 +81,28 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
         return state;
     };
 
-    if session.version != 1 || session.target_label != target_label {
+    if !(session.version == 1 || session.version == 2) || session.target_label != target_label {
         return state;
     }
 
     for entry in session.annotations {
+        let (old_range, new_range) = if session.version == 1 {
+            // Migrate v1: line_start/line_end → new_range (best guess)
+            let ls = entry.line_start.unwrap_or(1);
+            let le = entry.line_end.unwrap_or(ls);
+            (None, Some((ls, le)))
+        } else {
+            // V2: use explicit old/new ranges
+            let old_range = entry.old_start.zip(entry.old_end);
+            let new_range = entry.new_start.zip(entry.new_end);
+            (old_range, new_range)
+        };
+
         state.add(Annotation {
             anchor: crate::state::annotation_state::LineAnchor {
                 file_path: entry.file_path,
-                line_start: entry.line_start,
-                line_end: entry.line_end,
+                old_range,
+                new_range,
             },
             comment: entry.comment,
             created_at: entry.created_at,
@@ -87,7 +112,7 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
     state
 }
 
-/// Save annotations to the session file.
+/// Save annotations to the session file (always v2 format).
 pub fn save_session(repo_path: &Path, target_label: &str, annotations: &AnnotationState) {
     let dir = session_dir(repo_path);
     if fs::create_dir_all(&dir).is_err() {
@@ -101,15 +126,19 @@ pub fn save_session(repo_path: &Path, target_label: &str, annotations: &Annotati
         .into_iter()
         .map(|a| AnnotationEntry {
             file_path: a.anchor.file_path.clone(),
-            line_start: a.anchor.line_start,
-            line_end: a.anchor.line_end,
+            old_start: a.anchor.old_range.map(|(s, _)| s),
+            old_end: a.anchor.old_range.map(|(_, e)| e),
+            new_start: a.anchor.new_range.map(|(s, _)| s),
+            new_end: a.anchor.new_range.map(|(_, e)| e),
+            line_start: None,
+            line_end: None,
             comment: a.comment.clone(),
             created_at: a.created_at.clone(),
         })
         .collect();
 
     let session = SessionFile {
-        version: 1,
+        version: 2,
         target_label: target_label.to_string(),
         annotations: entries,
     };

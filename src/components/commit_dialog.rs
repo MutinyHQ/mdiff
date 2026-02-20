@@ -43,7 +43,8 @@ pub fn render_commit_dialog(frame: &mut Frame, state: &AppState) {
     render_text_input(
         frame,
         rows[0],
-        &state.commit_message,
+        state.commit_message.text(),
+        state.commit_message.cursor_char_index(),
         Style::default().fg(theme.text),
     );
 

@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use crate::git::types::FileDelta;
 use crate::highlight::HighlightSpan;
 
+use super::TextBuffer;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiffViewMode {
     Split,
@@ -55,7 +57,7 @@ pub struct DiffState {
 
     // Diff text search
     pub search_active: bool,
-    pub search_query: String,
+    pub search_query: TextBuffer,
     /// Display row indices that match the search query.
     pub search_matches: Vec<usize>,
     /// Current position within `search_matches`.
@@ -80,7 +82,7 @@ impl DiffState {
             visual_row_heights: Vec::new(),
             visual_total_rows: 0,
             search_active: false,
-            search_query: String::new(),
+            search_query: TextBuffer::new(),
             search_matches: Vec::new(),
             search_match_index: None,
         }

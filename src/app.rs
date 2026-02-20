@@ -498,28 +498,40 @@ impl App {
     }
 
     /// Convert the current visual selection to a LineAnchor using the display map.
+    /// Collects old and new line numbers separately to preserve side information.
     fn selection_to_anchor(&self) -> Option<LineAnchor> {
         let delta = self.state.diff.selected_delta()?;
         let display_map = self.current_display_map();
         let (start, end) = self.state.selection.range();
 
         let file_path = delta.path.to_string_lossy().to_string();
-        let mut min_line: Option<u32> = None;
-        let mut max_line: Option<u32> = None;
+        let mut old_min: Option<u32> = None;
+        let mut old_max: Option<u32> = None;
+        let mut new_min: Option<u32> = None;
+        let mut new_max: Option<u32> = None;
 
         for row_idx in start..=end {
             if let Some(info) = display_map.get(row_idx) {
-                for lineno in [info.old_lineno, info.new_lineno].iter().flatten() {
-                    min_line = Some(min_line.map_or(*lineno, |m: u32| m.min(*lineno)));
-                    max_line = Some(max_line.map_or(*lineno, |m: u32| m.max(*lineno)));
+                if let Some(n) = info.old_lineno {
+                    old_min = Some(old_min.map_or(n, |m: u32| m.min(n)));
+                    old_max = Some(old_max.map_or(n, |m: u32| m.max(n)));
+                }
+                if let Some(n) = info.new_lineno {
+                    new_min = Some(new_min.map_or(n, |m: u32| m.min(n)));
+                    new_max = Some(new_max.map_or(n, |m: u32| m.max(n)));
                 }
             }
         }
 
+        // Need at least one side to have line numbers
+        if old_min.is_none() && new_min.is_none() {
+            return None;
+        }
+
         Some(LineAnchor {
             file_path,
-            line_start: min_line.unwrap_or(1),
-            line_end: max_line.unwrap_or(1),
+            old_range: old_min.zip(old_max),
+            new_range: new_min.zip(new_max),
         })
     }
 
@@ -530,11 +542,14 @@ impl App {
         let info = display_map.get(self.state.diff.cursor_row)?;
 
         let file_path = delta.path.to_string_lossy().to_string();
-        let lineno = info.new_lineno.or(info.old_lineno)?;
+        // Need at least one side
+        if info.old_lineno.is_none() && info.new_lineno.is_none() {
+            return None;
+        }
         Some(LineAnchor {
             file_path,
-            line_start: lineno,
-            line_end: lineno,
+            old_range: info.old_lineno.map(|n| (n, n)),
+            new_range: info.new_lineno.map(|n| (n, n)),
         })
     }
 
@@ -702,11 +717,11 @@ impl App {
                 // Keep query and matches so n/N can navigate
             }
             Action::DiffSearchChar(c) => {
-                self.state.diff.search_query.push(c);
+                self.state.diff.search_query.insert_char(c);
                 self.recompute_diff_search_matches();
             }
             Action::DiffSearchBackspace => {
-                self.state.diff.search_query.pop();
+                self.state.diff.search_query.delete_back();
                 self.recompute_diff_search_matches();
             }
             Action::DiffSearchNext => {
@@ -861,10 +876,10 @@ impl App {
                 self.state.commit_message.clear();
             }
             Action::ConfirmCommit => {
-                if self.state.commit_message.trim().is_empty() {
+                if self.state.commit_message.text().trim().is_empty() {
                     self.set_status("Commit message cannot be empty".to_string(), true);
                 } else {
-                    let msg = self.state.commit_message.clone();
+                    let msg = self.state.commit_message.text().to_string();
                     match self.git_cli.commit(&msg) {
                         Ok(()) => {
                             self.set_status("Committed successfully".to_string(), false);
@@ -879,13 +894,13 @@ impl App {
                 }
             }
             Action::CommitChar(c) => {
-                self.state.commit_message.push(c);
+                self.state.commit_message.insert_char(c);
             }
             Action::CommitBackspace => {
-                self.state.commit_message.pop();
+                self.state.commit_message.delete_back();
             }
             Action::CommitNewline => {
-                self.state.commit_message.push('\n');
+                self.state.commit_message.insert_char('\n');
             }
 
             // Target dialog
@@ -898,13 +913,13 @@ impl App {
                 self.state.target_dialog_input.clear();
             }
             Action::TargetChar(c) => {
-                self.state.target_dialog_input.push(c);
+                self.state.target_dialog_input.insert_char(c);
             }
             Action::TargetBackspace => {
-                self.state.target_dialog_input.pop();
+                self.state.target_dialog_input.delete_back();
             }
             Action::ConfirmTarget => {
-                let input = self.state.target_dialog_input.trim().to_string();
+                let input = self.state.target_dialog_input.text().trim().to_string();
                 if input.is_empty() {
                     // Reset to HEAD vs workdir
                     self.state.target_dialog_open = false;
@@ -971,15 +986,16 @@ impl App {
                 self.state.editing_annotation = None;
             }
             Action::ConfirmComment => {
-                if !self.state.comment_editor_text.trim().is_empty() {
+                if !self.state.comment_editor_text.text().trim().is_empty() {
                     if let Some(editing) = self.state.editing_annotation.take() {
                         // Editing an existing annotation from the annotation menu
+                        let comment_text = self.state.comment_editor_text.text().to_string();
                         self.state.annotations.update_comment(
                             &editing.file_path,
-                            editing.line_start,
-                            editing.line_end,
+                            editing.old_range,
+                            editing.new_range,
                             &editing.old_comment,
-                            &self.state.comment_editor_text,
+                            &comment_text,
                         );
                         self.set_status("Comment updated".to_string(), false);
                     } else if let Some(anchor) = self.selection_to_anchor() {
@@ -987,7 +1003,7 @@ impl App {
                         let now = chrono::Utc::now().to_rfc3339();
                         self.state.annotations.add(Annotation {
                             anchor,
-                            comment: self.state.comment_editor_text.clone(),
+                            comment: self.state.comment_editor_text.text().to_string(),
                             created_at: now,
                         });
                         self.set_status("Comment added".to_string(), false);
@@ -999,21 +1015,21 @@ impl App {
                 self.state.editing_annotation = None;
             }
             Action::CommentChar(c) => {
-                self.state.comment_editor_text.push(c);
+                self.state.comment_editor_text.insert_char(c);
             }
             Action::CommentBackspace => {
-                self.state.comment_editor_text.pop();
+                self.state.comment_editor_text.delete_back();
             }
             Action::CommentNewline => {
-                self.state.comment_editor_text.push('\n');
+                self.state.comment_editor_text.insert_char('\n');
             }
             // Annotations
             Action::DeleteAnnotation => {
                 if let Some(anchor) = self.selection_to_anchor() {
                     self.state.annotations.delete_at(
                         &anchor.file_path,
-                        anchor.line_start,
-                        anchor.line_end,
+                        anchor.old_range,
+                        anchor.new_range,
                     );
                     self.set_status("Annotation deleted".to_string(), false);
                 }
@@ -1068,10 +1084,11 @@ impl App {
             // Annotation menu
             Action::OpenAnnotationMenu => {
                 if let Some(anchor) = self.cursor_to_anchor() {
-                    let overlapping = self
-                        .state
-                        .annotations
-                        .annotations_overlapping(&anchor.file_path, anchor.line_start);
+                    let overlapping = self.state.annotations.annotations_overlapping(
+                        &anchor.file_path,
+                        anchor.old_range.map(|(s, _)| s),
+                        anchor.new_range.map(|(s, _)| s),
+                    );
                     if overlapping.is_empty() {
                         self.set_status("No annotations on this line".to_string(), false);
                     } else {
@@ -1079,8 +1096,8 @@ impl App {
                             .iter()
                             .map(|a| crate::state::app_state::AnnotationMenuItem {
                                 file_path: a.anchor.file_path.clone(),
-                                line_start: a.anchor.line_start,
-                                line_end: a.anchor.line_end,
+                                old_range: a.anchor.old_range,
+                                new_range: a.anchor.new_range,
                                 comment: a.comment.clone(),
                             })
                             .collect();
@@ -1114,8 +1131,8 @@ impl App {
                 {
                     self.state.annotations.delete_annotation(
                         &item.file_path,
-                        item.line_start,
-                        item.line_end,
+                        item.old_range,
+                        item.new_range,
                         &item.comment,
                     );
                     self.state
@@ -1145,13 +1162,13 @@ impl App {
                     self.state.editing_annotation =
                         Some(crate::state::app_state::EditingAnnotation {
                             file_path: item.file_path.clone(),
-                            line_start: item.line_start,
-                            line_end: item.line_end,
+                            old_range: item.old_range,
+                            new_range: item.new_range,
                             old_comment: item.comment.clone(),
                         });
                     self.state.annotation_menu_open = false;
                     self.state.comment_editor_open = true;
-                    self.state.comment_editor_text = item.comment;
+                    self.state.comment_editor_text.set(&item.comment);
                 }
             }
             Action::CancelAnnotationMenu => {
@@ -1204,11 +1221,11 @@ impl App {
                 self.state.agent_selector.select_down();
             }
             Action::AgentSelectorFilter(c) => {
-                self.state.agent_selector.filter.push(c);
+                self.state.agent_selector.filter.insert_char(c);
                 self.state.agent_selector.refilter();
             }
             Action::AgentSelectorBackspace => {
-                self.state.agent_selector.filter.pop();
+                self.state.agent_selector.filter.delete_back();
                 self.state.agent_selector.refilter();
             }
             Action::AgentSelectorCycleModel => {
@@ -1549,6 +1566,42 @@ impl App {
                 }
             }
 
+            // Generic text input navigation
+            Action::TextCursorLeft => {
+                if let Some(buf) = self.active_text_buffer() {
+                    buf.move_left();
+                }
+            }
+            Action::TextCursorRight => {
+                if let Some(buf) = self.active_text_buffer() {
+                    buf.move_right();
+                }
+            }
+            Action::TextCursorHome => {
+                if let Some(buf) = self.active_text_buffer() {
+                    buf.move_home();
+                }
+            }
+            Action::TextCursorEnd => {
+                if let Some(buf) = self.active_text_buffer() {
+                    buf.move_end();
+                }
+            }
+            Action::TextDeleteWord => {
+                if let Some(buf) = self.active_text_buffer() {
+                    buf.delete_word_back();
+                }
+                // Trigger side effects for search buffers
+                if self.state.navigator.search_active {
+                    self.state.navigator.refilter();
+                    self.sync_selection();
+                } else if self.state.diff.search_active {
+                    self.recompute_diff_search_matches();
+                } else if self.state.agent_selector.open {
+                    self.state.agent_selector.refilter();
+                }
+            }
+
             Action::Resize => {
                 // Resize PTY and active terminal parser to match new terminal size
                 if let Some(runner) = self.pty_runner.as_ref() {
@@ -1568,6 +1621,26 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    /// Return a mutable reference to whichever TextBuffer is currently active,
+    /// based on which dialog/search mode is open.
+    fn active_text_buffer(&mut self) -> Option<&mut crate::state::TextBuffer> {
+        if self.state.commit_dialog_open {
+            Some(&mut self.state.commit_message)
+        } else if self.state.target_dialog_open {
+            Some(&mut self.state.target_dialog_input)
+        } else if self.state.comment_editor_open {
+            Some(&mut self.state.comment_editor_text)
+        } else if self.state.diff.search_active {
+            Some(&mut self.state.diff.search_query)
+        } else if self.state.navigator.search_active {
+            Some(&mut self.state.navigator.search_query)
+        } else if self.state.agent_selector.open {
+            Some(&mut self.state.agent_selector.filter)
+        } else {
+            None
         }
     }
 
@@ -1735,7 +1808,7 @@ impl App {
         self.state.diff.search_matches.clear();
         self.state.diff.search_match_index = None;
 
-        let query = self.state.diff.search_query.to_lowercase();
+        let query = self.state.diff.search_query.text().to_lowercase();
         if query.is_empty() {
             return;
         }
@@ -1831,15 +1904,21 @@ impl App {
 
             let anns = file_annotations.unwrap();
 
-            // Sort annotations by line_start and group those whose padded
+            // Sort annotations by sort_line and group those whose padded
             // ranges overlap so nearby comments share one code block.
             let mut sorted_anns: Vec<&Annotation> = anns.iter().collect();
-            sorted_anns.sort_by_key(|a| a.anchor.line_start);
+            sorted_anns.sort_by_key(|a| a.anchor.sort_line());
 
             let mut groups: Vec<(u32, u32, Vec<&Annotation>)> = Vec::new();
             for ann in &sorted_anns {
-                let start = ann.anchor.line_start.saturating_sub(padding);
-                let end = ann.anchor.line_end + padding;
+                let sl = ann.anchor.sort_line();
+                let (ann_start, ann_end) = ann
+                    .anchor
+                    .new_range
+                    .or(ann.anchor.old_range)
+                    .unwrap_or((sl, sl));
+                let start = ann_start.saturating_sub(padding);
+                let end = ann_end + padding;
                 if let Some(last) = groups.last_mut() {
                     if start <= last.1 + 1 {
                         last.1 = last.1.max(end);
@@ -1889,10 +1968,17 @@ impl App {
 
                 let mut section = format!("```diff\n{}\n```", diff_lines.join("\n"));
                 for ann in group_anns {
-                    let line_ref = if ann.anchor.line_start == ann.anchor.line_end {
-                        format!("Line {}", ann.anchor.line_start)
-                    } else {
-                        format!("Lines {}-{}", ann.anchor.line_start, ann.anchor.line_end)
+                    // Side-aware comment labels
+                    let line_ref = match (ann.anchor.old_range, ann.anchor.new_range) {
+                        (_, Some((s, e))) if s == e => format!("Line {s}"),
+                        (_, Some((s, e))) => format!("Lines {s}-{e}"),
+                        (Some((s, e)), None) if s == e => {
+                            format!("Removed line {s} (old)")
+                        }
+                        (Some((s, e)), None) => {
+                            format!("Removed lines {s}-{e} (old)")
+                        }
+                        (None, None) => "Line ?".to_string(),
                     };
                     section.push_str(&format!(
                         "\n\n> **Comment ({}):** {}",

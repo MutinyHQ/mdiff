@@ -58,7 +58,8 @@ pub fn render_target_dialog(frame: &mut Frame, state: &AppState) {
     render_text_input(
         frame,
         rows[2],
-        &state.target_dialog_input,
+        state.target_dialog_input.text(),
+        state.target_dialog_input.cursor_char_index(),
         Style::default().fg(theme.text),
     );
 

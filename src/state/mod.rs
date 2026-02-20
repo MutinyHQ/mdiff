@@ -6,6 +6,7 @@ pub mod navigator_state;
 pub mod review_state;
 pub mod selection_state;
 pub mod settings_state;
+pub mod text_buffer;
 pub mod worktree_state;
 
 pub use agent_state::{AgentOutputsState, AgentSelectorState};
@@ -15,4 +16,5 @@ pub use diff_state::{DiffOptions, DiffState, DiffViewMode};
 pub use navigator_state::NavigatorState;
 pub use review_state::ReviewState;
 pub use selection_state::SelectionState;
+pub use text_buffer::TextBuffer;
 pub use worktree_state::WorktreeState;

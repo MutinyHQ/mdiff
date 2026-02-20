@@ -23,8 +23,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
 
     // Figure out what line number to show in title from cursor context
     let title = if let Some(item) = state.annotation_menu_items.first() {
-        // Use the line from the first item as a representative
-        let lineno = item.line_start;
+        let lineno = item.sort_line();
         format!(" Annotations at line {lineno} ")
     } else {
         " Annotations ".to_string()
@@ -58,11 +57,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
         let is_selected = idx == state.annotation_menu_selected;
         let prefix = if is_selected { " \u{25b6} " } else { "   " };
 
-        let range_text = if item.line_start == item.line_end {
-            format!("Line {}", item.line_start)
-        } else {
-            format!("Lines {}-{}", item.line_start, item.line_end)
-        };
+        let range_text = item.range_text();
 
         // Truncate comment to first line for the list view
         let first_line = item

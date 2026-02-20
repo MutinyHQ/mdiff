@@ -147,6 +147,13 @@ pub enum Action {
     SettingsLeft,
     SettingsRight,
 
+    // Generic text input navigation
+    TextCursorLeft,
+    TextCursorRight,
+    TextCursorHome,
+    TextCursorEnd,
+    TextDeleteWord,
+
     // Resize
     Resize,
 }

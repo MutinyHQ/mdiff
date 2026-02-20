@@ -47,7 +47,11 @@ pub fn render_agent_selector(frame: &mut Frame, selector: &AgentSelectorState) {
     let filter_text = if selector.filter.is_empty() {
         " /filter".to_string()
     } else {
-        format!(" /{}\u{2588}", selector.filter)
+        let q = selector.filter.text();
+        let ci = selector.filter.cursor_char_index();
+        let before: String = q.chars().take(ci).collect();
+        let after: String = q.chars().skip(ci).collect();
+        format!(" /{}\u{2588}{}", before, after)
     };
     let filter_style = if selector.filter.is_empty() {
         Style::default().fg(Color::DarkGray)

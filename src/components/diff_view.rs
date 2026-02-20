@@ -90,7 +90,13 @@ fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String
             let idx = state.diff.search_match_index.map(|i| i + 1).unwrap_or(0);
             format!(" ({}/{})", idx, state.diff.search_matches.len())
         };
-        format!("{base} /{}{match_info} ", state.diff.search_query)
+        {
+            let q = state.diff.search_query.text();
+            let ci = state.diff.search_query.cursor_char_index();
+            let before: String = q.chars().take(ci).collect();
+            let after: String = q.chars().skip(ci).collect();
+            format!("{base} /{}\u{2588}{}{match_info} ", before, after)
+        }
     } else {
         format!("{base} ")
     }
@@ -176,18 +182,9 @@ fn row_highlight(state: &AppState, display_row: usize) -> RowHighlight {
 /// Check if a line has an annotation marker in the gutter.
 fn has_annotation(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> bool {
     let file_path = delta.path.to_string_lossy();
-    // Check both old and new line numbers
-    if let Some(n) = row_info.new_lineno {
-        if state.annotations.has_annotation_at(&file_path, n) {
-            return true;
-        }
-    }
-    if let Some(n) = row_info.old_lineno {
-        if state.annotations.has_annotation_at(&file_path, n) {
-            return true;
-        }
-    }
-    false
+    state
+        .annotations
+        .has_annotation_at(&file_path, row_info.old_lineno, row_info.new_lineno)
 }
 
 fn render_split(

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use crate::config::AgentProviderConfig;
 
+use super::TextBuffer;
+
 /// Status of an agent process run.
 #[derive(Debug, Clone)]
 pub enum AgentRunStatus {
@@ -76,7 +78,7 @@ impl AgentOutputsState {
 #[derive(Debug, Default)]
 pub struct AgentSelectorState {
     pub open: bool,
-    pub filter: String,
+    pub filter: TextBuffer,
     pub selected_agent: usize,
     pub selected_model: usize,
     pub agents: Vec<AgentProviderConfig>,
@@ -100,7 +102,7 @@ impl AgentSelectorState {
         if self.filter.is_empty() {
             self.filtered_indices = (0..self.agents.len()).collect();
         } else {
-            let query = self.filter.to_lowercase();
+            let query = self.filter.text().to_lowercase();
             self.filtered_indices = self
                 .agents
                 .iter()

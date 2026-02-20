@@ -46,7 +46,8 @@ pub fn render_comment_editor(frame: &mut Frame, state: &AppState) {
     render_text_input(
         frame,
         rows[0],
-        &state.comment_editor_text,
+        state.comment_editor_text.text(),
+        state.comment_editor_text.cursor_char_index(),
         Style::default().fg(theme.text),
     );
 

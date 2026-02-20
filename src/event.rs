@@ -121,6 +121,14 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 1: Commit dialog mode
     if ctx.commit_dialog_open {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc => Some(Action::CancelCommit),
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
@@ -128,6 +136,10 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             }
             KeyCode::Enter => Some(Action::ConfirmCommit),
             KeyCode::Backspace => Some(Action::CommitBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::CommitChar(c)),
             _ => None,
         };
@@ -135,10 +147,22 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 1.5: Target dialog mode
     if ctx.target_dialog_open {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc => Some(Action::CancelTarget),
             KeyCode::Enter => Some(Action::ConfirmTarget),
             KeyCode::Backspace => Some(Action::TargetBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::TargetChar(c)),
             _ => None,
         };
@@ -146,6 +170,14 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 2: Comment editor mode
     if ctx.comment_editor_open {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc => Some(Action::CancelComment),
             KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
@@ -153,6 +185,10 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             }
             KeyCode::Enter => Some(Action::ConfirmComment),
             KeyCode::Backspace => Some(Action::CommentBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::CommentChar(c)),
             _ => None,
         };
@@ -172,6 +208,14 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 2.5: Agent selector mode
     if ctx.agent_selector_open {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc => Some(Action::CancelAgentSelector),
             KeyCode::Enter => Some(Action::SelectAgent),
@@ -179,6 +223,10 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentSelectorDown),
             KeyCode::Tab => Some(Action::AgentSelectorCycleModel),
             KeyCode::Backspace => Some(Action::AgentSelectorBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::AgentSelectorFilter(c)),
             _ => None,
         };
@@ -198,9 +246,21 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 3: Diff text search mode
     if ctx.diff_search_active {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc | KeyCode::Enter => Some(Action::EndDiffSearch),
             KeyCode::Backspace => Some(Action::DiffSearchBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::DiffSearchChar(c)),
             _ => None,
         };
@@ -208,10 +268,22 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 3.5: File search mode (navigator)
     if ctx.search_active {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
         return match key.code {
             KeyCode::Esc => Some(Action::CancelSearch),
             KeyCode::Enter => Some(Action::ConfirmSearch),
             KeyCode::Backspace => Some(Action::SearchBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
             KeyCode::Char(c) => Some(Action::SearchChar(c)),
             KeyCode::Up => Some(Action::NavigatorUp),
             KeyCode::Down => Some(Action::NavigatorDown),
