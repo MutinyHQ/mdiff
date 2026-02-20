@@ -217,9 +217,16 @@ fn render_split(
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
 
-    let halves = Layout::default()
+    // 3-column layout: left content | center gutter | right content
+    // Center gutter: "NNNNN NNNNN " = 5 + 1 + 5 + 1 = 12 chars
+    let gutter_width_chars: u16 = 12;
+    let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([
+            Constraint::Min(10),
+            Constraint::Length(gutter_width_chars),
+            Constraint::Min(10),
+        ])
         .split(inner);
 
     let old_hl = &state.diff.old_highlights;
@@ -233,7 +240,7 @@ fn render_split(
         &state.diff.gap_expansions,
     );
 
-    let (left_lines, right_lines) = build_split_lines(
+    let (left_lines, center_lines, right_lines) = build_split_lines(
         delta,
         state.diff.scroll_offset,
         inner.height as usize,
@@ -241,16 +248,18 @@ fn render_split(
         new_hl,
         state,
         &display_map,
-        halves[0].width,
+        cols[0].width,
         true,
         theme,
     );
 
     let left_para = Paragraph::new(left_lines);
+    let center_para = Paragraph::new(center_lines);
     let right_para = Paragraph::new(right_lines);
 
-    frame.render_widget(left_para, halves[0]);
-    frame.render_widget(right_para, halves[1]);
+    frame.render_widget(left_para, cols[0]);
+    frame.render_widget(center_para, cols[1]);
+    frame.render_widget(right_para, cols[2]);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -265,17 +274,24 @@ fn build_split_lines<'a>(
     width: u16,
     wrap_enabled: bool,
     theme: &Theme,
-) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
-    let (left_lines, right_lines) =
+) -> (Vec<Line<'a>>, Vec<Line<'a>>, Vec<Line<'a>>) {
+    let (left_lines, center_lines, right_lines) =
         build_split_lines_core(delta, old_hl, new_hl, state, display_map, theme);
 
     let config = WrapConfig {
         width,
-        gutter_width: 5 + 1,
+        gutter_width: 0,
         wrap_enabled,
         theme,
     };
-    wrap_split_lines_synchronized_with_scroll(left_lines, right_lines, &config, scroll, height)
+    wrap_split_lines_synchronized_with_scroll(
+        left_lines,
+        center_lines,
+        right_lines,
+        &config,
+        scroll,
+        height,
+    )
 }
 
 fn render_unified(
@@ -344,8 +360,9 @@ fn build_split_lines_core<'a>(
     state: &AppState,
     display_map: &[DisplayRowInfo],
     theme: &Theme,
-) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
+) -> (Vec<Line<'a>>, Vec<Line<'a>>, Vec<Line<'a>>) {
     let mut left: Vec<Line> = Vec::new();
+    let mut center: Vec<Line> = Vec::new();
     let mut right: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
 
@@ -358,20 +375,23 @@ fn build_split_lines_core<'a>(
             .get(display_row)
             .is_some_and(|info| has_annotation(state, delta, info));
 
-        left.push(make_hunk_header_line(
-            gutter_width,
-            &hunk.header,
-            hl,
-            ann_marker,
-            theme,
-        ));
-        right.push(make_hunk_header_line(
-            gutter_width,
-            &hunk.header,
-            hl,
-            false,
-            theme,
-        ));
+        let marker = if ann_marker { "\u{2502}" } else { " " };
+        let hunk_gutter = format!("{:>gutter_width$} {:>gutter_width$}{marker}", "...", "...");
+        let mut gutter_style = Style::default().fg(theme.text_muted);
+        if let Some(fg) = hl.gutter_fg {
+            gutter_style = gutter_style.fg(fg);
+        }
+        if let Some(bg) = hl.gutter_bg {
+            gutter_style = gutter_style.bg(bg);
+        }
+        center.push(Line::from(Span::styled(hunk_gutter, gutter_style)));
+
+        let mut content_style = Style::default().fg(theme.text_muted);
+        if let Some(bg) = hl.content_bg {
+            content_style = content_style.bg(bg);
+        }
+        left.push(Line::from(Span::styled(hunk.header.clone(), content_style)));
+        right.push(Line::from(Span::styled("", content_style)));
         display_row += 1;
 
         let (items, next_offset) = filter_hunk_lines(
@@ -391,20 +411,33 @@ fn build_split_lines_core<'a>(
                     ..
                 } => {
                     let hl = row_highlight(state, display_row);
-                    left.push(make_collapsed_indicator_line(
-                        gutter_width,
-                        *hidden_count,
-                        *direction,
-                        hl,
-                        theme,
-                    ));
-                    right.push(make_collapsed_indicator_line(
-                        gutter_width,
-                        *hidden_count,
-                        *direction,
-                        hl,
-                        theme,
-                    ));
+
+                    // Center gutter: ellipsis
+                    let collapsed_gutter = format!(
+                        "{:>gutter_width$} {:>gutter_width$} ",
+                        "\u{22ef}", "\u{22ef}"
+                    );
+                    let mut gutter_style = Style::default().fg(theme.text_muted);
+                    if let Some(fg) = hl.gutter_fg {
+                        gutter_style = gutter_style.fg(fg);
+                    }
+                    if let Some(bg) = hl.gutter_bg {
+                        gutter_style = gutter_style.bg(bg);
+                    }
+                    center.push(Line::from(Span::styled(collapsed_gutter, gutter_style)));
+
+                    let mut content_style = Style::default().fg(theme.text_muted);
+                    if let Some(bg) = hl.content_bg {
+                        content_style = content_style.bg(bg);
+                    }
+                    let caret = match direction {
+                        ExpandDirection::Down => "\u{25bc}",
+                        ExpandDirection::Up => "\u{25b2}",
+                    };
+                    let label = format!("{caret} {hidden_count} lines hidden {caret}");
+                    left.push(Line::from(Span::styled(label, content_style)));
+                    right.push(Line::from(Span::styled("", content_style)));
+
                     display_row += 1;
                     i += 1;
                 }
@@ -417,24 +450,25 @@ fn build_split_lines_core<'a>(
 
                         let gutter_l = format_lineno(line.old_lineno, gutter_width);
                         let gutter_r = format_lineno(line.new_lineno, gutter_width);
+                        let marker = if ann_marker { "\u{2502}" } else { " " };
+                        center.push(make_center_gutter_line(
+                            &gutter_l, &gutter_r, marker, hl, theme,
+                        ));
+
                         let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
                         let new_spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                        left.push(make_highlighted_line(
-                            &gutter_l,
+                        left.push(make_content_only_line(
                             &line.content,
                             old_spans,
                             None,
                             hl,
-                            ann_marker,
                             theme,
                         ));
-                        right.push(make_highlighted_line(
-                            &gutter_r,
+                        right.push(make_content_only_line(
                             &line.content,
                             new_spans,
                             None,
                             hl,
-                            false,
                             theme,
                         ));
                         display_row += 1;
@@ -491,39 +525,50 @@ fn build_split_lines_core<'a>(
                             let ann_marker = display_map
                                 .get(display_row)
                                 .is_some_and(|info| has_annotation(state, delta, info));
+                            let marker = if ann_marker { "\u{2502}" } else { " " };
+
+                            let old_lineno = if j < dels.len() {
+                                dels[j].old_lineno
+                            } else {
+                                None
+                            };
+                            let new_lineno = if j < adds.len() {
+                                adds[j].new_lineno
+                            } else {
+                                None
+                            };
+                            let gutter_l = format_lineno(old_lineno, gutter_width);
+                            let gutter_r = format_lineno(new_lineno, gutter_width);
+                            center.push(make_center_gutter_line(
+                                &gutter_l, &gutter_r, marker, hl, theme,
+                            ));
 
                             if j < dels.len() {
                                 let line = dels[j];
-                                let gutter = format_lineno(line.old_lineno, gutter_width);
                                 let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
-                                left.push(make_highlighted_line(
-                                    &gutter,
+                                left.push(make_content_only_line(
                                     &line.content,
                                     spans,
                                     Some(theme.diff_del_bg),
                                     hl,
-                                    ann_marker,
                                     theme,
                                 ));
                             } else {
-                                left.push(make_empty_line(gutter_width, hl, theme));
+                                left.push(make_empty_content_line(hl, theme));
                             }
 
                             if j < adds.len() {
                                 let line = adds[j];
-                                let gutter = format_lineno(line.new_lineno, gutter_width);
                                 let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                                right.push(make_highlighted_line(
-                                    &gutter,
+                                right.push(make_content_only_line(
                                     &line.content,
                                     spans,
                                     Some(theme.diff_add_bg),
                                     hl,
-                                    false,
                                     theme,
                                 ));
                             } else {
-                                right.push(make_empty_line(gutter_width, hl, theme));
+                                right.push(make_empty_content_line(hl, theme));
                             }
 
                             display_row += 1;
@@ -534,17 +579,21 @@ fn build_split_lines_core<'a>(
                         let ann_marker = display_map
                             .get(display_row)
                             .is_some_and(|info| has_annotation(state, delta, info));
+                        let marker = if ann_marker { "\u{2502}" } else { " " };
 
-                        let gutter = format_lineno(line.new_lineno, gutter_width);
+                        let gutter_l = " ".repeat(gutter_width);
+                        let gutter_r = format_lineno(line.new_lineno, gutter_width);
+                        center.push(make_center_gutter_line(
+                            &gutter_l, &gutter_r, marker, hl, theme,
+                        ));
+
+                        left.push(make_empty_content_line(hl, theme));
                         let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
-                        left.push(make_empty_line(gutter_width, hl, theme));
-                        right.push(make_highlighted_line(
-                            &gutter,
+                        right.push(make_content_only_line(
                             &line.content,
                             spans,
                             Some(theme.diff_add_bg),
                             hl,
-                            ann_marker,
                             theme,
                         ));
                         display_row += 1;
@@ -555,7 +604,7 @@ fn build_split_lines_core<'a>(
         }
     }
 
-    (left, right)
+    (left, center, right)
 }
 
 fn build_unified_lines_core<'a>(
@@ -686,42 +735,6 @@ fn format_lineno(lineno: Option<u32>, width: usize) -> String {
     }
 }
 
-/// Format a gutter string, optionally replacing the trailing space with an annotation marker.
-fn format_gutter_with_marker(gutter: &str, ann_marker: bool) -> String {
-    if ann_marker {
-        format!("{gutter}\u{2502}")
-    } else {
-        format!("{gutter} ")
-    }
-}
-
-/// Build a hunk header line for split view.
-fn make_hunk_header_line<'a>(
-    gutter_width: usize,
-    header: &str,
-    hl: RowHighlight,
-    ann_marker: bool,
-    theme: &Theme,
-) -> Line<'a> {
-    let marker = if ann_marker { "\u{2502}" } else { " " };
-    let gutter_text = format!("{:>gutter_width$}{marker}", "...");
-    let mut gutter_style = Style::default().fg(theme.text_muted);
-    if let Some(fg) = hl.gutter_fg {
-        gutter_style = gutter_style.fg(fg);
-    }
-    if let Some(bg) = hl.gutter_bg {
-        gutter_style = gutter_style.bg(bg);
-    }
-    let mut content_style = Style::default().fg(theme.text_muted);
-    if let Some(bg) = hl.content_bg {
-        content_style = content_style.bg(bg);
-    }
-    Line::from(vec![
-        Span::styled(gutter_text, gutter_style),
-        Span::styled(header.to_string(), content_style),
-    ])
-}
-
 /// Build a hunk header line for unified view.
 fn make_hunk_header_line_unified<'a>(
     gutter_width: usize,
@@ -749,63 +762,6 @@ fn make_hunk_header_line_unified<'a>(
         Span::styled(gutter_text, gutter_style),
         Span::styled(header.to_string(), content_style),
     ])
-}
-
-/// Build a line with syntax highlighting spans overlaid on a diff background.
-/// Gutter and content are highlighted separately via RowHighlight.
-fn make_highlighted_line<'a>(
-    gutter: &str,
-    content: &str,
-    hl_spans: Option<&Vec<HighlightSpan>>,
-    diff_bg: Option<Color>,
-    hl: RowHighlight,
-    ann_marker: bool,
-    theme: &Theme,
-) -> Line<'a> {
-    let trimmed = content.trim_end_matches('\n');
-    let content_bg = hl.content_bg.or(diff_bg);
-    let gutter_text = format_gutter_with_marker(gutter, ann_marker);
-
-    let mut gutter_style = Style::default().fg(theme.text_muted);
-    if ann_marker {
-        gutter_style = gutter_style.fg(theme.cursor_line_fg);
-    }
-    if let Some(fg) = hl.gutter_fg {
-        gutter_style = gutter_style.fg(fg);
-    }
-    if let Some(bg) = hl.gutter_bg {
-        gutter_style = gutter_style.bg(bg);
-    }
-    let gutter_span = Span::styled(gutter_text, gutter_style);
-
-    let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, content_bg, theme)
-    } else {
-        // Fallback: no highlighting
-        let mut style = Style::default();
-        if let Some(bg_color) = content_bg {
-            style = style.bg(bg_color);
-            if hl.content_bg.is_none() {
-                // Use diff-specific fg colors only when not selected
-                if bg_color == theme.diff_del_bg {
-                    style = style.fg(theme.diff_del_fg);
-                } else if bg_color == theme.diff_add_bg {
-                    style = style.fg(theme.diff_add_fg);
-                } else {
-                    style = style.fg(theme.text);
-                }
-            } else {
-                style = style.fg(theme.text);
-            }
-        } else {
-            style = style.fg(theme.text);
-        }
-        vec![Span::styled(trimmed.to_string(), style)]
-    };
-
-    let mut all_spans = vec![gutter_span];
-    all_spans.extend(content_spans);
-    Line::from(all_spans)
 }
 
 /// Apply highlight spans to a string, blending with diff background.
@@ -863,22 +819,72 @@ fn apply_highlights<'a>(
     result
 }
 
-fn make_empty_line<'a>(gutter_width: usize, hl: RowHighlight, theme: &Theme) -> Line<'a> {
-    let mut gutter_style = Style::default().fg(theme.text_muted).bg(theme.collapsed_bg);
+/// Build a center gutter line for split view: "{old:>5} {new:>5}{marker}"
+fn make_center_gutter_line<'a>(
+    gutter_l: &str,
+    gutter_r: &str,
+    marker: &str,
+    hl: RowHighlight,
+    theme: &Theme,
+) -> Line<'a> {
+    let text = format!("{gutter_l} {gutter_r}{marker}");
+    let mut style = Style::default().fg(theme.text_muted);
+    if marker == "\u{2502}" {
+        style = style.fg(theme.cursor_line_fg);
+    }
     if let Some(fg) = hl.gutter_fg {
-        gutter_style = gutter_style.fg(fg);
+        style = style.fg(fg);
     }
     if let Some(bg) = hl.gutter_bg {
-        gutter_style = gutter_style.bg(bg);
+        style = style.bg(bg);
     }
-    let mut content_style = Style::default().fg(theme.text_muted).bg(theme.collapsed_bg);
+    Line::from(Span::styled(text, style))
+}
+
+/// Build a content-only line (no gutter) with syntax highlighting and diff background.
+fn make_content_only_line<'a>(
+    content: &str,
+    hl_spans: Option<&Vec<HighlightSpan>>,
+    diff_bg: Option<Color>,
+    hl: RowHighlight,
+    theme: &Theme,
+) -> Line<'a> {
+    let trimmed = content.trim_end_matches('\n');
+    let content_bg = hl.content_bg.or(diff_bg);
+
+    let content_spans = if let Some(spans) = hl_spans {
+        apply_highlights(trimmed, spans, content_bg, theme)
+    } else {
+        let mut style = Style::default();
+        if let Some(bg_color) = content_bg {
+            style = style.bg(bg_color);
+            if hl.content_bg.is_none() {
+                if bg_color == theme.diff_del_bg {
+                    style = style.fg(theme.diff_del_fg);
+                } else if bg_color == theme.diff_add_bg {
+                    style = style.fg(theme.diff_add_fg);
+                } else {
+                    style = style.fg(theme.text);
+                }
+            } else {
+                style = style.fg(theme.text);
+            }
+        } else {
+            style = style.fg(theme.text);
+        }
+        vec![Span::styled(trimmed.to_string(), style)]
+    };
+
+    Line::from(content_spans)
+}
+
+/// Build an empty content-only line (no gutter) for split view filler.
+fn make_empty_content_line<'a>(hl: RowHighlight, theme: &Theme) -> Line<'a> {
+    let mut style = Style::default().fg(theme.text_muted).bg(theme.collapsed_bg);
     if let Some(bg) = hl.content_bg {
-        content_style = content_style.bg(bg);
+        style = style.bg(bg);
     }
-    Line::from(vec![
-        Span::styled(format!("{} ", " ".repeat(gutter_width)), gutter_style),
-        Span::styled(" ", content_style),
-    ])
+    Line::from(Span::styled(" ", style))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -941,37 +947,6 @@ fn make_unified_highlighted<'a>(
     Line::from(all_spans)
 }
 
-/// Build a collapsed indicator line for split view.
-fn make_collapsed_indicator_line<'a>(
-    gutter_width: usize,
-    hidden_count: usize,
-    direction: ExpandDirection,
-    hl: RowHighlight,
-    theme: &Theme,
-) -> Line<'a> {
-    let gutter_text = format!("{:>gutter_width$} ", "\u{22ef}");
-    let mut gutter_style = Style::default().fg(theme.text_muted);
-    if let Some(fg) = hl.gutter_fg {
-        gutter_style = gutter_style.fg(fg);
-    }
-    if let Some(bg) = hl.gutter_bg {
-        gutter_style = gutter_style.bg(bg);
-    }
-    let mut content_style = Style::default().fg(theme.text_muted);
-    if let Some(bg) = hl.content_bg {
-        content_style = content_style.bg(bg);
-    }
-    let caret = match direction {
-        ExpandDirection::Down => "\u{25bc}", // ▼
-        ExpandDirection::Up => "\u{25b2}",   // ▲
-    };
-    let label = format!("{caret} {hidden_count} lines hidden {caret}");
-    Line::from(vec![
-        Span::styled(gutter_text, gutter_style),
-        Span::styled(label, content_style),
-    ])
-}
-
 /// Build a collapsed indicator line for unified view.
 fn make_collapsed_indicator_line_unified<'a>(
     gutter_width: usize,
@@ -1012,16 +987,22 @@ fn make_collapsed_indicator_line_unified<'a>(
 /// to appear at different vertical positions (or be clipped on one side but visible on the other).
 fn wrap_split_lines_synchronized_with_scroll<'a>(
     left_lines: Vec<Line<'a>>,
+    center_lines: Vec<Line<'a>>,
     right_lines: Vec<Line<'a>>,
     config: &WrapConfig<'_>,
     start_visual: usize,
     height: usize,
-) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
+) -> (Vec<Line<'a>>, Vec<Line<'a>>, Vec<Line<'a>>) {
     if height == 0 {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), Vec::new(), Vec::new());
     }
     if !config.wrap_enabled || config.width == 0 {
         let left_visible: Vec<Line> = left_lines
+            .into_iter()
+            .skip(start_visual)
+            .take(height)
+            .collect();
+        let center_visible: Vec<Line> = center_lines
             .into_iter()
             .skip(start_visual)
             .take(height)
@@ -1031,17 +1012,25 @@ fn wrap_split_lines_synchronized_with_scroll<'a>(
             .skip(start_visual)
             .take(height)
             .collect();
-        return (left_visible, right_visible);
+        return (left_visible, center_visible, right_visible);
     }
 
     let mut remaining_skip = start_visual;
     let mut remaining_height = height;
     let mut left_result: Vec<Line<'a>> = Vec::new();
+    let mut center_result: Vec<Line<'a>> = Vec::new();
     let mut right_result: Vec<Line<'a>> = Vec::new();
 
-    for (left_line, right_line) in left_lines.into_iter().zip(right_lines.into_iter()) {
+    let iter = left_lines
+        .into_iter()
+        .zip(center_lines.into_iter())
+        .zip(right_lines.into_iter())
+        .map(|((l, c), r)| (l, c, r));
+
+    for (left_line, center_line, right_line) in iter {
         let left_wrapped = wrap_single_line_for_display(left_line, config);
         let right_wrapped = wrap_single_line_for_display(right_line, config);
+        // Center gutter is never wrapped (fixed width)
 
         let max_height = left_wrapped.len().max(right_wrapped.len());
 
@@ -1055,23 +1044,30 @@ fn wrap_split_lines_synchronized_with_scroll<'a>(
 
         for i in start..max_height {
             if remaining_height == 0 {
-                return (left_result, right_result);
+                return (left_result, center_result, right_result);
             }
 
             let left_line = left_wrapped.get(i).cloned().unwrap_or_else(Line::default);
             let right_line = right_wrapped.get(i).cloned().unwrap_or_else(Line::default);
+            // Center: show the gutter on first visual row, blank on continuation rows
+            let center_line = if i == 0 {
+                center_line.clone()
+            } else {
+                Line::default()
+            };
 
             left_result.push(left_line);
+            center_result.push(center_line);
             right_result.push(right_line);
             remaining_height -= 1;
         }
 
         if remaining_height == 0 {
-            return (left_result, right_result);
+            return (left_result, center_result, right_result);
         }
     }
 
-    (left_result, right_result)
+    (left_result, center_result, right_result)
 }
 
 fn wrap_lines_for_display_with_scroll<'a>(
@@ -1129,6 +1125,53 @@ fn wrap_single_line_for_display<'a>(line: Line<'a>, config: &WrapConfig<'_>) -> 
     let line_width: usize = line.spans.iter().map(|s| s.width()).sum();
     if line_width <= max_width {
         return vec![line];
+    }
+
+    if config.gutter_width == 0 {
+        // No gutter — all spans are content, no continuation prefix
+        let mut chars: Vec<(char, Style)> = Vec::new();
+        for span in &line.spans {
+            let style = span.style;
+            for ch in span.content.chars() {
+                chars.push((ch, style));
+            }
+        }
+
+        let mut result: Vec<Line<'a>> = Vec::new();
+        let mut offset = 0;
+        while offset < chars.len() {
+            let end = (offset + content_width).min(chars.len());
+            let chunk = &chars[offset..end];
+
+            let mut chunk_spans: Vec<Span<'a>> = Vec::new();
+            let mut current_text = String::new();
+            let mut current_style = chunk[0].1;
+
+            for &(ch, style) in chunk {
+                if style == current_style {
+                    current_text.push(ch);
+                } else {
+                    if !current_text.is_empty() {
+                        chunk_spans.push(Span::styled(current_text, current_style));
+                        current_text = String::new();
+                    }
+                    current_style = style;
+                    current_text.push(ch);
+                }
+            }
+            if !current_text.is_empty() {
+                chunk_spans.push(Span::styled(current_text, current_style));
+            }
+
+            result.push(Line::from(chunk_spans));
+            offset = end;
+        }
+
+        if result.is_empty() {
+            result.push(line);
+        }
+
+        return result;
     }
 
     // Separate gutter (first span) from content (remaining spans)
@@ -1219,7 +1262,7 @@ pub(crate) fn compute_split_visual_row_metrics(
         state.diff.display_context,
         &state.diff.gap_expansions,
     );
-    let (left_lines, right_lines) = build_split_lines_core(
+    let (left_lines, _center_lines, right_lines) = build_split_lines_core(
         delta,
         &state.diff.old_highlights,
         &state.diff.new_highlights,
@@ -1229,13 +1272,13 @@ pub(crate) fn compute_split_visual_row_metrics(
     );
     let left_config = WrapConfig {
         width: left_width,
-        gutter_width: 5 + 1,
+        gutter_width: 0,
         wrap_enabled: true,
         theme: &state.theme,
     };
     let right_config = WrapConfig {
         width: right_width,
-        gutter_width: 5 + 1,
+        gutter_width: 0,
         wrap_enabled: true,
         theme: &state.theme,
     };
