@@ -1009,6 +1009,7 @@ fn make_collapsed_indicator_line_unified<'a>(
 /// number of visual rows on both sides. Without this, independent wrapping desynchronises the
 /// two panels — a long line on one side pushes subsequent rows down, causing the cursor row
 /// to appear at different vertical positions (or be clipped on one side but visible on the other).
+#[allow(clippy::too_many_arguments)]
 fn wrap_split_lines_synchronized_with_scroll<'a>(
     left_lines: Vec<Line<'a>>,
     right_lines: Vec<Line<'a>>,
