@@ -123,6 +123,13 @@ struct RowHighlight {
     content_bg: Option<Color>,
 }
 
+struct WrapConfig<'a> {
+    width: u16,
+    gutter_width: usize,
+    wrap_enabled: bool,
+    theme: &'a Theme,
+}
+
 pub(crate) struct VisualRowMetrics {
     pub row_offsets: Vec<usize>,
     pub row_heights: Vec<usize>,
@@ -262,20 +269,16 @@ fn build_split_lines<'a>(
     wrap_enabled: bool,
     theme: &Theme,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
-    let gutter_width = 5;
     let (left_lines, right_lines) =
         build_split_lines_core(delta, old_hl, new_hl, state, display_map, theme);
 
-    wrap_split_lines_synchronized_with_scroll(
-        left_lines,
-        right_lines,
+    let config = WrapConfig {
         width,
-        gutter_width + 1,
+        gutter_width: 5 + 1,
         wrap_enabled,
-        scroll,
-        height,
         theme,
-    )
+    };
+    wrap_split_lines_synchronized_with_scroll(left_lines, right_lines, &config, scroll, height)
 }
 
 fn render_unified(
@@ -319,18 +322,19 @@ fn render_unified(
         &state.diff.gap_expansions,
     );
 
-    let gutter_width = 5;
-    // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
-    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
     let lines = build_unified_lines_core(delta, old_hl, new_hl, state, &display_map, theme);
+    // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
+    let config = WrapConfig {
+        width: inner.width,
+        gutter_width: 5 + 1 + 5 + 1 + 1,
+        wrap_enabled: true,
+        theme,
+    };
     let wrapped = wrap_lines_for_display_with_scroll(
         lines,
-        inner.width,
-        unified_gutter_width,
-        true,
+        &config,
         state.diff.scroll_offset,
         inner.height as usize,
-        theme,
     );
     let paragraph = Paragraph::new(wrapped);
     frame.render_widget(paragraph, inner);
@@ -1009,21 +1013,17 @@ fn make_collapsed_indicator_line_unified<'a>(
 /// number of visual rows on both sides. Without this, independent wrapping desynchronises the
 /// two panels — a long line on one side pushes subsequent rows down, causing the cursor row
 /// to appear at different vertical positions (or be clipped on one side but visible on the other).
-#[allow(clippy::too_many_arguments)]
 fn wrap_split_lines_synchronized_with_scroll<'a>(
     left_lines: Vec<Line<'a>>,
     right_lines: Vec<Line<'a>>,
-    width: u16,
-    gutter_width: usize,
-    wrap_enabled: bool,
+    config: &WrapConfig<'_>,
     start_visual: usize,
     height: usize,
-    theme: &Theme,
 ) -> (Vec<Line<'a>>, Vec<Line<'a>>) {
     if height == 0 {
         return (Vec::new(), Vec::new());
     }
-    if !wrap_enabled || width == 0 {
+    if !config.wrap_enabled || config.width == 0 {
         let left_visible: Vec<Line> = left_lines
             .into_iter()
             .skip(start_visual)
@@ -1043,10 +1043,8 @@ fn wrap_split_lines_synchronized_with_scroll<'a>(
     let mut right_result: Vec<Line<'a>> = Vec::new();
 
     for (left_line, right_line) in left_lines.into_iter().zip(right_lines.into_iter()) {
-        let left_wrapped =
-            wrap_single_line_for_display(left_line, width, gutter_width, wrap_enabled, theme);
-        let right_wrapped =
-            wrap_single_line_for_display(right_line, width, gutter_width, wrap_enabled, theme);
+        let left_wrapped = wrap_single_line_for_display(left_line, config);
+        let right_wrapped = wrap_single_line_for_display(right_line, config);
 
         let max_height = left_wrapped.len().max(right_wrapped.len());
 
@@ -1081,12 +1079,9 @@ fn wrap_split_lines_synchronized_with_scroll<'a>(
 
 fn wrap_lines_for_display_with_scroll<'a>(
     lines: Vec<Line<'a>>,
-    width: u16,
-    gutter_width: usize,
-    wrap_enabled: bool,
+    config: &WrapConfig<'_>,
     start_visual: usize,
     height: usize,
-    theme: &Theme,
 ) -> Vec<Line<'a>> {
     if height == 0 {
         return Vec::new();
@@ -1097,7 +1092,7 @@ fn wrap_lines_for_display_with_scroll<'a>(
     let mut result: Vec<Line<'a>> = Vec::new();
 
     for line in lines {
-        let wrapped = wrap_single_line_for_display(line, width, gutter_width, wrap_enabled, theme);
+        let wrapped = wrap_single_line_for_display(line, config);
         if remaining_skip >= wrapped.len() {
             remaining_skip -= wrapped.len();
             continue;
@@ -1124,18 +1119,12 @@ fn wrap_lines_for_display_with_scroll<'a>(
     result
 }
 
-fn wrap_single_line_for_display<'a>(
-    line: Line<'a>,
-    width: u16,
-    gutter_width: usize,
-    wrap_enabled: bool,
-    theme: &Theme,
-) -> Vec<Line<'a>> {
-    if !wrap_enabled || width == 0 {
+fn wrap_single_line_for_display<'a>(line: Line<'a>, config: &WrapConfig<'_>) -> Vec<Line<'a>> {
+    if !config.wrap_enabled || config.width == 0 {
         return vec![line];
     }
-    let max_width = width as usize;
-    let content_width = max_width.saturating_sub(gutter_width);
+    let max_width = config.width as usize;
+    let content_width = max_width.saturating_sub(config.gutter_width);
     if content_width == 0 {
         return vec![line];
     }
@@ -1165,8 +1154,11 @@ fn wrap_single_line_for_display<'a>(
     }
 
     // Build the continuation gutter
-    let cont_gutter = format!("{}\u{21aa}", " ".repeat(gutter_width.saturating_sub(1)));
-    let cont_gutter_style = gutter_span.style.fg(theme.text_muted);
+    let cont_gutter = format!(
+        "{}\u{21aa}",
+        " ".repeat(config.gutter_width.saturating_sub(1))
+    );
+    let cont_gutter_style = gutter_span.style.fg(config.theme.text_muted);
 
     // Split chars into chunks of content_width
     let mut result: Vec<Line<'a>> = Vec::new();
@@ -1238,18 +1230,25 @@ pub(crate) fn compute_split_visual_row_metrics(
         &display_map,
         &state.theme,
     );
-    let gutter_width = 5;
+    let left_config = WrapConfig {
+        width: left_width,
+        gutter_width: 5 + 1,
+        wrap_enabled: true,
+        theme: &state.theme,
+    };
+    let right_config = WrapConfig {
+        width: right_width,
+        gutter_width: 5 + 1,
+        wrap_enabled: true,
+        theme: &state.theme,
+    };
     let mut row_offsets = Vec::with_capacity(left_lines.len());
     let mut row_heights = Vec::with_capacity(left_lines.len());
     let mut total_rows = 0;
 
     for (left, right) in left_lines.into_iter().zip(right_lines.into_iter()) {
-        let left_height =
-            wrap_single_line_for_display(left, left_width, gutter_width + 1, true, &state.theme)
-                .len();
-        let right_height =
-            wrap_single_line_for_display(right, right_width, gutter_width + 1, true, &state.theme)
-                .len();
+        let left_height = wrap_single_line_for_display(left, &left_config).len();
+        let right_height = wrap_single_line_for_display(right, &right_config).len();
         let row_height = left_height.max(right_height).max(1);
         row_offsets.push(total_rows);
         row_heights.push(row_height);
@@ -1282,17 +1281,18 @@ pub(crate) fn compute_unified_visual_row_metrics(
         &display_map,
         &state.theme,
     );
-    let gutter_width = 5;
-    let unified_gutter_width = gutter_width + 1 + gutter_width + 1 + 1;
+    let config = WrapConfig {
+        width,
+        gutter_width: 5 + 1 + 5 + 1 + 1,
+        wrap_enabled: true,
+        theme: &state.theme,
+    };
     let mut row_offsets = Vec::with_capacity(lines.len());
     let mut row_heights = Vec::with_capacity(lines.len());
     let mut total_rows = 0;
 
     for line in lines {
-        let row_height =
-            wrap_single_line_for_display(line, width, unified_gutter_width, true, &state.theme)
-                .len()
-                .max(1);
+        let row_height = wrap_single_line_for_display(line, &config).len().max(1);
         row_offsets.push(total_rows);
         row_heights.push(row_height);
         total_rows += row_height;
