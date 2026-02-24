@@ -118,6 +118,13 @@ impl PtyRunner {
     }
 }
 
+impl Drop for PtyRunner {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// Convert a crossterm KeyEvent to the bytes that a terminal would send.
 pub fn key_event_to_bytes(key: &KeyEvent) -> Vec<u8> {
     // Handle Ctrl+letter first
