@@ -95,6 +95,26 @@ pub struct LineAnchor {
     pub new_range: Option<(u32, u32)>, // (start, end) in new file
 }
 
+/// A quick-reaction score attached to a line or range.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineScore {
+    pub file_path: String,
+    pub old_range: Option<(u32, u32)>,
+    pub new_range: Option<(u32, u32)>,
+    pub score: u8, // 1-5
+    pub created_at: String,
+}
+
+impl LineScore {
+    /// Representative line for sorting.
+    pub fn sort_line(&self) -> u32 {
+        self.new_range
+            .map(|(s, _)| s)
+            .or(self.old_range.map(|(s, _)| s))
+            .unwrap_or(0)
+    }
+}
+
 impl LineAnchor {
     /// A single representative line number for sorting/navigation.
     /// Prefers new-file start, falls back to old-file start.
@@ -178,6 +198,8 @@ fn default_severity() -> AnnotationSeverity {
 pub struct AnnotationState {
     /// Map of file_path → list of annotations on that file.
     pub annotations: BTreeMap<String, Vec<Annotation>>,
+    /// Quick-reaction scores (separate from annotations).
+    pub scores: BTreeMap<String, Vec<LineScore>>,
 }
 
 impl AnnotationState {
@@ -320,24 +342,74 @@ impl AnnotationState {
             .map(|a| (a.anchor.file_path.as_str(), a.anchor.sort_line()))
     }
 
-    /// Total count of scores (placeholder for spec 003 - quick-reactions).
+    /// Set a score for a line/range. Replaces any existing score at the same position.
+    pub fn set_score(&mut self, score: LineScore) {
+        let key = score.file_path.clone();
+        let entries = self.scores.entry(key).or_default();
+        // Remove any existing score at the same position
+        entries.retain(|s| s.old_range != score.old_range || s.new_range != score.new_range);
+        entries.push(score);
+    }
+
+    /// Remove score at a position.
+    pub fn remove_score(
+        &mut self,
+        file_path: &str,
+        old_range: Option<(u32, u32)>,
+        new_range: Option<(u32, u32)>,
+    ) {
+        if let Some(scores) = self.scores.get_mut(file_path) {
+            scores.retain(|s| s.old_range != old_range || s.new_range != new_range);
+            if scores.is_empty() {
+                self.scores.remove(file_path);
+            }
+        }
+    }
+
+    /// Get score at a specific line position.
+    pub fn score_at(
+        &self,
+        file_path: &str,
+        old_lineno: Option<u32>,
+        new_lineno: Option<u32>,
+    ) -> Option<u8> {
+        self.scores.get(file_path).and_then(|scores| {
+            scores.iter().find_map(|s| {
+                let covers_new = matches!(
+                    (new_lineno, s.new_range),
+                    (Some(n), Some((start, end))) if n >= start && n <= end
+                );
+                let covers_old = matches!(
+                    (old_lineno, s.old_range),
+                    (Some(n), Some((start, end))) if n >= start && n <= end
+                );
+                let covers = covers_new || covers_old;
+                if covers {
+                    Some(s.score)
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Get all scores as a flat sorted list.
+    pub fn all_scores_sorted(&self) -> Vec<&LineScore> {
+        let mut result: Vec<&LineScore> = self.scores.values().flat_map(|v| v.iter()).collect();
+        result.sort_by_key(|s| (&s.file_path, s.sort_line()));
+        result
+    }
+
+    /// Total score count.
     pub fn score_count(&self) -> usize {
-        0
+        self.scores.values().map(|v| v.len()).sum()
     }
 
-    /// Get all scores sorted (placeholder for spec 003 - quick-reactions).
-    pub fn all_scores_sorted(&self) -> Vec<LineScore> {
-        Vec::new()
-    }
-
-    /// Count files that have annotations.
+    /// Count files that have any feedback (annotations and/or scores).
     pub fn files_with_annotations(&self) -> usize {
-        self.annotations.len()
+        let mut files = std::collections::BTreeSet::new();
+        files.extend(self.annotations.keys().map(String::as_str));
+        files.extend(self.scores.keys().map(String::as_str));
+        files.len()
     }
-}
-
-/// Placeholder for line score (spec 003 - quick-reactions).
-#[derive(Debug, Clone)]
-pub struct LineScore {
-    pub score: u8,
 }
