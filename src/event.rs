@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::action::Action;
+use crate::action::QuitCombo;
 use crate::state::app_state::{ActiveView, FocusPanel};
 
 #[derive(Debug)]
@@ -111,7 +112,13 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     // Priority 0.5: Ctrl-C / Ctrl-D quit (not in PTY focus)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('c') | KeyCode::Char('d') => return Some(Action::Quit),
+            KeyCode::Char('c') | KeyCode::Char('d') => {
+                return Some(Action::ConfirmQuitSignal(match key.code {
+                    KeyCode::Char('c') => QuitCombo::CtrlC,
+                    KeyCode::Char('d') => QuitCombo::CtrlD,
+                    _ => unreachable!(),
+                }));
+            }
             _ => {}
         }
     }

@@ -113,7 +113,7 @@ Press `?` to show all keybindings in the HUD. The essentials:
 | Key | Action |
 |-----|--------|
 | `q` | Quit |
-| `Ctrl+C` / `Ctrl+D` | Quit (from any modal) |
+| `Ctrl+C` / `Ctrl+D` | Quit (press the same combo twice, from any modal) |
 | `w` | Toggle whitespace |
 | `o` | Toggle agent outputs tab |
 | `Ctrl+W` | Toggle worktree browser |

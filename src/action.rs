@@ -1,10 +1,26 @@
 use crossterm::event::KeyEvent;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QuitCombo {
+    CtrlC,
+    CtrlD,
+}
+
+impl QuitCombo {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CtrlC => "Ctrl+C",
+            Self::CtrlD => "Ctrl+D",
+        }
+    }
+}
+
 /// Central action enum — all state mutations flow through here.
 #[derive(Debug, Clone)]
 pub enum Action {
     // Lifecycle
     Quit,
+    ConfirmQuitSignal(QuitCombo),
     Tick,
 
     // Navigation
