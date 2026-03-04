@@ -112,6 +112,9 @@ pub struct AppState {
 
     // Settings modal
     pub settings: SettingsState,
+
+    // Which-key overlay
+    pub which_key_visible: bool,
 }
 
 impl AppState {
@@ -147,6 +150,7 @@ impl AppState {
             restore_confirm_open: false,
             theme,
             settings: SettingsState::default(),
+            which_key_visible: false,
         }
     }
 }

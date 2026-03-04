@@ -139,6 +139,9 @@ pub enum Action {
     // HUD
     ToggleHud,
 
+    // Which-key help overlay
+    ToggleWhichKey,
+
     // Settings modal
     OpenSettings,
     CloseSettings,

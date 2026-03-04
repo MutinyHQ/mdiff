@@ -12,6 +12,7 @@ pub mod restore_confirm;
 pub mod settings_modal;
 pub mod target_dialog;
 pub mod text_input;
+pub mod which_key;
 pub mod worktree_browser;
 
 use ratatui::{layout::Rect, Frame};
