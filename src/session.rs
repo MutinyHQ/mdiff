@@ -12,6 +12,8 @@ struct SessionFile {
     version: u32,
     target_label: String,
     annotations: Vec<AnnotationEntry>,
+    #[serde(default)]
+    scores: Vec<ScoreEntry>,
 }
 
 /// V2 annotation entry with separate old/new ranges.
@@ -32,6 +34,18 @@ struct AnnotationEntry {
     #[serde(default)]
     line_end: Option<u32>,
     comment: String,
+    created_at: String,
+}
+
+/// Score entry for session persistence.
+#[derive(Serialize, Deserialize)]
+struct ScoreEntry {
+    file_path: String,
+    old_start: Option<u32>,
+    old_end: Option<u32>,
+    new_start: Option<u32>,
+    new_end: Option<u32>,
+    score: u8,
     created_at: String,
 }
 
@@ -109,6 +123,19 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
         });
     }
 
+    // Load scores
+    for entry in session.scores {
+        let old_range = entry.old_start.zip(entry.old_end);
+        let new_range = entry.new_start.zip(entry.new_end);
+        state.set_score(crate::state::annotation_state::LineScore {
+            file_path: entry.file_path,
+            old_range,
+            new_range,
+            score: entry.score,
+            created_at: entry.created_at,
+        });
+    }
+
     state
 }
 
@@ -137,10 +164,25 @@ pub fn save_session(repo_path: &Path, target_label: &str, annotations: &Annotati
         })
         .collect();
 
+    let score_entries: Vec<ScoreEntry> = annotations
+        .all_scores_sorted()
+        .into_iter()
+        .map(|s| ScoreEntry {
+            file_path: s.file_path.clone(),
+            old_start: s.old_range.map(|(s, _)| s),
+            old_end: s.old_range.map(|(_, e)| e),
+            new_start: s.new_range.map(|(s, _)| s),
+            new_end: s.new_range.map(|(_, e)| e),
+            score: s.score,
+            created_at: s.created_at.clone(),
+        })
+        .collect();
+
     let session = SessionFile {
         version: 2,
         target_label: target_label.to_string(),
         annotations: entries,
+        scores: score_entries,
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {

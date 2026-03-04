@@ -380,6 +380,12 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('d') => Some(Action::DeleteAnnotation),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('v') | KeyCode::Char('V') | KeyCode::Esc => Some(Action::ExitVisualMode),
+            KeyCode::Char('1') => Some(Action::SetLineScore(1)),
+            KeyCode::Char('2') => Some(Action::SetLineScore(2)),
+            KeyCode::Char('3') => Some(Action::SetLineScore(3)),
+            KeyCode::Char('4') => Some(Action::SetLineScore(4)),
+            KeyCode::Char('5') => Some(Action::SetLineScore(5)),
+            KeyCode::Char('0') => Some(Action::RemoveLineScore),
             _ => None,
         };
     }
@@ -410,6 +416,12 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
             KeyCode::Char('N') => Some(Action::DiffSearchPrev),
+            KeyCode::Char('1') => Some(Action::SetLineScore(1)),
+            KeyCode::Char('2') => Some(Action::SetLineScore(2)),
+            KeyCode::Char('3') => Some(Action::SetLineScore(3)),
+            KeyCode::Char('4') => Some(Action::SetLineScore(4)),
+            KeyCode::Char('5') => Some(Action::SetLineScore(5)),
+            KeyCode::Char('0') => Some(Action::RemoveLineScore),
             _ => None,
         },
     }

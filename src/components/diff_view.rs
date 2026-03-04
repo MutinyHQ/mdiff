@@ -187,6 +187,26 @@ fn has_annotation(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo
         .has_annotation_at(&file_path, row_info.old_lineno, row_info.new_lineno)
 }
 
+/// Get the score at a line position, if any.
+fn get_score(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> Option<u8> {
+    let file_path = delta.path.to_string_lossy();
+    state
+        .annotations
+        .score_at(&file_path, row_info.old_lineno, row_info.new_lineno)
+}
+
+/// Get the color for a score value.
+fn score_color(score: u8) -> Color {
+    match score {
+        1 => Color::Red,
+        2 => Color::Rgb(255, 165, 0), // Orange
+        3 => Color::Yellow,
+        4 => Color::Rgb(144, 238, 144), // Light green
+        5 => Color::Green,
+        _ => Color::Gray,
+    }
+}
+
 fn render_split(
     frame: &mut Frame,
     area: Rect,
@@ -384,7 +404,16 @@ fn build_split_lines_core<'a>(
         if let Some(bg) = hl.gutter_bg {
             gutter_style = gutter_style.bg(bg);
         }
-        center.push(Line::from(Span::styled(hunk_gutter, gutter_style)));
+        
+        let score = display_map
+            .get(display_row)
+            .and_then(|info| get_score(state, delta, info));
+        let mut hunk_spans = Vec::new();
+        if let Some(s) = score {
+            hunk_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+        }
+        hunk_spans.push(Span::styled(hunk_gutter, gutter_style));
+        center.push(Line::from(hunk_spans));
 
         let mut content_style = Style::default().fg(theme.text_muted);
         if let Some(bg) = hl.content_bg {
@@ -424,7 +453,16 @@ fn build_split_lines_core<'a>(
                     if let Some(bg) = hl.gutter_bg {
                         gutter_style = gutter_style.bg(bg);
                     }
-                    center.push(Line::from(Span::styled(collapsed_gutter, gutter_style)));
+                    
+                    let score = display_map
+                        .get(display_row)
+                        .and_then(|info| get_score(state, delta, info));
+                    let mut collapsed_spans = Vec::new();
+                    if let Some(s) = score {
+                        collapsed_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+                    }
+                    collapsed_spans.push(Span::styled(collapsed_gutter, gutter_style));
+                    center.push(Line::from(collapsed_spans));
 
                     let mut content_style = Style::default().fg(theme.text_muted);
                     if let Some(bg) = hl.content_bg {
@@ -451,8 +489,11 @@ fn build_split_lines_core<'a>(
                         let gutter_l = format_lineno(line.old_lineno, gutter_width);
                         let gutter_r = format_lineno(line.new_lineno, gutter_width);
                         let marker = if ann_marker { "\u{2502}" } else { " " };
+                        let score = display_map
+                            .get(display_row)
+                            .and_then(|info| get_score(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme,
+                            &gutter_l, &gutter_r, marker, hl, theme, score,
                         ));
 
                         let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
@@ -539,8 +580,11 @@ fn build_split_lines_core<'a>(
                             };
                             let gutter_l = format_lineno(old_lineno, gutter_width);
                             let gutter_r = format_lineno(new_lineno, gutter_width);
+                            let score = display_map
+                                .get(display_row)
+                                .and_then(|info| get_score(state, delta, info));
                             center.push(make_center_gutter_line(
-                                &gutter_l, &gutter_r, marker, hl, theme,
+                                &gutter_l, &gutter_r, marker, hl, theme, score,
                             ));
 
                             if j < dels.len() {
@@ -583,8 +627,11 @@ fn build_split_lines_core<'a>(
 
                         let gutter_l = " ".repeat(gutter_width);
                         let gutter_r = format_lineno(line.new_lineno, gutter_width);
+                        let score = display_map
+                            .get(display_row)
+                            .and_then(|info| get_score(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme,
+                            &gutter_l, &gutter_r, marker, hl, theme, score,
                         ));
 
                         left.push(make_empty_content_line(hl, theme));
@@ -625,12 +672,16 @@ fn build_unified_lines_core<'a>(
         let ann_marker = display_map
             .get(display_row)
             .is_some_and(|info| has_annotation(state, delta, info));
+        let score = display_map
+            .get(display_row)
+            .and_then(|info| get_score(state, delta, info));
 
         lines.push(make_hunk_header_line_unified(
             gutter_width,
             &hunk.header,
             hl,
             ann_marker,
+            score,
             theme,
         ));
         display_row += 1;
@@ -651,11 +702,15 @@ fn build_unified_lines_core<'a>(
                     ..
                 } => {
                     let hl = row_highlight(state, display_row);
+                    let score = display_map
+                        .get(display_row)
+                        .and_then(|info| get_score(state, delta, info));
                     lines.push(make_collapsed_indicator_line_unified(
                         gutter_width,
                         *hidden_count,
                         *direction,
                         hl,
+                        score,
                         theme,
                     ));
                     display_row += 1;
@@ -665,6 +720,9 @@ fn build_unified_lines_core<'a>(
                     let ann_marker = display_map
                         .get(display_row)
                         .is_some_and(|info| has_annotation(state, delta, info));
+                    let score = display_map
+                        .get(display_row)
+                        .and_then(|info| get_score(state, delta, info));
 
                     let (old_g, new_g) = (
                         format_lineno(line.old_lineno, gutter_width),
@@ -683,6 +741,7 @@ fn build_unified_lines_core<'a>(
                                 None,
                                 hl,
                                 ann_marker,
+                                score,
                                 theme,
                             ));
                         }
@@ -698,6 +757,7 @@ fn build_unified_lines_core<'a>(
                                 Some(theme.diff_add_bg),
                                 hl,
                                 ann_marker,
+                                score,
                                 theme,
                             ));
                         }
@@ -713,6 +773,7 @@ fn build_unified_lines_core<'a>(
                                 Some(theme.diff_del_bg),
                                 hl,
                                 ann_marker,
+                                score,
                                 theme,
                             ));
                         }
@@ -741,6 +802,7 @@ fn make_hunk_header_line_unified<'a>(
     header: &str,
     hl: RowHighlight,
     ann_marker: bool,
+    score: Option<u8>,
     theme: &Theme,
 ) -> Line<'a> {
     let marker = if ann_marker { "\u{2502}" } else { " " };
@@ -758,10 +820,14 @@ fn make_hunk_header_line_unified<'a>(
     if let Some(bg) = hl.content_bg {
         content_style = content_style.bg(bg);
     }
-    Line::from(vec![
-        Span::styled(gutter_text, gutter_style),
-        Span::styled(header.to_string(), content_style),
-    ])
+    
+    let mut spans = Vec::new();
+    if let Some(s) = score {
+        spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+    }
+    spans.push(Span::styled(gutter_text, gutter_style));
+    spans.push(Span::styled(header.to_string(), content_style));
+    Line::from(spans)
 }
 
 /// Apply highlight spans to a string, blending with diff background.
@@ -826,7 +892,16 @@ fn make_center_gutter_line<'a>(
     marker: &str,
     hl: RowHighlight,
     theme: &Theme,
+    score: Option<u8>,
 ) -> Line<'a> {
+    let mut spans = Vec::new();
+    
+    // Add score dot if present
+    if let Some(s) = score {
+        let dot_style = Style::default().fg(score_color(s));
+        spans.push(Span::styled("●", dot_style));
+    }
+    
     let text = format!("{gutter_l} {gutter_r}{marker}");
     let mut style = Style::default().fg(theme.text_muted);
     if marker == "\u{2502}" {
@@ -838,7 +913,9 @@ fn make_center_gutter_line<'a>(
     if let Some(bg) = hl.gutter_bg {
         style = style.bg(bg);
     }
-    Line::from(Span::styled(text, style))
+    spans.push(Span::styled(text, style));
+    
+    Line::from(spans)
 }
 
 /// Build a content-only line (no gutter) with syntax highlighting and diff background.
@@ -897,6 +974,7 @@ fn make_unified_highlighted<'a>(
     diff_bg: Option<Color>,
     hl: RowHighlight,
     ann_marker: bool,
+    score: Option<u8>,
     theme: &Theme,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
@@ -913,7 +991,13 @@ fn make_unified_highlighted<'a>(
     if let Some(bg) = hl.gutter_bg {
         gutter_style = gutter_style.bg(bg);
     }
+    
+    let mut all_spans = Vec::new();
+    if let Some(s) = score {
+        all_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+    }
     let gutter_span = Span::styled(format!("{old_g} {new_g}{marker}"), gutter_style);
+    all_spans.push(gutter_span);
 
     let prefix_style = match prefix {
         "+" => Style::default()
@@ -942,7 +1026,7 @@ fn make_unified_highlighted<'a>(
         vec![Span::styled(trimmed.to_string(), style)]
     };
 
-    let mut all_spans = vec![gutter_span, prefix_span];
+    all_spans.push(prefix_span);
     all_spans.extend(content_spans);
     Line::from(all_spans)
 }
@@ -953,6 +1037,7 @@ fn make_collapsed_indicator_line_unified<'a>(
     hidden_count: usize,
     direction: ExpandDirection,
     hl: RowHighlight,
+    score: Option<u8>,
     theme: &Theme,
 ) -> Line<'a> {
     let gutter_text = format!(
@@ -975,10 +1060,14 @@ fn make_collapsed_indicator_line_unified<'a>(
         ExpandDirection::Up => "\u{25b2}",   // ▲
     };
     let label = format!("{caret} {hidden_count} lines hidden {caret}");
-    Line::from(vec![
-        Span::styled(gutter_text, gutter_style),
-        Span::styled(label, content_style),
-    ])
+    
+    let mut spans = Vec::new();
+    if let Some(s) = score {
+        spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+    }
+    spans.push(Span::styled(gutter_text, gutter_style));
+    spans.push(Span::styled(label, content_style));
+    Line::from(spans)
 }
 
 /// Wrap left and right split-view lines in lockstep so each logical row occupies the same
