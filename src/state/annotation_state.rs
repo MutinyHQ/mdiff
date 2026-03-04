@@ -2,6 +2,89 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Category of an annotation for structured agent feedback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnnotationCategory {
+    Bug,
+    Style,
+    Performance,
+    Security,
+    Suggestion,
+    Question,
+    Nitpick,
+}
+
+impl AnnotationCategory {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Bug => "Bug",
+            Self::Style => "Style",
+            Self::Performance => "Perf",
+            Self::Security => "Security",
+            Self::Suggestion => "Suggestion",
+            Self::Question => "Question",
+            Self::Nitpick => "Nitpick",
+        }
+    }
+
+    pub fn shortcut(&self) -> char {
+        match self {
+            Self::Bug => 'b',
+            Self::Style => 's',
+            Self::Performance => 'p',
+            Self::Security => 'x',
+            Self::Suggestion => 'g',
+            Self::Question => 'q',
+            Self::Nitpick => 'n',
+        }
+    }
+
+    pub fn all() -> &'static [AnnotationCategory] {
+        &[
+            Self::Bug,
+            Self::Style,
+            Self::Performance,
+            Self::Security,
+            Self::Suggestion,
+            Self::Question,
+            Self::Nitpick,
+        ]
+    }
+}
+
+/// Severity level of an annotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnnotationSeverity {
+    Critical,
+    Major,
+    Minor,
+    Info,
+}
+
+impl AnnotationSeverity {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Critical => "Critical",
+            Self::Major => "Major",
+            Self::Minor => "Minor",
+            Self::Info => "Info",
+        }
+    }
+
+    pub fn shortcut(&self) -> char {
+        match self {
+            Self::Critical => 'c',
+            Self::Major => 'M',
+            Self::Minor => 'm',
+            Self::Info => 'i',
+        }
+    }
+
+    pub fn all() -> &'static [AnnotationSeverity] {
+        &[Self::Critical, Self::Major, Self::Minor, Self::Info]
+    }
+}
+
 /// A file path + line ranges that anchor an annotation to specific diff lines.
 /// Stores old-file and new-file ranges separately so the LLM prompt can
 /// distinguish between deleted, added, and context lines.
@@ -75,6 +158,18 @@ pub struct Annotation {
     pub anchor: LineAnchor,
     pub comment: String,
     pub created_at: String,
+    #[serde(default = "default_category")]
+    pub category: AnnotationCategory,
+    #[serde(default = "default_severity")]
+    pub severity: AnnotationSeverity,
+}
+
+fn default_category() -> AnnotationCategory {
+    AnnotationCategory::Suggestion
+}
+
+fn default_severity() -> AnnotationSeverity {
+    AnnotationSeverity::Minor
 }
 
 /// State for all annotations in the current session.
