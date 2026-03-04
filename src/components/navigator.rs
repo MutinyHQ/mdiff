@@ -101,15 +101,7 @@ impl Component for Navigator {
                     FileReviewStatus::New => ("\u{2605}", theme.accent),       // ★
                 };
 
-                // Truncate from the left so the filename (rightmost segment) is visible
-                let char_count = entry.display.chars().count();
-                let display = if char_count > max_display_width && max_display_width > 1 {
-                    let skip = char_count - (max_display_width - 1);
-                    let truncated: String = entry.display.chars().skip(skip).collect();
-                    format!("\u{2026}{truncated}")
-                } else {
-                    entry.display.clone()
-                };
+                let display = middle_ellipsis(&entry.display, max_display_width);
 
                 Line::from(vec![
                     Span::styled(format!("{prefix} "), style),
@@ -128,5 +120,55 @@ impl Component for Navigator {
         let block = block.title_bottom(Line::from(scroll_info).right_aligned());
         let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, area);
+    }
+}
+
+fn middle_ellipsis(s: &str, max_chars: usize) -> String {
+    let len = s.chars().count();
+    if len <= max_chars {
+        return s.to_string();
+    }
+    match max_chars {
+        0 => String::new(),
+        1 => "\u{2026}".to_string(),
+        2 => {
+            let first = s.chars().next().unwrap_or('\u{2026}');
+            format!("{first}\u{2026}")
+        }
+        _ => {
+            let keep = max_chars - 1;
+            let head = keep / 2;
+            let tail = keep - head; // Bias one extra char to the tail when odd.
+            let start: String = s.chars().take(head).collect();
+            let end: String = s.chars().skip(len - tail).collect();
+            format!("{start}\u{2026}{end}")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::middle_ellipsis;
+
+    #[test]
+    fn returns_original_when_short_enough() {
+        assert_eq!(middle_ellipsis("abc", 3), "abc");
+        assert_eq!(middle_ellipsis("abc", 10), "abc");
+    }
+
+    #[test]
+    fn handles_small_width_edge_cases() {
+        assert_eq!(middle_ellipsis("abcdef", 0), "");
+        assert_eq!(middle_ellipsis("abcdef", 1), "…");
+        assert_eq!(middle_ellipsis("abcdef", 2), "a…");
+        assert_eq!(middle_ellipsis("abcdef", 3), "a…f");
+    }
+
+    #[test]
+    fn truncates_with_middle_ellipsis_and_tail_bias() {
+        let out = middle_ellipsis("src/components/navigator.rs [M] +12 -4", 20);
+        assert_eq!(out.chars().count(), 20);
+        assert!(out.starts_with("src/compo"));
+        assert!(out.ends_with("[M] +12 -4"));
     }
 }
