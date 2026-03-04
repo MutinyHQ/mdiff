@@ -6,7 +6,8 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::action::Action;
-use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
+use crate::state::app_state::{ActiveView, CategoryPickerPhase, FocusPanel};
 
 #[derive(Debug)]
 pub enum Event {
@@ -82,6 +83,8 @@ pub struct KeyContext {
     pub commit_dialog_open: bool,
     pub target_dialog_open: bool,
     pub comment_editor_open: bool,
+    pub category_picker_open: bool,
+    pub category_picker_phase: CategoryPickerPhase,
     pub agent_selector_open: bool,
     pub annotation_menu_open: bool,
     pub restore_confirm_open: bool,
@@ -166,6 +169,37 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char(c) => Some(Action::TargetChar(c)),
             _ => None,
         };
+    }
+
+    // Priority 2.1: Category/severity picker
+    if ctx.category_picker_open {
+        match ctx.category_picker_phase {
+            CategoryPickerPhase::SelectCategory => {
+                return match key.code {
+                    KeyCode::Char('b') => Some(Action::SelectCategory(AnnotationCategory::Bug)),
+                    KeyCode::Char('s') => Some(Action::SelectCategory(AnnotationCategory::Style)),
+                    KeyCode::Char('p') => Some(Action::SelectCategory(AnnotationCategory::Performance)),
+                    KeyCode::Char('x') => Some(Action::SelectCategory(AnnotationCategory::Security)),
+                    KeyCode::Char('g') => Some(Action::SelectCategory(AnnotationCategory::Suggestion)),
+                    KeyCode::Char('q') => Some(Action::SelectCategory(AnnotationCategory::Question)),
+                    KeyCode::Char('n') => Some(Action::SelectCategory(AnnotationCategory::Nitpick)),
+                    KeyCode::Enter => Some(Action::CategoryPickerDefault),
+                    KeyCode::Esc => Some(Action::CancelCategoryPicker),
+                    _ => None,
+                };
+            }
+            CategoryPickerPhase::SelectSeverity => {
+                return match key.code {
+                    KeyCode::Char('c') => Some(Action::SelectSeverity(AnnotationSeverity::Critical)),
+                    KeyCode::Char('M') => Some(Action::SelectSeverity(AnnotationSeverity::Major)),
+                    KeyCode::Char('m') => Some(Action::SelectSeverity(AnnotationSeverity::Minor)),
+                    KeyCode::Char('i') => Some(Action::SelectSeverity(AnnotationSeverity::Info)),
+                    KeyCode::Enter => Some(Action::SelectSeverity(AnnotationSeverity::Minor)),
+                    KeyCode::Esc => Some(Action::CancelCategoryPicker),
+                    _ => None,
+                };
+            }
+        }
     }
 
     // Priority 2: Comment editor mode

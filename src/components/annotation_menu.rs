@@ -58,6 +58,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
         let prefix = if is_selected { " \u{25b6} " } else { "   " };
 
         let range_text = item.range_text();
+        let category_text = format!("[{}|{}]", item.category.label(), item.severity.label());
 
         // Truncate comment to first line for the list view
         let first_line = item
@@ -66,7 +67,7 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
             .next()
             .unwrap_or("")
             .chars()
-            .take((inner.width as usize).saturating_sub(prefix.len() + range_text.len() + 4))
+            .take((inner.width as usize).saturating_sub(prefix.len() + range_text.len() + category_text.len() + 6))
             .collect::<String>();
 
         let name_style = if is_selected {
@@ -83,8 +84,15 @@ pub fn render_annotation_menu(frame: &mut Frame, state: &AppState) {
             Style::default().fg(theme.text_muted)
         };
 
+        let category_style = if is_selected {
+            Style::default().fg(theme.success)
+        } else {
+            Style::default().fg(theme.text_muted)
+        };
+
         lines.push(Line::from(vec![
             Span::styled(prefix, name_style),
+            Span::styled(format!("{} ", category_text), category_style),
             Span::styled(format!("{range_text}: "), range_style),
             Span::styled(first_line, name_style),
         ]));

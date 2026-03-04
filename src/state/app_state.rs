@@ -5,7 +5,14 @@ use super::{
     ReviewState, SelectionState, TextBuffer, WorktreeState,
 };
 
+use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
 use super::settings_state::SettingsState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CategoryPickerPhase {
+    SelectCategory,
+    SelectSeverity,
+}
 
 /// Snapshot of an annotation for the annotation menu (owned to avoid borrow issues).
 #[derive(Debug, Clone)]
@@ -14,6 +21,8 @@ pub struct AnnotationMenuItem {
     pub old_range: Option<(u32, u32)>,
     pub new_range: Option<(u32, u32)>,
     pub comment: String,
+    pub category: AnnotationCategory,
+    pub severity: AnnotationSeverity,
 }
 
 impl AnnotationMenuItem {
@@ -84,6 +93,12 @@ pub struct AppState {
     pub comment_editor_open: bool,
     pub comment_editor_text: TextBuffer,
 
+    // Category/severity picker
+    pub category_picker_open: bool,
+    pub category_picker_phase: CategoryPickerPhase,
+    pub pending_category: Option<AnnotationCategory>,
+    pub pending_severity: Option<AnnotationSeverity>,
+
     // Prompt preview
     pub prompt_preview_visible: bool,
     pub prompt_preview_text: String,
@@ -134,6 +149,10 @@ impl AppState {
             annotations: AnnotationState::default(),
             comment_editor_open: false,
             comment_editor_text: TextBuffer::new(),
+            category_picker_open: false,
+            category_picker_phase: CategoryPickerPhase::SelectCategory,
+            pending_category: None,
+            pending_severity: None,
             prompt_preview_visible: false,
             prompt_preview_text: String::new(),
             annotation_menu_open: false,

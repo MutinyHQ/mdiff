@@ -1,5 +1,7 @@
 use crossterm::event::KeyEvent;
 
+use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
+
 /// Central action enum — all state mutations flow through here.
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -89,6 +91,13 @@ pub enum Action {
     CommentChar(char),
     CommentBackspace,
     CommentNewline,
+    
+    // Category/severity picker
+    SelectCategory(AnnotationCategory),
+    SelectSeverity(AnnotationSeverity),
+    CancelCategoryPicker,
+    CategoryPickerDefault,
+    
     // Annotations
     DeleteAnnotation,
     NextAnnotation,

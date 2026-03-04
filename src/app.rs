@@ -189,6 +189,9 @@ impl App {
                 if self.state.comment_editor_open {
                     render_comment_editor(frame, &self.state);
                 }
+                if self.state.category_picker_open {
+                    crate::components::category_picker::render_category_picker(frame, frame.area(), &self.state);
+                }
                 if self.state.annotation_menu_open {
                     render_annotation_menu(frame, &self.state);
                 }
@@ -228,6 +231,8 @@ impl App {
                     commit_dialog_open: self.state.commit_dialog_open,
                     target_dialog_open: self.state.target_dialog_open,
                     comment_editor_open: self.state.comment_editor_open,
+                    category_picker_open: self.state.category_picker_open,
+                    category_picker_phase: self.state.category_picker_phase,
                     agent_selector_open: self.state.agent_selector.open,
                     annotation_menu_open: self.state.annotation_menu_open,
                     restore_confirm_open: self.state.restore_confirm_open,
@@ -977,8 +982,35 @@ impl App {
                     self.state.selection.anchor = self.state.diff.cursor_row;
                     self.state.selection.cursor = self.state.diff.cursor_row;
                 }
+                // Open category picker instead of comment editor directly
+                self.state.category_picker_open = true;
+                self.state.category_picker_phase = crate::state::app_state::CategoryPickerPhase::SelectCategory;
+                self.state.pending_category = None;
+                self.state.pending_severity = None;
+            }
+            Action::SelectCategory(cat) => {
+                self.state.pending_category = Some(cat);
+                self.state.category_picker_phase = crate::state::app_state::CategoryPickerPhase::SelectSeverity;
+            }
+            Action::SelectSeverity(sev) => {
+                self.state.pending_severity = Some(sev);
+                self.state.category_picker_open = false;
+                // Now open the comment editor as before
                 self.state.comment_editor_open = true;
                 self.state.comment_editor_text.clear();
+            }
+            Action::CategoryPickerDefault => {
+                use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
+                self.state.pending_category = Some(AnnotationCategory::Suggestion);
+                self.state.pending_severity = Some(AnnotationSeverity::Minor);
+                self.state.category_picker_open = false;
+                self.state.comment_editor_open = true;
+                self.state.comment_editor_text.clear();
+            }
+            Action::CancelCategoryPicker => {
+                self.state.category_picker_open = false;
+                self.state.pending_category = None;
+                self.state.pending_severity = None;
             }
             Action::CancelComment => {
                 self.state.comment_editor_open = false;
@@ -986,6 +1018,7 @@ impl App {
                 self.state.editing_annotation = None;
             }
             Action::ConfirmComment => {
+                use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
                 if !self.state.comment_editor_text.text().trim().is_empty() {
                     if let Some(editing) = self.state.editing_annotation.take() {
                         // Editing an existing annotation from the annotation menu
@@ -1001,10 +1034,14 @@ impl App {
                     } else if let Some(anchor) = self.selection_to_anchor() {
                         // Creating a new annotation from visual mode
                         let now = chrono::Utc::now().to_rfc3339();
+                        let category = self.state.pending_category.unwrap_or(AnnotationCategory::Suggestion);
+                        let severity = self.state.pending_severity.unwrap_or(AnnotationSeverity::Minor);
                         self.state.annotations.add(Annotation {
                             anchor,
                             comment: self.state.comment_editor_text.text().to_string(),
                             created_at: now,
+                            category,
+                            severity,
                         });
                         self.set_status("Comment added".to_string(), false);
                     }
@@ -1013,6 +1050,8 @@ impl App {
                 self.state.comment_editor_text.clear();
                 self.state.selection.active = false;
                 self.state.editing_annotation = None;
+                self.state.pending_category = None;
+                self.state.pending_severity = None;
             }
             Action::CommentChar(c) => {
                 self.state.comment_editor_text.insert_char(c);
@@ -1099,6 +1138,8 @@ impl App {
                                 old_range: a.anchor.old_range,
                                 new_range: a.anchor.new_range,
                                 comment: a.comment.clone(),
+                                category: a.category,
+                                severity: a.severity,
                             })
                             .collect();
                         self.state.annotation_menu_selected = 0;
@@ -1981,8 +2022,8 @@ impl App {
                         (None, None) => "Line ?".to_string(),
                     };
                     section.push_str(&format!(
-                        "\n\n> **Comment ({}):** {}",
-                        line_ref, ann.comment
+                        "\n\n> **[{} | {}] ({}):** {}",
+                        ann.category.label(), ann.severity.label(), line_ref, ann.comment
                     ));
                 }
 
