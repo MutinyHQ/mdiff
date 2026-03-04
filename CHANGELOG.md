@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/MutinyHQ/mdiff/compare/v0.1.10...v0.1.11) - 2026-03-04
+
+### Fixed
+
+- clippy
+- PTY process cleanup, kill targeting, and paste support
+
+### Other
+
+- add implementation spec for annotation quick-reactions
+- add implementation spec for contextual help overlay (which-key)
+- add implementation spec for agent feedback summary view
+- add 7 new feature ideas from competitive research (2026-03-05)
+- add implementation spec for annotation categories and severity levels
+- add implementation spec for hunk-level navigation
+- add comprehensive roadmap and feature backlog
+
 ## [0.1.10](https://github.com/MutinyHQ/mdiff/compare/v0.1.9...v0.1.10) - 2026-02-20
 
 ### Added

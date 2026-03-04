@@ -130,6 +130,7 @@ pub enum Action {
     EnterPtyFocus,
     ExitPtyFocus,
     PtyInput(KeyEvent),
+    PtyPaste(String),
     PtyScrollUp,
     PtyScrollDown,
 

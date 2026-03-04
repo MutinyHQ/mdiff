@@ -239,6 +239,8 @@ impl App {
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
                     Event::Mouse(mouse) => self.handle_mouse(mouse),
+                    Event::Paste(text) if self.state.pty_focus => Some(Action::PtyPaste(text)),
+                    Event::Paste(_) => None,
                     Event::Resize => Some(Action::Resize),
                     Event::Tick => Some(Action::Tick),
                 };
@@ -1363,10 +1365,14 @@ impl App {
                 }
             }
             Action::KillAgentProcess => {
-                if let Some(runner) = self.pty_runner.as_mut() {
-                    runner.kill();
-                    self.state.pty_focus = false;
-                    self.set_status("Agent process killed".to_string(), false);
+                if let Some(run) = self.state.agent_outputs.selected() {
+                    if matches!(run.status, AgentRunStatus::Running) {
+                        if let Some(runner) = self.pty_runner.as_mut() {
+                            runner.kill();
+                            self.state.pty_focus = false;
+                            self.set_status("Agent process killed".to_string(), false);
+                        }
+                    }
                 }
             }
             Action::AgentOutputsSwitchWorktree => {
@@ -1445,6 +1451,11 @@ impl App {
                     if !bytes.is_empty() {
                         runner.write_input(&bytes);
                     }
+                }
+            }
+            Action::PtyPaste(text) => {
+                if let Some(runner) = self.pty_runner.as_mut() {
+                    runner.write_input(text.as_bytes());
                 }
             }
             Action::PtyScrollUp => {

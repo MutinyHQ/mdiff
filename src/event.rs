@@ -12,6 +12,7 @@ use crate::state::app_state::{ActiveView, FocusPanel};
 pub enum Event {
     Key(KeyEvent),
     Mouse(MouseEvent),
+    Paste(String),
     Resize,
     Tick,
 }
@@ -36,6 +37,11 @@ impl EventReader {
                     }
                     Some(Ok(CrosstermEvent::Mouse(mouse))) => {
                         if event_tx.send(Event::Mouse(mouse)).is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(CrosstermEvent::Paste(text))) => {
+                        if event_tx.send(Event::Paste(text)).is_err() {
                             break;
                         }
                     }
