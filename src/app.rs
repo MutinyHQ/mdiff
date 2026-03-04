@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::action::Action;
+use crate::action::{Action, QuitCombo};
 use crate::async_diff::{DiffRequest, DiffWorker};
 use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
@@ -51,6 +51,8 @@ pub struct App {
     git_cli: GitCli,
     status_clear_countdown: u32,
     hud_collapse_countdown: u32,
+    quit_confirm_countdown: u32,
+    last_quit_combo: Option<QuitCombo>,
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
     diff_viewport_height: Cell<usize>,
@@ -96,6 +98,8 @@ impl App {
             git_cli,
             status_clear_countdown: 0,
             hud_collapse_countdown: 0,
+            quit_confirm_countdown: 0,
+            last_quit_combo: None,
             repo_path,
             nav_area: Cell::new(Rect::default()),
             diff_viewport_height: Cell::new(20),
@@ -578,6 +582,19 @@ impl App {
         match action {
             Action::Quit => {
                 self.state.should_quit = true;
+            }
+            Action::ConfirmQuitSignal(combo) => {
+                if self.quit_confirm_countdown > 0 && self.last_quit_combo == Some(combo) {
+                    self.state.should_quit = true;
+                } else {
+                    self.quit_confirm_countdown = 40;
+                    self.last_quit_combo = Some(combo);
+                    self.set_status_for_ticks(
+                        format!("Press {} again to exit", combo.label()),
+                        false,
+                        self.quit_confirm_countdown,
+                    );
+                }
             }
             Action::NavigatorUp => {
                 self.state.navigator.select_up();
@@ -1453,6 +1470,12 @@ impl App {
             }
 
             Action::Tick => {
+                if self.quit_confirm_countdown > 0 {
+                    self.quit_confirm_countdown -= 1;
+                    if self.quit_confirm_countdown == 0 {
+                        self.last_quit_combo = None;
+                    }
+                }
                 if self.status_clear_countdown > 0 {
                     self.status_clear_countdown -= 1;
                     if self.status_clear_countdown == 0 {
@@ -1720,9 +1743,12 @@ impl App {
     }
 
     fn set_status(&mut self, msg: String, is_error: bool) {
+        self.set_status_for_ticks(msg, is_error, 60);
+    }
+
+    fn set_status_for_ticks(&mut self, msg: String, is_error: bool, ticks: u32) {
         self.state.status_message = Some((msg, is_error));
-        // ~3 seconds at 50ms tick rate
-        self.status_clear_countdown = 60;
+        self.status_clear_countdown = ticks;
     }
 
     /// Validate a ref string against the repo. Returns the ComparisonTarget and a display label.
