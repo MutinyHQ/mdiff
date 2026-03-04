@@ -76,6 +76,8 @@ Press `?` to show all keybindings in the HUD. The essentials:
 | `k` / `↑` | Previous item / scroll up |
 | `g` | Jump to top |
 | `G` | Jump to bottom |
+| `]` | Jump to next hunk |
+| `[` | Jump to previous hunk |
 | `h` / `←` | Focus file navigator |
 | `l` / `→` / `Enter` | Focus diff view |
 | `/` | Search files |
@@ -90,7 +92,7 @@ Press `?` to show all keybindings in the HUD. The essentials:
 | `i` | Add comment on selection |
 | `a` | Open annotation menu on current line |
 | `d` | Delete annotation on selection |
-| `]` / `[` | Jump to next/previous annotation |
+| `Ctrl+]` / `Ctrl+[` | Jump to next/previous annotation |
 | `y` | Copy rendered prompt to clipboard |
 | `p` | Toggle prompt preview |
 | `Ctrl+A` | Open agent selector |
