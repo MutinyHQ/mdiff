@@ -499,6 +499,45 @@ impl App {
         }
     }
 
+    fn find_next_hunk_row(
+        &self,
+        current_row: usize,
+        display_map: &[DisplayRowInfo],
+    ) -> Option<usize> {
+        display_map
+            .iter()
+            .enumerate()
+            .skip(current_row + 1)
+            .find(|(_, info)| info.is_header)
+            .map(|(idx, _)| idx)
+            .or_else(|| {
+                display_map
+                    .iter()
+                    .enumerate()
+                    .take(current_row + 1)
+                    .find(|(_, info)| info.is_header)
+                    .map(|(idx, _)| idx)
+            })
+    }
+
+    fn find_prev_hunk_row(
+        &self,
+        current_row: usize,
+        display_map: &[DisplayRowInfo],
+    ) -> Option<usize> {
+        if current_row > 0 {
+            if let Some(idx) = (0..current_row)
+                .rev()
+                .find(|&idx| display_map[idx].is_header)
+            {
+                return Some(idx);
+            }
+        }
+        (0..display_map.len())
+            .rev()
+            .find(|&idx| display_map[idx].is_header)
+    }
+
     /// Convert the current visual selection to a LineAnchor using the display map.
     /// Collects old and new line numbers separately to preserve side information.
     fn selection_to_anchor(&self) -> Option<LineAnchor> {
@@ -1481,6 +1520,30 @@ impl App {
                             self.state.diff.gap_expansions.insert(gap_id, current + 20);
                         }
                     }
+                }
+            }
+            Action::JumpNextHunk => {
+                let display_map = self.current_display_map();
+                if let Some(row) = self.find_next_hunk_row(self.state.diff.cursor_row, &display_map)
+                {
+                    self.state.diff.cursor_row = row;
+                    self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    let total_hunks = display_map.iter().filter(|r| r.is_header).count();
+                    let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
+                    self.state.status_message =
+                        Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
+                }
+            }
+            Action::JumpPrevHunk => {
+                let display_map = self.current_display_map();
+                if let Some(row) = self.find_prev_hunk_row(self.state.diff.cursor_row, &display_map)
+                {
+                    self.state.diff.cursor_row = row;
+                    self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    let total_hunks = display_map.iter().filter(|r| r.is_header).count();
+                    let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
+                    self.state.status_message =
+                        Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
                 }
             }
             // Settings modal

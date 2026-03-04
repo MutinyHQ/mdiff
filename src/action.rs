@@ -26,6 +26,10 @@ pub enum Action {
 
     ExpandContext,
 
+    // Hunk navigation
+    JumpNextHunk,
+    JumpPrevHunk,
+
     // Focus
     FocusNavigator,
     FocusDiffView,

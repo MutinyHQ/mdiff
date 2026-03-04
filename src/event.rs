@@ -309,11 +309,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         _ => {}
     }
 
-    // Annotation navigation (global in DiffExplorer)
+    // Annotation navigation moved to Ctrl modifier, hunk nav on bare keys
     if ctx.active_view == ActiveView::DiffExplorer {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char(']') => return Some(Action::NextAnnotation),
+                KeyCode::Char('[') => return Some(Action::PrevAnnotation),
+                _ => {}
+            }
+        }
         match key.code {
-            KeyCode::Char(']') => return Some(Action::NextAnnotation),
-            KeyCode::Char('[') => return Some(Action::PrevAnnotation),
+            KeyCode::Char(']') => return Some(Action::JumpNextHunk),
+            KeyCode::Char('[') => return Some(Action::JumpPrevHunk),
             _ => {}
         }
     }
