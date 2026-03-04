@@ -80,7 +80,9 @@ Press `?` to show all keybindings in the HUD. The essentials:
 | `[` | Jump to previous hunk |
 | `h` / `←` | Focus file navigator |
 | `l` / `→` / `Enter` | Focus diff view |
-| `/` | Search files |
+| `/` | Search files (or current file in diff view) |
+| `Ctrl+F` | Search across all diff content |
+| `n` / `N` | Next/previous search match (in global search) |
 | `Tab` | Toggle split/unified view |
 | `PageUp` / `PageDown` | Scroll page |
 

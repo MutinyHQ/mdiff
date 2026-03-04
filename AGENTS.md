@@ -18,6 +18,11 @@ All commands match CI (see `.github/workflows/ci.yml`):
 | Test | `cargo test` |
 | Run | `cargo run` (or `cargo run -- <args>`) |
 
+### Required checks (must pass)
+
+- `cargo fmt --all --check`
+- `cargo clippy --all-targets -- -D warnings`
+
 ### Running the application
 
 `mdiff` is a TUI that must be run inside a git repository with a real terminal (not a pipe). It diffs the working tree against HEAD by default. To test it you need uncommitted changes or pass a target ref (e.g. `cargo run -- main`).

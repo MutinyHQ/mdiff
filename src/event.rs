@@ -86,6 +86,7 @@ pub struct KeyContext {
     pub focus: FocusPanel,
     pub search_active: bool,
     pub diff_search_active: bool,
+    pub global_search_active: bool,
     pub commit_dialog_open: bool,
     pub target_dialog_open: bool,
     pub comment_editor_open: bool,
@@ -257,6 +258,30 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 2.8: Global diff search mode
+    if ctx.global_search_active {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
+        return match key.code {
+            KeyCode::Esc | KeyCode::Enter => Some(Action::EndGlobalSearch),
+            KeyCode::Backspace => Some(Action::GlobalSearchBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
+            KeyCode::Char('n') => Some(Action::GlobalSearchNext),
+            KeyCode::Char('N') => Some(Action::GlobalSearchPrev),
+            KeyCode::Char(c) => Some(Action::GlobalSearchChar(c)),
+            _ => None,
+        };
+    }
+
     // Priority 3: Diff text search mode
     if ctx.diff_search_active {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -312,6 +337,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenAgentSelector)
+        }
+        KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::StartGlobalSearch)
         }
         _ => {}
     }

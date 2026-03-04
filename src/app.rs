@@ -16,6 +16,7 @@ use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::{
     compute_split_visual_row_metrics, compute_unified_visual_row_metrics, DiffView,
 };
+use crate::components::global_search_bar::render_global_search_bar;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::restore_confirm::render_restore_confirm;
@@ -206,7 +207,9 @@ impl App {
                 if self.state.settings.open {
                     render_settings_modal(frame, &self.state);
                 }
-
+                if self.state.global_search.active {
+                    render_global_search_bar(frame, &self.state);
+                }
                 which_key::render_which_key(frame, frame.area(), &self.state);
             })?;
 
@@ -232,6 +235,7 @@ impl App {
                     focus: self.state.focus,
                     search_active: self.state.navigator.search_active,
                     diff_search_active: self.state.diff.search_active,
+                    global_search_active: self.state.global_search.active,
                     commit_dialog_open: self.state.commit_dialog_open,
                     target_dialog_open: self.state.target_dialog_open,
                     comment_editor_open: self.state.comment_editor_open,
@@ -826,6 +830,44 @@ impl App {
                     {
                         self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
                     }
+                }
+            }
+
+            // Global search actions
+            Action::StartGlobalSearch => {
+                self.state.global_search.active = true;
+                self.state.global_search.query.clear();
+                self.state.global_search.matches.clear();
+                self.state.global_search.current_match = 0;
+            }
+            Action::EndGlobalSearch => {
+                self.state.global_search.active = false;
+            }
+            Action::GlobalSearchChar(c) => {
+                self.state.global_search.query.insert_char(c);
+                self.recompute_global_search_matches();
+            }
+            Action::GlobalSearchBackspace => {
+                self.state.global_search.query.delete_back();
+                self.recompute_global_search_matches();
+            }
+            Action::GlobalSearchNext => {
+                if !self.state.global_search.matches.is_empty() {
+                    let next = (self.state.global_search.current_match + 1)
+                        % self.state.global_search.matches.len();
+                    self.state.global_search.current_match = next;
+                    self.jump_to_global_search_match();
+                }
+            }
+            Action::GlobalSearchPrev => {
+                if !self.state.global_search.matches.is_empty() {
+                    let prev = if self.state.global_search.current_match == 0 {
+                        self.state.global_search.matches.len() - 1
+                    } else {
+                        self.state.global_search.current_match - 1
+                    };
+                    self.state.global_search.current_match = prev;
+                    self.jump_to_global_search_match();
                 }
             }
             Action::ToggleWorktreeBrowser => {
@@ -1741,6 +1783,8 @@ impl App {
             Some(&mut self.state.target_dialog_input)
         } else if self.state.comment_editor_open {
             Some(&mut self.state.comment_editor_text)
+        } else if self.state.global_search.active {
+            Some(&mut self.state.global_search.query)
         } else if self.state.diff.search_active {
             Some(&mut self.state.diff.search_query)
         } else if self.state.navigator.search_active {
@@ -1977,6 +2021,90 @@ impl App {
             {
                 self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
             }
+        }
+    }
+
+    /// Recompute global search matches across all files.
+    fn recompute_global_search_matches(&mut self) {
+        use crate::state::search_state::GlobalSearchMatch;
+
+        self.state.global_search.matches.clear();
+        self.state.global_search.current_match = 0;
+
+        let query = self.state.global_search.query.text().to_lowercase();
+        if query.is_empty() {
+            return;
+        }
+
+        // Search across all files
+        for (file_index, delta) in self.state.diff.deltas.iter().enumerate() {
+            let file_path = delta.path.to_string_lossy().to_string();
+
+            // Build display map for this file to get accurate row indices
+            let display_map = build_display_map(
+                delta,
+                self.state.diff.options.view_mode,
+                self.state.diff.display_context,
+                &self.state.diff.gap_expansions,
+            );
+
+            // Search through all lines in this file
+            for (display_row, info) in display_map.iter().enumerate() {
+                if info.is_header || info.is_collapsed_indicator {
+                    continue;
+                }
+
+                let Some(line_idx) = info.line_index else {
+                    continue;
+                };
+                let Some(hunk) = delta.hunks.get(info.hunk_index) else {
+                    continue;
+                };
+                let Some(line) = hunk.lines.get(line_idx) else {
+                    continue;
+                };
+
+                if line.content.to_lowercase().contains(&query) {
+                    let line_number = line.new_lineno.or(line.old_lineno).unwrap_or(0);
+                    self.state.global_search.matches.push(GlobalSearchMatch {
+                        file_index,
+                        file_path: file_path.clone(),
+                        line_number,
+                        display_row,
+                    });
+                }
+            }
+        }
+
+        // If we have matches, jump to the first one
+        if !self.state.global_search.matches.is_empty() {
+            self.jump_to_global_search_match();
+        }
+    }
+
+    /// Jump to the current global search match.
+    fn jump_to_global_search_match(&mut self) {
+        if self.state.global_search.matches.is_empty() {
+            return;
+        }
+
+        let current_match =
+            &self.state.global_search.matches[self.state.global_search.current_match];
+
+        // Switch to the file containing the match
+        self.state.diff.selected_file = Some(current_match.file_index);
+        self.state.navigator.selected = current_match.file_index;
+
+        // Scroll to the matching line in the diff view
+        self.state.diff.cursor_row = current_match.display_row;
+        let vh = self.state.diff.viewport_height.max(1);
+        let cursor_visual = self.visual_offset_for_row(current_match.display_row);
+
+        // Center the match in the viewport
+        if cursor_visual < self.state.diff.scroll_offset
+            || cursor_visual >= self.state.diff.scroll_offset + vh
+        {
+            self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
         }
     }
 

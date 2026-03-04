@@ -1,8 +1,8 @@
 use crate::theme::Theme;
 
 use super::{
-    AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState, NavigatorState,
-    ReviewState, SelectionState, TextBuffer, WorktreeState,
+    AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState,
+    GlobalSearchState, NavigatorState, ReviewState, SelectionState, TextBuffer, WorktreeState,
 };
 
 use super::settings_state::SettingsState;
@@ -115,6 +115,9 @@ pub struct AppState {
 
     // Which-key overlay
     pub which_key_visible: bool,
+
+    // Global search across all diff content
+    pub global_search: GlobalSearchState,
 }
 
 impl AppState {
@@ -151,6 +154,7 @@ impl AppState {
             theme,
             settings: SettingsState::default(),
             which_key_visible: false,
+            global_search: GlobalSearchState::default(),
         }
     }
 }
