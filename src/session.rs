@@ -106,6 +106,8 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
             },
             comment: entry.comment,
             created_at: entry.created_at,
+            category: crate::state::annotation_state::AnnotationCategory::Suggestion,
+            severity: crate::state::annotation_state::AnnotationSeverity::Minor,
         });
     }
 
