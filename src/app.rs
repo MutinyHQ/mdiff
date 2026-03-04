@@ -181,6 +181,10 @@ impl App {
                     ActiveView::AgentOutputs => {
                         agent_outputs.render(frame, outer[1], &self.state);
                     }
+                    ActiveView::FeedbackSummary => {
+                        use crate::components::feedback_summary::FeedbackSummary;
+                        FeedbackSummary.render(frame, outer[1], &self.state);
+                    }
                 }
 
                 action_hud.render(frame, outer[2], &self.state);
@@ -872,7 +876,9 @@ impl App {
             }
             Action::ToggleWorktreeBrowser => {
                 self.state.active_view = match self.state.active_view {
-                    ActiveView::DiffExplorer | ActiveView::AgentOutputs => {
+                    ActiveView::DiffExplorer
+                    | ActiveView::AgentOutputs
+                    | ActiveView::FeedbackSummary => {
                         self.refresh_worktrees();
                         ActiveView::WorktreeBrowser
                     }
@@ -1716,6 +1722,39 @@ impl App {
                 }
             }
 
+            // Feedback summary
+            Action::ToggleFeedbackSummary => {
+                if self.state.active_view == ActiveView::FeedbackSummary {
+                    self.state.active_view = ActiveView::DiffExplorer;
+                } else {
+                    self.state.active_view = ActiveView::FeedbackSummary;
+                    self.state.feedback_summary_scroll = 0;
+                }
+            }
+            Action::FeedbackSummaryUp => {
+                self.state.feedback_summary_scroll =
+                    self.state.feedback_summary_scroll.saturating_sub(1);
+            }
+            Action::FeedbackSummaryDown => {
+                self.state.feedback_summary_scroll += 1;
+            }
+            Action::FeedbackSummaryCopyJson => {
+                let json = self.build_feedback_summary_json();
+                if let Ok(text) = serde_json::to_string_pretty(&json) {
+                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                        let _ = clipboard.set_text(&text);
+                        self.set_status("Feedback JSON copied to clipboard".to_string(), false);
+                    }
+                }
+            }
+            Action::FeedbackSummaryCopyPrompt => {
+                let prompt_text = self.build_feedback_summary_prompt();
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(&prompt_text);
+                    self.set_status("Feedback summary copied to clipboard".to_string(), false);
+                }
+            }
+
             // Generic text input navigation
             Action::TextCursorLeft => {
                 if let Some(buf) = self.active_text_buffer() {
@@ -2255,6 +2294,87 @@ impl App {
     /// Update the prompt preview text from the current diff + annotations.
     fn update_prompt_preview(&mut self) {
         self.state.prompt_preview_text = self.render_prompt_for_all_files().unwrap_or_default();
+    }
+
+    /// Build a JSON summary of all feedback (annotations and scores).
+    fn build_feedback_summary_json(&self) -> serde_json::Value {
+        let total_annotations = self.state.annotations.count();
+        let total_scores = self.state.annotations.score_count();
+        let files_with_feedback = self.state.annotations.files_with_annotations();
+        let total_files = self.state.navigator.entries.len();
+        let reviewed = self.state.review.reviewed_count();
+
+        let all_scores = self.state.annotations.all_scores_sorted();
+        let mut score_dist = [0usize; 5];
+        let mut score_sum = 0usize;
+        for s in &all_scores {
+            if s.score >= 1 && s.score <= 5 {
+                score_dist[(s.score - 1) as usize] += 1;
+                score_sum += s.score as usize;
+            }
+        }
+        let avg_score = if total_scores > 0 {
+            (score_sum as f64 / total_scores as f64 * 10.0).round() / 10.0
+        } else {
+            0.0
+        };
+
+        let mut files = Vec::new();
+        for (file_path, anns) in &self.state.annotations.annotations {
+            files.push(serde_json::json!({
+                "path": file_path,
+                "annotations": anns.len(),
+                "scores": 0,
+                "average_score": 0.0,
+            }));
+        }
+
+        serde_json::json!({
+            "session": self.state.target_label,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "summary": {
+                "total_annotations": total_annotations,
+                "total_scores": total_scores,
+                "files_with_feedback": files_with_feedback,
+                "files_reviewed": reviewed,
+                "files_total": total_files,
+                "average_score": avg_score,
+            },
+            "score_distribution": {
+                "1": score_dist[0],
+                "2": score_dist[1],
+                "3": score_dist[2],
+                "4": score_dist[3],
+                "5": score_dist[4],
+            },
+            "files": files,
+        })
+    }
+
+    /// Build a prompt-friendly text summary of feedback.
+    fn build_feedback_summary_prompt(&self) -> String {
+        let json = self.build_feedback_summary_json();
+        let total = json["summary"]["total_annotations"].as_u64().unwrap_or(0);
+        let files = json["summary"]["files_with_feedback"].as_u64().unwrap_or(0);
+        let scores = json["summary"]["total_scores"].as_u64().unwrap_or(0);
+        let avg = json["summary"]["average_score"].as_f64().unwrap_or(0.0);
+
+        if scores > 0 {
+            format!(
+                "## Review Summary\n\n\
+                 - {} annotations across {} files\n\
+                 - {} lines scored, average quality: {:.1}/5\n\n\
+                 See detailed annotations in the full prompt output.",
+                total, files, scores, avg,
+            )
+        } else {
+            format!(
+                "## Review Summary\n\n\
+                 - {} annotations across {} files\n\n\
+                 See detailed annotations in the full prompt output.",
+                total, files,
+            )
+        }
     }
 }
 

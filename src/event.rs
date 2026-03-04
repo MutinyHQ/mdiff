@@ -390,6 +390,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 5.6: Feedback summary view
+    if ctx.active_view == ActiveView::FeedbackSummary {
+        return match key.code {
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::FeedbackSummaryUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::FeedbackSummaryDown),
+            KeyCode::Char('y') => Some(Action::FeedbackSummaryCopyJson),
+            KeyCode::Char('p') => Some(Action::FeedbackSummaryCopyPrompt),
+            KeyCode::Esc | KeyCode::Char('F') => Some(Action::ToggleFeedbackSummary),
+            _ => None,
+        };
+    }
+
     // Priority 6: Diff explorer global bindings
     match key.code {
         KeyCode::Tab => return Some(Action::ToggleViewMode),
@@ -406,6 +418,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
         KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
         KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
+        KeyCode::Char('F') => return Some(Action::ToggleFeedbackSummary),
         KeyCode::Char('R') => return Some(Action::RefreshDiff),
         KeyCode::Char('n') if !ctx.visual_mode_active => {
             return match ctx.focus {

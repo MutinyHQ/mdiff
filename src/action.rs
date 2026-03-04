@@ -180,6 +180,13 @@ pub enum Action {
     SettingsLeft,
     SettingsRight,
 
+    // Feedback summary
+    ToggleFeedbackSummary,
+    FeedbackSummaryUp,
+    FeedbackSummaryDown,
+    FeedbackSummaryCopyJson,
+    FeedbackSummaryCopyPrompt,
+
     // Generic text input navigation
     TextCursorLeft,
     TextCursorRight,
