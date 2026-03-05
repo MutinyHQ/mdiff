@@ -1,7 +1,7 @@
 use crate::theme::Theme;
 
 use super::{
-    AgentOutputsState, AgentSelectorState, AnnotationState, DiffOptions, DiffState,
+    AgentOutputsState, AgentSelectorState, AnnotationState, ChecklistState, DiffOptions, DiffState,
     GlobalSearchState, NavigatorState, ReviewState, SelectionState, TextBuffer, WorktreeState,
 };
 
@@ -122,6 +122,9 @@ pub struct AppState {
 
     // Feedback summary
     pub feedback_summary_scroll: usize,
+
+    // Checklist
+    pub checklist: ChecklistState,
 }
 
 impl AppState {
@@ -160,6 +163,7 @@ impl AppState {
             global_search: GlobalSearchState::default(),
             feedback_summary_scroll: 0,
             which_key_visible: false,
+            checklist: ChecklistState::new(),
         }
     }
 }
