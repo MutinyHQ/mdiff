@@ -158,7 +158,11 @@ pub enum Action {
     RefreshDiff,
 
     // HUD
+    #[allow(dead_code)]
     ToggleHud,
+
+    // Which-key help overlay
+    ToggleWhichKey,
 
     // Settings modal
     OpenSettings,

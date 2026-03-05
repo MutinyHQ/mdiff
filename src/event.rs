@@ -386,7 +386,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             }
         }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
-        KeyCode::Char('?') => return Some(Action::ToggleHud),
+        KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
         _ => {}
     }

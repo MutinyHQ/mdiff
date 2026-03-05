@@ -21,6 +21,7 @@ use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::restore_confirm::render_restore_confirm;
 use crate::components::settings_modal::render_settings_modal;
 use crate::components::target_dialog::render_target_dialog;
+use crate::components::which_key;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{self, MdiffConfig, PersistentSettings};
@@ -205,6 +206,8 @@ impl App {
                 if self.state.settings.open {
                     render_settings_modal(frame, &self.state);
                 }
+
+                which_key::render_which_key(frame, frame.area(), &self.state);
             })?;
 
             self.state.diff.viewport_height = self.diff_viewport_height.get();
@@ -270,6 +273,10 @@ impl App {
 
             // Apply remaining actions
             for action in actions {
+                // Auto-dismiss which-key on any keypress (except the ? toggle itself)
+                if self.state.which_key_visible && !matches!(action, Action::ToggleWhichKey) {
+                    self.state.which_key_visible = false;
+                }
                 self.update(action);
             }
 
@@ -1506,6 +1513,10 @@ impl App {
                 self.state.hud_expanded = !self.state.hud_expanded;
                 // 10 seconds at 50ms tick rate
                 self.hud_collapse_countdown = if self.state.hud_expanded { 200 } else { 0 };
+            }
+
+            Action::ToggleWhichKey => {
+                self.state.which_key_visible = !self.state.which_key_visible;
             }
 
             Action::Tick => {
