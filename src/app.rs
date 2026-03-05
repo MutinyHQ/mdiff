@@ -4,7 +4,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::action::Action;
+use crate::action::{Action, QuitCombo};
 use crate::async_diff::{DiffRequest, DiffWorker};
 use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
@@ -52,6 +52,8 @@ pub struct App {
     git_cli: GitCli,
     status_clear_countdown: u32,
     hud_collapse_countdown: u32,
+    quit_confirm_countdown: u32,
+    last_quit_combo: Option<QuitCombo>,
     repo_path: PathBuf,
     nav_area: Cell<Rect>,
     diff_viewport_height: Cell<usize>,
@@ -97,6 +99,8 @@ impl App {
             git_cli,
             status_clear_countdown: 0,
             hud_collapse_countdown: 0,
+            quit_confirm_countdown: 0,
+            last_quit_combo: None,
             repo_path,
             nav_area: Cell::new(Rect::default()),
             diff_viewport_height: Cell::new(20),
@@ -242,6 +246,8 @@ impl App {
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
                     Event::Mouse(mouse) => self.handle_mouse(mouse),
+                    Event::Paste(text) if self.state.pty_focus => Some(Action::PtyPaste(text)),
+                    Event::Paste(_) => None,
                     Event::Resize => Some(Action::Resize),
                     Event::Tick => Some(Action::Tick),
                 };
@@ -504,6 +510,45 @@ impl App {
         }
     }
 
+    fn find_next_hunk_row(
+        &self,
+        current_row: usize,
+        display_map: &[DisplayRowInfo],
+    ) -> Option<usize> {
+        display_map
+            .iter()
+            .enumerate()
+            .skip(current_row + 1)
+            .find(|(_, info)| info.is_header)
+            .map(|(idx, _)| idx)
+            .or_else(|| {
+                display_map
+                    .iter()
+                    .enumerate()
+                    .take(current_row + 1)
+                    .find(|(_, info)| info.is_header)
+                    .map(|(idx, _)| idx)
+            })
+    }
+
+    fn find_prev_hunk_row(
+        &self,
+        current_row: usize,
+        display_map: &[DisplayRowInfo],
+    ) -> Option<usize> {
+        if current_row > 0 {
+            if let Some(idx) = (0..current_row)
+                .rev()
+                .find(|&idx| display_map[idx].is_header)
+            {
+                return Some(idx);
+            }
+        }
+        (0..display_map.len())
+            .rev()
+            .find(|&idx| display_map[idx].is_header)
+    }
+
     /// Convert the current visual selection to a LineAnchor using the display map.
     /// Collects old and new line numbers separately to preserve side information.
     fn selection_to_anchor(&self) -> Option<LineAnchor> {
@@ -583,6 +628,19 @@ impl App {
         match action {
             Action::Quit => {
                 self.state.should_quit = true;
+            }
+            Action::ConfirmQuitSignal(combo) => {
+                if self.quit_confirm_countdown > 0 && self.last_quit_combo == Some(combo) {
+                    self.state.should_quit = true;
+                } else {
+                    self.quit_confirm_countdown = 40;
+                    self.last_quit_combo = Some(combo);
+                    self.set_status_for_ticks(
+                        format!("Press {} again to exit", combo.label()),
+                        false,
+                        self.quit_confirm_countdown,
+                    );
+                }
             }
             Action::NavigatorUp => {
                 self.state.navigator.select_up();
@@ -1340,10 +1398,14 @@ impl App {
                 }
             }
             Action::KillAgentProcess => {
-                if let Some(runner) = self.pty_runner.as_mut() {
-                    runner.kill();
-                    self.state.pty_focus = false;
-                    self.set_status("Agent process killed".to_string(), false);
+                if let Some(run) = self.state.agent_outputs.selected() {
+                    if matches!(run.status, AgentRunStatus::Running) {
+                        if let Some(runner) = self.pty_runner.as_mut() {
+                            runner.kill();
+                            self.state.pty_focus = false;
+                            self.set_status("Agent process killed".to_string(), false);
+                        }
+                    }
                 }
             }
             Action::AgentOutputsSwitchWorktree => {
@@ -1424,6 +1486,11 @@ impl App {
                     }
                 }
             }
+            Action::PtyPaste(text) => {
+                if let Some(runner) = self.pty_runner.as_mut() {
+                    runner.write_input(text.as_bytes());
+                }
+            }
             Action::PtyScrollUp => {
                 if let Some(runner) = self.pty_runner.as_mut() {
                     // Send 3 up-arrow sequences per scroll tick
@@ -1453,6 +1520,12 @@ impl App {
             }
 
             Action::Tick => {
+                if self.quit_confirm_countdown > 0 {
+                    self.quit_confirm_countdown -= 1;
+                    if self.quit_confirm_countdown == 0 {
+                        self.last_quit_combo = None;
+                    }
+                }
                 if self.status_clear_countdown > 0 {
                     self.status_clear_countdown -= 1;
                     if self.status_clear_countdown == 0 {
@@ -1481,6 +1554,30 @@ impl App {
                             self.state.diff.gap_expansions.insert(gap_id, current + 20);
                         }
                     }
+                }
+            }
+            Action::JumpNextHunk => {
+                let display_map = self.current_display_map();
+                if let Some(row) = self.find_next_hunk_row(self.state.diff.cursor_row, &display_map)
+                {
+                    self.state.diff.cursor_row = row;
+                    self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    let total_hunks = display_map.iter().filter(|r| r.is_header).count();
+                    let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
+                    self.state.status_message =
+                        Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
+                }
+            }
+            Action::JumpPrevHunk => {
+                let display_map = self.current_display_map();
+                if let Some(row) = self.find_prev_hunk_row(self.state.diff.cursor_row, &display_map)
+                {
+                    self.state.diff.cursor_row = row;
+                    self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    let total_hunks = display_map.iter().filter(|r| r.is_header).count();
+                    let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
+                    self.state.status_message =
+                        Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
                 }
             }
             // Settings modal
@@ -1720,9 +1817,12 @@ impl App {
     }
 
     fn set_status(&mut self, msg: String, is_error: bool) {
+        self.set_status_for_ticks(msg, is_error, 60);
+    }
+
+    fn set_status_for_ticks(&mut self, msg: String, is_error: bool, ticks: u32) {
         self.state.status_message = Some((msg, is_error));
-        // ~3 seconds at 50ms tick rate
-        self.status_clear_countdown = 60;
+        self.status_clear_countdown = ticks;
     }
 
     /// Validate a ref string against the repo. Returns the ComparisonTarget and a display label.

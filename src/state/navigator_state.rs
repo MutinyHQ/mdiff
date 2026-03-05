@@ -1,4 +1,5 @@
 use crate::git::types::FileDelta;
+use std::collections::{HashMap, HashSet};
 
 use super::TextBuffer;
 
@@ -33,14 +34,20 @@ impl NavigatorState {
     }
 
     pub fn update_from_deltas(&mut self, deltas: &[FileDelta]) {
+        let paths: Vec<String> = deltas
+            .iter()
+            .map(|d| d.path.to_string_lossy().to_string())
+            .collect();
+        let informative_paths = build_informative_path_displays(&paths);
+
         self.entries = deltas
             .iter()
             .enumerate()
             .map(|(i, d)| {
-                let path_str = d.path.to_string_lossy().to_string();
+                let path_str = paths[i].clone();
                 let display = format!(
                     "{} [{}] +{} -{}",
-                    path_str,
+                    informative_paths[i],
                     d.status.label(),
                     d.additions,
                     d.deletions
@@ -166,4 +173,147 @@ fn fuzzy_match(text: &str, pattern: &str) -> bool {
         }
     }
     true
+}
+
+fn build_informative_path_displays(paths: &[String]) -> Vec<String> {
+    let split_paths: Vec<Vec<String>> = paths
+        .iter()
+        .map(|p| p.split('/').map(str::to_string).collect())
+        .collect();
+
+    let mut sibling_map: HashMap<String, HashSet<String>> = HashMap::new();
+    for components in &split_paths {
+        if components.len() < 2 {
+            continue;
+        }
+        for i in 0..(components.len() - 1) {
+            let parent = components[..i].join("/");
+            sibling_map
+                .entry(parent)
+                .or_default()
+                .insert(components[i].clone());
+        }
+    }
+
+    split_paths
+        .into_iter()
+        .map(|components| abbreviate_path_components(&components, &sibling_map))
+        .collect()
+}
+
+fn abbreviate_path_components(
+    components: &[String],
+    sibling_map: &HashMap<String, HashSet<String>>,
+) -> String {
+    if components.len() <= 1 {
+        return components.first().cloned().unwrap_or_default();
+    }
+
+    let mut out = Vec::with_capacity(components.len());
+    for i in 0..(components.len() - 1) {
+        let parent = components[..i].join("/");
+        let siblings = sibling_map.get(&parent);
+        let abbreviated = minimal_unique_prefix(&components[i], siblings);
+        out.push(abbreviated);
+    }
+
+    // Keep filename fully readable; only directory components are abbreviated.
+    out.push(components.last().cloned().unwrap_or_default());
+    out.join("/")
+}
+
+fn minimal_unique_prefix(name: &str, siblings: Option<&HashSet<String>>) -> String {
+    let Some(siblings) = siblings else {
+        return first_char_or_empty(name);
+    };
+    if siblings.len() <= 1 {
+        return first_char_or_empty(name);
+    }
+
+    let char_count = name.chars().count();
+    for len in 1..=char_count {
+        let prefix = take_chars(name, len);
+        let unique = siblings
+            .iter()
+            .filter(|s| s.as_str() != name)
+            .all(|s| !s.starts_with(&prefix));
+        if unique {
+            return prefix;
+        }
+    }
+
+    name.to_string()
+}
+
+fn first_char_or_empty(s: &str) -> String {
+    s.chars().next().map(|c| c.to_string()).unwrap_or_default()
+}
+
+fn take_chars(s: &str, count: usize) -> String {
+    s.chars().take(count).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::types::{FileDelta, FileStatus};
+    use std::path::PathBuf;
+
+    fn make_delta(path: &str, status: FileStatus, additions: usize, deletions: usize) -> FileDelta {
+        FileDelta {
+            path: PathBuf::from(path),
+            old_path: None,
+            status,
+            hunks: Vec::new(),
+            additions,
+            deletions,
+            binary: false,
+        }
+    }
+
+    #[test]
+    fn abbreviates_by_minimal_unique_prefix_under_same_parent() {
+        let paths = vec![
+            "src/components/navigator.rs".to_string(),
+            "src/config/navigator.rs".to_string(),
+        ];
+        let displays = build_informative_path_displays(&paths);
+        assert_eq!(displays[0], "s/com/navigator.rs");
+        assert_eq!(displays[1], "s/con/navigator.rs");
+    }
+
+    #[test]
+    fn uses_single_char_for_non_conflicting_directories() {
+        let paths = vec!["docs/readme.md".to_string()];
+        let displays = build_informative_path_displays(&paths);
+        assert_eq!(displays[0], "d/readme.md");
+    }
+
+    #[test]
+    fn preserves_filename_component() {
+        let paths = vec![
+            "src/components/navigator_super_long_name.rs".to_string(),
+            "src/config/navigator_super_long_name.rs".to_string(),
+        ];
+        let displays = build_informative_path_displays(&paths);
+        assert!(displays[0].ends_with("/navigator_super_long_name.rs"));
+        assert!(displays[1].ends_with("/navigator_super_long_name.rs"));
+    }
+
+    #[test]
+    fn update_from_deltas_uses_informative_path_in_display() {
+        let deltas = vec![
+            make_delta("src/components/navigator.rs", FileStatus::Modified, 12, 4),
+            make_delta("src/config/navigator.rs", FileStatus::Added, 8, 0),
+        ];
+
+        let mut state = NavigatorState::new();
+        state.update_from_deltas(&deltas);
+
+        assert_eq!(state.entries.len(), 2);
+        assert_eq!(state.entries[0].display, "s/com/navigator.rs [M] +12 -4");
+        assert_eq!(state.entries[1].display, "s/con/navigator.rs [A] +8 -0");
+        assert_eq!(state.entries[0].path, "src/components/navigator.rs");
+        assert_eq!(state.entries[1].path, "src/config/navigator.rs");
+    }
 }

@@ -1023,8 +1023,8 @@ fn wrap_split_lines_synchronized_with_scroll<'a>(
 
     let iter = left_lines
         .into_iter()
-        .zip(center_lines.into_iter())
-        .zip(right_lines.into_iter())
+        .zip(center_lines)
+        .zip(right_lines)
         .map(|((l, c), r)| (l, c, r));
 
     for (left_line, center_line, right_line) in iter {

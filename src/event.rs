@@ -6,12 +6,14 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::action::Action;
+use crate::action::QuitCombo;
 use crate::state::app_state::{ActiveView, FocusPanel};
 
 #[derive(Debug)]
 pub enum Event {
     Key(KeyEvent),
     Mouse(MouseEvent),
+    Paste(String),
     Resize,
     Tick,
 }
@@ -36,6 +38,11 @@ impl EventReader {
                     }
                     Some(Ok(CrosstermEvent::Mouse(mouse))) => {
                         if event_tx.send(Event::Mouse(mouse)).is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(CrosstermEvent::Paste(text))) => {
+                        if event_tx.send(Event::Paste(text)).is_err() {
                             break;
                         }
                     }
@@ -105,7 +112,13 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     // Priority 0.5: Ctrl-C / Ctrl-D quit (not in PTY focus)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('c') | KeyCode::Char('d') => return Some(Action::Quit),
+            KeyCode::Char('c') | KeyCode::Char('d') => {
+                return Some(Action::ConfirmQuitSignal(match key.code {
+                    KeyCode::Char('c') => QuitCombo::CtrlC,
+                    KeyCode::Char('d') => QuitCombo::CtrlD,
+                    _ => unreachable!(),
+                }));
+            }
             _ => {}
         }
     }
@@ -303,11 +316,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         _ => {}
     }
 
-    // Annotation navigation (global in DiffExplorer)
+    // Annotation navigation moved to Ctrl modifier, hunk nav on bare keys
     if ctx.active_view == ActiveView::DiffExplorer {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char(']') => return Some(Action::NextAnnotation),
+                KeyCode::Char('[') => return Some(Action::PrevAnnotation),
+                _ => {}
+            }
+        }
         match key.code {
-            KeyCode::Char(']') => return Some(Action::NextAnnotation),
-            KeyCode::Char('[') => return Some(Action::PrevAnnotation),
+            KeyCode::Char(']') => return Some(Action::JumpNextHunk),
+            KeyCode::Char('[') => return Some(Action::JumpPrevHunk),
             _ => {}
         }
     }
