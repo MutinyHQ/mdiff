@@ -1,13 +1,16 @@
 use crossterm::event::{
     Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseEvent,
+    MouseEventKind, MouseButton,
 };
 use futures::StreamExt;
+use ratatui::layout::Rect;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::action::Action;
 use crate::action::QuitCombo;
 use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::navigator_state::NavigatorEntry;
 
 #[derive(Debug)]
 pub enum Event {
@@ -97,6 +100,53 @@ pub struct KeyContext {
     pub visual_mode_active: bool,
     pub active_view: ActiveView,
     pub pty_focus: bool,
+}
+
+/// Context for mouse event mapping.
+pub struct MouseContext<'a> {
+    pub navigator_rect: Rect,
+    pub diff_view_rect: Rect,
+    pub navigator_scroll_offset: usize,
+    pub navigator_item_count: usize,
+    pub navigator_visible_entries: &'a [(usize, &'a NavigatorEntry)],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Panel {
+    Navigator,
+    DiffView,
+}
+
+impl MouseContext<'_> {
+    /// Determine which panel a screen coordinate falls in.
+    fn panel_at(&self, col: u16, row: u16) -> Option<Panel> {
+        if self.navigator_rect.x <= col
+            && col < self.navigator_rect.x + self.navigator_rect.width
+            && self.navigator_rect.y <= row
+            && row < self.navigator_rect.y + self.navigator_rect.height
+        {
+            Some(Panel::Navigator)
+        } else if self.diff_view_rect.x <= col
+            && col < self.diff_view_rect.x + self.diff_view_rect.width
+            && self.diff_view_rect.y <= row
+            && row < self.diff_view_rect.y + self.diff_view_rect.height
+        {
+            Some(Panel::DiffView)
+        } else {
+            None
+        }
+    }
+
+    /// Convert a mouse row in the navigator area to a visible entry index.
+    fn navigator_row_to_visible_index(&self, row: u16) -> Option<usize> {
+        let relative_row = row.saturating_sub(self.navigator_rect.y + 1); // +1 for border
+        let visible_index = self.navigator_scroll_offset + relative_row as usize;
+        if visible_index < self.navigator_item_count {
+            Some(visible_index)
+        } else {
+            None
+        }
+    }
 }
 
 /// Map a key event to an action based on current app context.
@@ -473,5 +523,43 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('N') => Some(Action::DiffSearchPrev),
             _ => None,
         },
+    }
+}
+
+/// Map a mouse event to an action based on current app context.
+pub fn map_mouse_to_action(mouse: MouseEvent, ctx: &MouseContext<'_>) -> Option<Action> {
+    match mouse.kind {
+        // Scroll wheel
+        MouseEventKind::ScrollUp => {
+            match ctx.panel_at(mouse.column, mouse.row) {
+                Some(Panel::Navigator) => Some(Action::NavigatorUp),
+                Some(Panel::DiffView) => Some(Action::ScrollUp),
+                _ => None,
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            match ctx.panel_at(mouse.column, mouse.row) {
+                Some(Panel::Navigator) => Some(Action::NavigatorDown),
+                Some(Panel::DiffView) => Some(Action::ScrollDown),
+                _ => None,
+            }
+        }
+        // Left click
+        MouseEventKind::Down(MouseButton::Left) => {
+            match ctx.panel_at(mouse.column, mouse.row) {
+                Some(Panel::Navigator) => {
+                    let visible_index = ctx.navigator_row_to_visible_index(mouse.row);
+                    visible_index
+                        .and_then(|idx| ctx.navigator_visible_entries.get(idx))
+                        .map(|(_, entry)| Action::SelectFile(entry.delta_index))
+                }
+                Some(Panel::DiffView) => {
+                    // Click to focus diff view + position cursor
+                    Some(Action::FocusDiffView)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }

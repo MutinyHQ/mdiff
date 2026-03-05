@@ -27,7 +27,7 @@ use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{self, MdiffConfig, PersistentSettings};
 use crate::display_map::{build_display_map, DisplayRowInfo};
-use crate::event::{map_key_to_action, Event, EventReader, KeyContext};
+use crate::event::{map_key_to_action, map_mouse_to_action, Event, EventReader, KeyContext, MouseContext};
 use crate::git::commands::GitCli;
 use crate::git::types::{ComparisonTarget, DiffLineOrigin, FileDelta};
 use crate::git::worktree;
@@ -42,7 +42,7 @@ use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, DiffOptions, DiffViewMode};
 use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::MouseEventKind;
 
 pub struct App {
     state: AppState,
@@ -60,6 +60,8 @@ pub struct App {
     diff_viewport_height: Cell<usize>,
     config: MdiffConfig,
     pty_runner: Option<PtyRunner>,
+    last_navigator_rect: Rect,
+    last_diff_view_rect: Rect,
 }
 
 impl App {
@@ -107,6 +109,8 @@ impl App {
             diff_viewport_height: Cell::new(20),
             config,
             pty_runner: None,
+            last_navigator_rect: Rect::default(),
+            last_diff_view_rect: Rect::default(),
         }
     }
 
@@ -150,6 +154,7 @@ impl App {
                             .split(outer[1]);
 
                         self.nav_area.set(main[0]);
+                        self.last_navigator_rect = main[0];
                         navigator.render(frame, main[0], &self.state);
 
                         if self.state.prompt_preview_visible {
@@ -164,6 +169,7 @@ impl App {
                             let vh = vsplit[0].height.saturating_sub(2) as usize;
                             self.diff_viewport_height.set(vh);
                             self.state.diff.viewport_height = vh;
+                            self.last_diff_view_rect = vsplit[0];
                             self.update_diff_visual_metrics(vsplit[0]);
                             diff_view.render(frame, vsplit[0], &self.state);
                             render_prompt_preview(frame, vsplit[1], &self.state);
@@ -171,6 +177,7 @@ impl App {
                             let vh = main[1].height.saturating_sub(2) as usize;
                             self.diff_viewport_height.set(vh);
                             self.state.diff.viewport_height = vh;
+                            self.last_diff_view_rect = main[1];
                             self.update_diff_visual_metrics(main[1]);
                             diff_view.render(frame, main[1], &self.state);
                         }
@@ -253,7 +260,52 @@ impl App {
                 };
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
-                    Event::Mouse(mouse) => self.handle_mouse(mouse),
+                    Event::Mouse(mouse) => {
+                        // Check if mouse is enabled in config
+                        if !self.config.mouse.enabled {
+                            None
+                        }
+                        // Ignore mouse events when modals are open
+                        else if ctx.commit_dialog_open
+                            || ctx.target_dialog_open
+                            || ctx.comment_editor_open
+                            || ctx.agent_selector_open
+                            || ctx.annotation_menu_open
+                            || ctx.restore_confirm_open
+                            || ctx.settings_open
+                            || ctx.search_active
+                            || ctx.diff_search_active
+                        {
+                            None
+                        } else {
+                            // Handle special case for AgentOutputs view
+                            if self.state.active_view == ActiveView::AgentOutputs {
+                                match mouse.kind {
+                                    MouseEventKind::ScrollUp => Some(Action::PtyScrollUp),
+                                    MouseEventKind::ScrollDown => Some(Action::PtyScrollDown),
+                                    _ => None,
+                                }
+                            } else {
+                                let visible_entries = self.state.navigator.visible_entries();
+                                let inner_height = self.last_navigator_rect.height.saturating_sub(2) as usize;
+                                let selected = self.state.navigator.selected;
+                                let scroll_offset = if selected >= inner_height {
+                                    selected - inner_height + 1
+                                } else {
+                                    0
+                                };
+                                
+                                let mouse_ctx = MouseContext {
+                                    navigator_rect: self.last_navigator_rect,
+                                    diff_view_rect: self.last_diff_view_rect,
+                                    navigator_scroll_offset: scroll_offset,
+                                    navigator_item_count: visible_entries.len(),
+                                    navigator_visible_entries: &visible_entries,
+                                };
+                                map_mouse_to_action(mouse, &mouse_ctx)
+                            }
+                        }
+                    }
                     Event::Paste(text) if self.state.pty_focus => Some(Action::PtyPaste(text)),
                     Event::Paste(_) => None,
                     Event::Resize => Some(Action::Resize),
@@ -1835,57 +1887,6 @@ impl App {
         }
     }
 
-    fn handle_mouse(&self, mouse: MouseEvent) -> Option<Action> {
-        match mouse.kind {
-            MouseEventKind::ScrollUp => {
-                if self.state.active_view == ActiveView::AgentOutputs {
-                    Some(Action::PtyScrollUp)
-                } else {
-                    Some(Action::ScrollUp)
-                }
-            }
-            MouseEventKind::ScrollDown => {
-                if self.state.active_view == ActiveView::AgentOutputs {
-                    Some(Action::PtyScrollDown)
-                } else {
-                    Some(Action::ScrollDown)
-                }
-            }
-            MouseEventKind::Down(MouseButton::Left) => {
-                if self.state.active_view != ActiveView::DiffExplorer {
-                    return None;
-                }
-                let nav = self.nav_area.get();
-                let col = mouse.column;
-                let row = mouse.row;
-
-                // Check if click is inside the navigator area (excluding border)
-                if col > nav.x
-                    && col < nav.x + nav.width.saturating_sub(1)
-                    && row > nav.y
-                    && row < nav.y + nav.height.saturating_sub(1)
-                {
-                    let inner_height = nav.height.saturating_sub(2) as usize;
-                    let selected = self.state.navigator.selected;
-                    let scroll = if selected >= inner_height {
-                        selected - inner_height + 1
-                    } else {
-                        0
-                    };
-
-                    let clicked_row = (row - nav.y - 1) as usize;
-                    let visible_idx = scroll + clicked_row;
-                    let visible = self.state.navigator.visible_entries();
-                    if visible_idx < visible.len() {
-                        let (_entry_idx, entry) = &visible[visible_idx];
-                        return Some(Action::SelectFile(entry.delta_index));
-                    }
-                }
-                None
-            }
-            _ => None,
-        }
-    }
 
     fn refresh_worktrees(&mut self) {
         match worktree::list_worktrees(&self.repo_path) {
