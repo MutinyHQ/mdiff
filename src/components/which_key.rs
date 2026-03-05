@@ -25,11 +25,15 @@ pub fn render_which_key(frame: &mut Frame, area: Rect, state: &AppState) {
     }
 
     let max_key_width = entries.iter().map(|e| e.key.len()).max().unwrap_or(3);
-    let max_desc_width = entries.iter().map(|e| e.description.len()).max().unwrap_or(10);
+    let max_desc_width = entries
+        .iter()
+        .map(|e| e.description.len())
+        .max()
+        .unwrap_or(10);
     let entry_width = max_key_width + max_desc_width + 3;
 
     let (cols, rows) = if entries.len() > 10 {
-        (2, (entries.len() + 1) / 2)
+        (2, entries.len().div_ceil(2))
     } else {
         (1, entries.len())
     };
@@ -56,7 +60,7 @@ pub fn render_which_key(frame: &mut Frame, area: Rect, state: &AppState) {
     let mut lines: Vec<Line> = Vec::new();
 
     if cols == 2 {
-        let half = (entries.len() + 1) / 2;
+        let half = entries.len().div_ceil(2);
         for i in 0..half {
             let mut spans = Vec::new();
 
@@ -67,7 +71,11 @@ pub fn render_which_key(frame: &mut Frame, area: Rect, state: &AppState) {
                     .add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
-                format!("  {:<width$}", entries[i].description, width = max_desc_width),
+                format!(
+                    "  {:<width$}",
+                    entries[i].description,
+                    width = max_desc_width
+                ),
                 Style::default().fg(state.theme.text),
             ));
 
