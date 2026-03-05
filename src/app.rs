@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::action::{Action, QuitCombo};
 use crate::async_diff::{DiffRequest, DiffWorker};
+use crate::complexity::analyze_hunk;
 use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
@@ -325,6 +326,10 @@ impl App {
                     self.state.review.on_diff_refresh(new_hashes);
                     self.state.navigator.update_from_deltas(&deltas);
                     self.state.diff.deltas = deltas;
+                    
+                    // Analyze complexity for all files
+                    self.analyze_complexity();
+                    
                     if !self.state.diff.deltas.is_empty() && self.state.diff.selected_file.is_none()
                     {
                         self.state.diff.selected_file = Some(0);
@@ -336,6 +341,40 @@ impl App {
                     self.state.navigator.update_from_deltas(&[]);
                 }
             }
+        }
+    }
+
+    fn analyze_complexity(&mut self) {
+        self.state.diff.complexity_scores.clear();
+        
+        for delta in &self.state.diff.deltas {
+            let file_path = delta.path.to_string_lossy().to_string();
+            let mut hunk_complexities = Vec::new();
+            
+            for hunk in &delta.hunks {
+                // Collect added and removed lines
+                let mut added_lines = Vec::new();
+                let mut removed_lines = Vec::new();
+                
+                for line in &hunk.lines {
+                    match line.origin {
+                        crate::git::types::DiffLineOrigin::Addition => {
+                            added_lines.push(line.content.as_str());
+                        }
+                        crate::git::types::DiffLineOrigin::Deletion => {
+                            removed_lines.push(line.content.as_str());
+                        }
+                        crate::git::types::DiffLineOrigin::Context => {
+                            // Context lines don't contribute to complexity
+                        }
+                    }
+                }
+                
+                let complexity = analyze_hunk(&added_lines, &removed_lines, &file_path);
+                hunk_complexities.push(complexity);
+            }
+            
+            self.state.diff.complexity_scores.insert(file_path, hunk_complexities);
         }
     }
 
@@ -1576,6 +1615,12 @@ impl App {
 
             Action::ToggleWhichKey => {
                 self.state.which_key_visible = !self.state.which_key_visible;
+            }
+
+            Action::ToggleComplexityIndicators => {
+                self.state.diff.complexity_enabled = !self.state.diff.complexity_enabled;
+                let status = if self.state.diff.complexity_enabled { "enabled" } else { "disabled" };
+                self.set_status(format!("Complexity indicators {}", status), false);
             }
 
             Action::Tick => {

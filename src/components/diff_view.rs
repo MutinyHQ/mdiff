@@ -369,7 +369,7 @@ fn build_split_lines_core<'a>(
     let gutter_width = 5;
     let mut gap_id_offset = 0;
 
-    for hunk in &delta.hunks {
+    for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         let hl = row_highlight(state, display_row);
         let ann_marker = display_map
             .get(display_row)
@@ -390,7 +390,15 @@ fn build_split_lines_core<'a>(
         if let Some(bg) = hl.content_bg {
             content_style = content_style.bg(bg);
         }
-        left.push(Line::from(Span::styled(hunk.header.clone(), content_style)));
+
+        // Add complexity badge to hunk header if enabled
+        let header_with_complexity = if state.diff.complexity_enabled {
+            add_complexity_badge_to_header(&hunk.header, state, delta, hunk_idx, theme)
+        } else {
+            hunk.header.clone()
+        };
+
+        left.push(Line::from(Span::styled(header_with_complexity, content_style)));
         right.push(Line::from(Span::styled("", content_style)));
         display_row += 1;
 
@@ -620,15 +628,22 @@ fn build_unified_lines_core<'a>(
     let mut display_row: usize = 0;
     let mut gap_id_offset = 0;
 
-    for hunk in &delta.hunks {
+    for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         let hl = row_highlight(state, display_row);
         let ann_marker = display_map
             .get(display_row)
             .is_some_and(|info| has_annotation(state, delta, info));
 
+        // Add complexity badge to hunk header if enabled
+        let header_with_complexity = if state.diff.complexity_enabled {
+            add_complexity_badge_to_header(&hunk.header, state, delta, hunk_idx, theme)
+        } else {
+            hunk.header.clone()
+        };
+
         lines.push(make_hunk_header_line_unified(
             gutter_width,
-            &hunk.header,
+            &header_with_complexity,
             hl,
             ann_marker,
             theme,
@@ -1425,4 +1440,40 @@ mod tests {
             metrics.row_heights.iter().sum::<usize>()
         );
     }
+}
+
+/// Add complexity badge to hunk header if complexity analysis is available.
+fn add_complexity_badge_to_header(
+    header: &str,
+    state: &AppState,
+    delta: &FileDelta,
+    hunk_idx: usize,
+    _theme: &Theme,
+) -> String {
+    let file_path = delta.path.to_string_lossy().to_string();
+    
+    if let Some(complexity_scores) = state.diff.complexity_scores.get(&file_path) {
+        if let Some(hunk_complexity) = complexity_scores.get(hunk_idx) {
+            let score = &hunk_complexity.score;
+            
+            // Get top 2 contributing factors for the badge
+            let mut factors = hunk_complexity.factors.clone();
+            factors.sort_by(|a, b| b.points().cmp(&a.points()));
+            let top_factors: Vec<String> = factors
+                .iter()
+                .take(2)
+                .map(|f| format!("+{}", f.label()))
+                .collect();
+            
+            let factor_text = if top_factors.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", top_factors.join(", "))
+            };
+            
+            return format!("{} [{}{}]", header, score.label, factor_text);
+        }
+    }
+    
+    header.to_string()
 }

@@ -5,6 +5,7 @@ mod app;
 mod async_diff;
 mod cli;
 mod components;
+mod complexity;
 mod config;
 mod display_map;
 mod event;

@@ -172,6 +172,9 @@ pub enum Action {
     // Which-key help overlay
     ToggleWhichKey,
 
+    // Complexity indicators
+    ToggleComplexityIndicators,
+
     // Settings modal
     OpenSettings,
     CloseSettings,

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::complexity::HunkComplexity;
 use crate::git::types::FileDelta;
 use crate::highlight::HighlightSpan;
 
@@ -62,6 +63,11 @@ pub struct DiffState {
     pub search_matches: Vec<usize>,
     /// Current position within `search_matches`.
     pub search_match_index: Option<usize>,
+
+    // Complexity indicators
+    pub complexity_enabled: bool,
+    /// Per-file complexity scores: file_path -> Vec<HunkComplexity> (one per hunk)
+    pub complexity_scores: HashMap<String, Vec<HunkComplexity>>,
 }
 
 impl DiffState {
@@ -85,6 +91,8 @@ impl DiffState {
             search_query: TextBuffer::new(),
             search_matches: Vec::new(),
             search_match_index: None,
+            complexity_enabled: true,
+            complexity_scores: HashMap::new(),
         }
     }
 
