@@ -124,6 +124,10 @@ pub enum Action {
     CopyPromptToClipboard,
     TogglePromptPreview,
 
+    // Quick-reaction scores
+    SetLineScore(u8),
+    RemoveLineScore,
+
     // Agent selector
     OpenAgentSelector,
     AgentSelectorUp,

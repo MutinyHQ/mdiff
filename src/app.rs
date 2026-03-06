@@ -1261,6 +1261,52 @@ impl App {
                 }
             }
 
+            // Quick-reaction scores
+            Action::SetLineScore(value) => {
+                let anchor = if self.state.selection.active {
+                    self.selection_to_anchor()
+                } else {
+                    self.cursor_to_anchor()
+                };
+
+                if let Some(anchor) = anchor {
+                    let score = crate::state::annotation_state::LineScore {
+                        file_path: anchor.file_path.clone(),
+                        old_range: anchor.old_range,
+                        new_range: anchor.new_range,
+                        score: value,
+                        created_at: chrono::Utc::now().to_rfc3339(),
+                    };
+                    self.state.annotations.set_score(score);
+
+                    if self.state.selection.active {
+                        self.state.selection.active = false;
+                    }
+
+                    let dots = "●".repeat(value as usize) + &"○".repeat(5 - value as usize);
+                    self.set_status(format!("Score: {} ({}/5)", dots, value), false);
+                }
+            }
+            Action::RemoveLineScore => {
+                let anchor = if self.state.selection.active {
+                    self.selection_to_anchor()
+                } else {
+                    self.cursor_to_anchor()
+                };
+
+                if let Some(anchor) = anchor {
+                    self.state.annotations.remove_score(
+                        &anchor.file_path,
+                        anchor.old_range,
+                        anchor.new_range,
+                    );
+                    if self.state.selection.active {
+                        self.state.selection.active = false;
+                    }
+                    self.set_status("Score removed".to_string(), false);
+                }
+            }
+
             // Agent selector
             Action::OpenAgentSelector => {
                 if self.config.agents.is_empty() {
@@ -2109,7 +2155,7 @@ impl App {
             }
         }
 
-        if file_sections.is_empty() {
+        if file_sections.is_empty() && self.state.annotations.score_count() == 0 {
             return None;
         }
 
@@ -2119,7 +2165,29 @@ impl App {
              a question, answer it and make any implied fixes. Keep changes minimal and focused \
              on what the reviewer asked for.\n\n",
         );
-        prompt.push_str(&file_sections.join("\n\n"));
+        
+        // Add scores section if present
+        let all_scores = self.state.annotations.all_scores_sorted();
+        if !all_scores.is_empty() {
+            prompt.push_str("### Scores\n");
+            for score in &all_scores {
+                let range = match score.new_range {
+                    Some((s, e)) if s == e => format!("{}:{}", score.file_path, s),
+                    Some((s, e)) => format!("{}:{}-{}", score.file_path, s, e),
+                    None => match score.old_range {
+                        Some((s, e)) if s == e => format!("{}:{} (old)", score.file_path, s),
+                        Some((s, e)) => format!("{}:{}-{} (old)", score.file_path, s, e),
+                        None => score.file_path.clone(),
+                    },
+                };
+                prompt.push_str(&format!("- {} [Score: {}/5]\n", range, score.score));
+            }
+            prompt.push_str("\n");
+        }
+        
+        if !file_sections.is_empty() {
+            prompt.push_str(&file_sections.join("\n\n"));
+        }
 
         Some(prompt)
     }
