@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::complexity::HunkComplexity;
 use crate::git::types::FileDelta;
 use crate::highlight::HighlightSpan;
+use crate::intra_diff::IntraLineSpan;
 
 use super::TextBuffer;
 
@@ -68,6 +69,12 @@ pub struct DiffState {
     pub complexity_enabled: bool,
     /// Per-file complexity scores: file_path -> Vec<HunkComplexity> (one per hunk)
     pub complexity_scores: HashMap<String, Vec<HunkComplexity>>,
+    /// Intra-line highlight spans per file, keyed by file path.
+    /// Inner map: hunk_line_index -> Vec<IntraLineSpan>
+    pub intra_highlights: HashMap<String, HashMap<usize, Vec<IntraLineSpan>>>,
+    
+    /// Whether intra-line highlighting is enabled (default: true)
+    pub intra_line_enabled: bool,
 }
 
 impl DiffState {
@@ -93,6 +100,8 @@ impl DiffState {
             search_match_index: None,
             complexity_enabled: true,
             complexity_scores: HashMap::new(),
+            intra_highlights: HashMap::new(),
+            intra_line_enabled: true,
         }
     }
 

@@ -26,6 +26,8 @@ pub struct Theme {
     pub cursor_line_fg: Color,
     pub collapsed_bg: Color,
     pub search_match_bg: Color,
+    pub diff_add_word_bg: Color,     // Brighter green for changed words in additions
+    pub diff_delete_word_bg: Color,  // Brighter red for changed words in deletions
 
     // Status indicators
     pub success: Color,
@@ -222,6 +224,8 @@ fn one_dark() -> Theme {
         cursor_line_fg: Color::Yellow,
         collapsed_bg: Color::Rgb(20, 20, 20),
         search_match_bg: Color::Rgb(60, 50, 10),
+        diff_add_word_bg: Color::Rgb(0, 60, 0),      // Brighter green
+        diff_delete_word_bg: Color::Rgb(80, 0, 0),   // Brighter red
         success: Color::Green,
         error: Color::Red,
         warning: Color::Yellow,
@@ -262,6 +266,8 @@ fn github_dark() -> Theme {
         cursor_line_fg: Color::Rgb(210, 153, 34),
         collapsed_bg: Color::Rgb(13, 17, 23),
         search_match_bg: Color::Rgb(50, 40, 10),
+        diff_add_word_bg: Color::Rgb(26, 60, 36),     // Brighter green
+        diff_delete_word_bg: Color::Rgb(75, 26, 26),  // Brighter red
         success: Color::Rgb(63, 185, 80),
         error: Color::Rgb(248, 81, 73),
         warning: Color::Rgb(210, 153, 34),
@@ -302,6 +308,8 @@ fn dracula() -> Theme {
         cursor_line_fg: Color::Rgb(241, 250, 140),
         collapsed_bg: Color::Rgb(30, 31, 40),
         search_match_bg: Color::Rgb(60, 55, 15),
+        diff_add_word_bg: Color::Rgb(20, 60, 30),     // Brighter green
+        diff_delete_word_bg: Color::Rgb(80, 20, 20),  // Brighter red
         success: Color::Rgb(80, 250, 123),
         error: Color::Rgb(255, 85, 85),
         warning: Color::Rgb(241, 250, 140),
@@ -342,6 +350,8 @@ fn catppuccin_mocha() -> Theme {
         cursor_line_fg: Color::Rgb(249, 226, 175),
         collapsed_bg: Color::Rgb(24, 24, 37),
         search_match_bg: Color::Rgb(55, 48, 15),
+        diff_add_word_bg: Color::Rgb(25, 55, 32),     // Brighter green
+        diff_delete_word_bg: Color::Rgb(70, 25, 35),  // Brighter red
         success: Color::Rgb(166, 227, 161),
         error: Color::Rgb(243, 139, 168),
         warning: Color::Rgb(249, 226, 175),
@@ -382,6 +392,8 @@ fn tokyo_night() -> Theme {
         cursor_line_fg: Color::Rgb(224, 175, 104),
         collapsed_bg: Color::Rgb(20, 22, 30),
         search_match_bg: Color::Rgb(50, 42, 12),
+        diff_add_word_bg: Color::Rgb(22, 50, 28),     // Brighter green
+        diff_delete_word_bg: Color::Rgb(65, 22, 30),  // Brighter red
         success: Color::Rgb(158, 206, 106),
         error: Color::Rgb(247, 118, 142),
         warning: Color::Rgb(224, 175, 104),
@@ -422,6 +434,8 @@ fn solarized_dark() -> Theme {
         cursor_line_fg: Color::Rgb(181, 137, 0),
         collapsed_bg: Color::Rgb(0, 26, 33),
         search_match_bg: Color::Rgb(40, 35, 5),
+        diff_add_word_bg: Color::Rgb(18, 45, 25),     // Brighter green
+        diff_delete_word_bg: Color::Rgb(60, 18, 18),  // Brighter red
         success: Color::Rgb(133, 153, 0),
         error: Color::Rgb(220, 50, 47),
         warning: Color::Rgb(181, 137, 0),

@@ -11,6 +11,7 @@ mod display_map;
 mod event;
 mod git;
 mod highlight;
+mod intra_diff;
 mod pty_runner;
 mod session;
 mod state;
