@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/MutinyHQ/mdiff/compare/v0.1.11...v0.1.12) - 2026-03-06
+
+### Added
+
+- implement Agent Feedback Summary View
+- ellipsis diff paths in the middle
+
+### Fixed
+
+- address clippy warnings and format code
+
+### Other
+
+- Add global fuzzy search across all diff content (Ctrl+F)
+- add workflow_dispatch trigger for manual runs
+- Add AGENTS.md with Cursor Cloud specific instructions
+- Merge branch 'main' into cursor/which-key-overlay-23bc
+- Merge pull request #19 from MutinyHQ/alechoey/confirm-exit
+
 ## [0.1.11](https://github.com/MutinyHQ/mdiff/compare/v0.1.10...v0.1.11) - 2026-03-04
 
 ### Fixed
