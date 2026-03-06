@@ -475,17 +475,17 @@ impl App {
         let max_cursor_row = display_map.len().saturating_sub(1);
         let vh = self.state.diff.viewport_height.max(1);
         let max_scroll = self.state.diff.visual_total_rows.saturating_sub(vh);
-        
+
         // Clamp cursor row to logical display map bounds
         if self.state.diff.cursor_row > max_cursor_row {
             self.state.diff.cursor_row = max_cursor_row;
         }
-        
+
         // Clamp scroll offset to visual row bounds
         if self.state.diff.scroll_offset > max_scroll {
             self.state.diff.scroll_offset = max_scroll;
         }
-        
+
         self.ensure_cursor_visible();
     }
 
@@ -712,12 +712,12 @@ impl App {
                 let max_cursor_row = display_map.len().saturating_sub(1);
                 let vh = self.state.diff.viewport_height.max(1);
                 let max_scroll = self.state.diff.visual_total_rows.saturating_sub(vh);
-                
+
                 // Set cursor to the last logical row
                 self.state.diff.cursor_row = max_cursor_row;
                 // Set scroll to show the bottom of the visual content
                 self.state.diff.scroll_offset = max_scroll;
-                
+
                 // Ensure cursor is visible within the scrolled viewport
                 self.ensure_cursor_visible();
                 self.check_auto_review();
