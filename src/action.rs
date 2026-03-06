@@ -65,6 +65,14 @@ pub enum Action {
     DiffSearchNext,
     DiffSearchPrev,
 
+    // Global diff search (Ctrl+F)
+    StartGlobalSearch,
+    EndGlobalSearch,
+    GlobalSearchChar(char),
+    GlobalSearchBackspace,
+    GlobalSearchNext,
+    GlobalSearchPrev,
+
     // Git mutations
     StageFile,
     UnstageFile,
