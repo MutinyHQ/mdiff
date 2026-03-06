@@ -10,6 +10,7 @@ use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
+use crate::components::checklist_panel::ChecklistPanel;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
 use crate::components::context_bar::ContextBar;
@@ -25,7 +26,9 @@ use crate::components::target_dialog::render_target_dialog;
 use crate::components::which_key;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
-use crate::config::{self, MdiffConfig, PersistentSettings};
+use crate::config::{
+    self, checklist_config_to_items, load_checklist_config, MdiffConfig, PersistentSettings,
+};
 use crate::display_map::{build_display_map, DisplayRowInfo};
 use crate::event::{
     map_key_to_action, map_mouse_to_action, Event, EventReader, KeyContext, MouseContext,
@@ -41,7 +44,7 @@ use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::review_state::compute_diff_hashes;
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
-use crate::state::{AppState, DiffOptions, DiffViewMode};
+use crate::state::{AppState, ChecklistState, DiffOptions, DiffViewMode};
 use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
 use crossterm::event::MouseEventKind;
@@ -89,8 +92,20 @@ impl App {
             state.diff.display_context = ctx;
         }
 
-        // Load session annotations
-        state.annotations = session::load_session(&repo_path, &state.target_label);
+        // Load session annotations and checklist state
+        let (annotations, saved_checklist) =
+            session::load_session_data(&repo_path, &state.target_label);
+        state.annotations = annotations;
+
+        // Load checklist configuration or use saved state
+        if let Some(saved) = saved_checklist {
+            // Use saved checklist state (preserves checked items and notes)
+            state.checklist = saved;
+        } else if let Some(checklist_config) = load_checklist_config(&repo_path) {
+            // Load fresh checklist from config
+            let items = checklist_config_to_items(&checklist_config);
+            state.checklist = ChecklistState::from_config_items(items);
+        }
 
         let worker = DiffWorker::new(repo_path.clone());
         let highlight_engine = HighlightEngine::new();
@@ -130,6 +145,7 @@ impl App {
         let action_hud = ActionHud;
         let worktree_browser = WorktreeBrowser;
         let agent_outputs = AgentOutputs;
+        let checklist_panel = ChecklistPanel;
 
         loop {
             self.poll_diff_results();
@@ -150,14 +166,36 @@ impl App {
 
                 match self.state.active_view {
                     ActiveView::DiffExplorer => {
-                        let main = Layout::default()
-                            .direction(Direction::Horizontal)
-                            .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
-                            .split(outer[1]);
+                        // Determine if checklist panel should be shown
+                        let show_checklist =
+                            self.state.checklist.panel_open && !self.state.checklist.is_empty();
+
+                        let main = if show_checklist {
+                            // Three-column layout: navigator | diff | checklist
+                            Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage(20),
+                                    Constraint::Percentage(60),
+                                    Constraint::Percentage(20),
+                                ])
+                                .split(outer[1])
+                        } else {
+                            // Two-column layout: navigator | diff
+                            Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage(20),
+                                    Constraint::Percentage(80),
+                                ])
+                                .split(outer[1])
+                        };
 
                         self.nav_area.set(main[0]);
                         self.last_navigator_rect = main[0];
                         navigator.render(frame, main[0], &self.state);
+
+                        let diff_area = main[1];
 
                         if self.state.prompt_preview_visible {
                             let vsplit = Layout::default()
@@ -166,7 +204,7 @@ impl App {
                                     Constraint::Percentage(60),
                                     Constraint::Percentage(40),
                                 ])
-                                .split(main[1]);
+                                .split(diff_area);
 
                             let vh = vsplit[0].height.saturating_sub(2) as usize;
                             self.diff_viewport_height.set(vh);
@@ -176,12 +214,17 @@ impl App {
                             diff_view.render(frame, vsplit[0], &self.state);
                             render_prompt_preview(frame, vsplit[1], &self.state);
                         } else {
-                            let vh = main[1].height.saturating_sub(2) as usize;
+                            let vh = diff_area.height.saturating_sub(2) as usize;
                             self.diff_viewport_height.set(vh);
                             self.state.diff.viewport_height = vh;
-                            self.last_diff_view_rect = main[1];
-                            self.update_diff_visual_metrics(main[1]);
-                            diff_view.render(frame, main[1], &self.state);
+                            self.last_diff_view_rect = diff_area;
+                            self.update_diff_visual_metrics(diff_area);
+                            diff_view.render(frame, diff_area, &self.state);
+                        }
+
+                        // Render checklist panel if open
+                        if show_checklist {
+                            checklist_panel.render(frame, main[2], &self.state);
                         }
                     }
                     ActiveView::WorktreeBrowser => {
@@ -259,6 +302,7 @@ impl App {
                     visual_mode_active: self.state.selection.active,
                     active_view: self.state.active_view,
                     pty_focus: self.state.pty_focus,
+                    checklist_panel_open: self.state.checklist.panel_open,
                 };
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
@@ -347,10 +391,15 @@ impl App {
         }
 
         // Save session on quit
-        session::save_session(
+        session::save_session_data(
             &self.repo_path,
             &self.state.target_label,
             &self.state.annotations,
+            if self.state.checklist.is_empty() {
+                None
+            } else {
+                Some(&self.state.checklist)
+            },
         );
 
         Ok(())
@@ -1175,6 +1224,11 @@ impl App {
                             &comment_text,
                         );
                         self.set_status("Comment updated".to_string(), false);
+                    } else if self.state.checklist.panel_open {
+                        // Adding/editing a checklist note
+                        let note_text = self.state.comment_editor_text.text().to_string();
+                        self.state.checklist.set_current_note(note_text);
+                        self.set_status("Checklist note updated".to_string(), false);
                     } else if let Some(anchor) = self.selection_to_anchor() {
                         // Creating a new annotation from visual mode
                         let now = chrono::Utc::now().to_rfc3339();
@@ -1465,10 +1519,15 @@ impl App {
 
                         // Clear annotations — they've been captured in the prompt
                         self.state.annotations = Default::default();
-                        session::save_session(
+                        session::save_session_data(
                             &self.repo_path,
                             &self.state.target_label,
                             &self.state.annotations,
+                            if self.state.checklist.is_empty() {
+                                None
+                            } else {
+                                Some(&self.state.checklist)
+                            },
                         );
 
                         // Persist last-used model for this agent
@@ -1874,6 +1933,46 @@ impl App {
                     }
                 }
             }
+
+            // Checklist actions
+            Action::ToggleChecklist => {
+                if self.state.checklist.is_empty() {
+                    self.set_status(
+                        "No checklist configured. Add [checklist] to config.toml".to_string(),
+                        false,
+                    );
+                } else {
+                    self.state.checklist.panel_open = !self.state.checklist.panel_open;
+                }
+            }
+            Action::ChecklistUp => {
+                if self.state.checklist.panel_open {
+                    self.state.checklist.select_up();
+                }
+            }
+            Action::ChecklistDown => {
+                if self.state.checklist.panel_open {
+                    self.state.checklist.select_down();
+                }
+            }
+            Action::ChecklistToggleItem => {
+                if self.state.checklist.panel_open {
+                    self.state.checklist.toggle_current_item();
+                }
+            }
+            Action::ChecklistAddNote => {
+                if self.state.checklist.panel_open {
+                    // Open comment editor for checklist note
+                    self.state.comment_editor_open = true;
+                    self.state.comment_editor_text.clear();
+                    // Set note text if current item has one
+                    if let Some(item) = self.state.checklist.current_item() {
+                        if let Some(ref note) = item.note {
+                            self.state.comment_editor_text.set(note);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1938,18 +2037,34 @@ impl App {
     /// Switch to a new comparison target, preserving annotations per-target.
     fn apply_new_target(&mut self, target: ComparisonTarget, label: String) {
         // Save current session
-        session::save_session(
+        session::save_session_data(
             &self.repo_path,
             &self.state.target_label,
             &self.state.annotations,
+            if self.state.checklist.is_empty() {
+                None
+            } else {
+                Some(&self.state.checklist)
+            },
         );
 
         // Update target
         self.target = target;
         self.state.target_label = label.clone();
 
-        // Load annotations for the new target
-        self.state.annotations = session::load_session(&self.repo_path, &label);
+        // Load annotations and checklist state for the new target
+        let (annotations, saved_checklist) = session::load_session_data(&self.repo_path, &label);
+        self.state.annotations = annotations;
+
+        // Reset checklist to saved state or fresh config
+        if let Some(saved) = saved_checklist {
+            self.state.checklist = saved;
+        } else if let Some(checklist_config) = load_checklist_config(&self.repo_path) {
+            let items = checklist_config_to_items(&checklist_config);
+            self.state.checklist = ChecklistState::from_config_items(items);
+        } else {
+            self.state.checklist.reset();
+        }
 
         // Reset diff/navigator/review state
         self.state.diff.deltas.clear();
@@ -2298,6 +2413,21 @@ impl App {
              a question, answer it and make any implied fixes. Keep changes minimal and focused \
              on what the reviewer asked for.\n\n",
         );
+
+        // Add checklist status if checklist is configured
+        if !self.state.checklist.is_empty() {
+            prompt.push_str("## Review Checklist\n");
+            for item in &self.state.checklist.items {
+                let checkbox = if item.checked { "[x]" } else { "[ ]" };
+                prompt.push_str(&format!("- {} {}", checkbox, item.label));
+                if let Some(ref note) = item.note {
+                    prompt.push_str(&format!(" (Note: {})", note));
+                }
+                prompt.push('\n');
+            }
+            prompt.push('\n');
+        }
+
         prompt.push_str(&file_sections.join("\n\n"));
 
         Some(prompt)

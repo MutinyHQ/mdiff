@@ -1,0 +1,9 @@
+[checklist]
+items = [
+    { label = "Error handling verified", key = "e" },
+    { label = "Tests cover edge cases", key = "t" },
+    { label = "No hardcoded secrets", key = "s" },
+    { label = "Logging is appropriate", key = "l" },
+    { label = "Types are correct", key = "y" },
+    { label = "No unnecessary complexity", key = "c" },
+]

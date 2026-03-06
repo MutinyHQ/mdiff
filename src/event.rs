@@ -100,6 +100,7 @@ pub struct KeyContext {
     pub visual_mode_active: bool,
     pub active_view: ActiveView,
     pub pty_focus: bool,
+    pub checklist_panel_open: bool,
 }
 
 /// Context for mouse event mapping.
@@ -266,6 +267,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('h') | KeyCode::Left => Some(Action::SettingsLeft),
             KeyCode::Char('l') | KeyCode::Right => Some(Action::SettingsRight),
             KeyCode::Esc | KeyCode::Char(':') => Some(Action::CloseSettings),
+            _ => None,
+        };
+    }
+
+    // Priority 2.4: Checklist panel navigation
+    if ctx.checklist_panel_open {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::ChecklistDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::ChecklistUp),
+            KeyCode::Char(' ') | KeyCode::Enter => Some(Action::ChecklistToggleItem),
+            KeyCode::Char('n') => Some(Action::ChecklistAddNote),
+            KeyCode::Esc => Some(Action::ToggleChecklist), // Close panel
             _ => None,
         };
     }
@@ -477,6 +490,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             }
         }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
+        KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
         KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
         _ => {}

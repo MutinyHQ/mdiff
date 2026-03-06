@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::theme::{apply_overrides, Theme, ThemeOverrides};
 
@@ -33,6 +33,17 @@ fn default_mouse_enabled() -> bool {
     true
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChecklistItemConfig {
+    pub label: String,
+    pub key: String, // Single character as string for TOML compatibility
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChecklistConfig {
+    pub items: Vec<ChecklistItemConfig>,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct MdiffConfig {
@@ -45,6 +56,8 @@ pub struct MdiffConfig {
     /// Last-used model per agent name (e.g. "claude" -> "claude-opus-4-6").
     pub agent_models: HashMap<String, String>,
     pub mouse: MouseConfig,
+    /// Checklist configuration for review templates
+    pub checklist: Option<ChecklistConfig>,
 }
 
 impl Default for MdiffConfig {
@@ -64,6 +77,7 @@ impl Default for MdiffConfig {
             context_lines: None,
             agent_models: HashMap::new(),
             mouse: MouseConfig::default(),
+            checklist: None,
         }
     }
 }
@@ -154,6 +168,7 @@ struct ConfigFile {
     agent_models: HashMap<String, String>,
     #[serde(default)]
     mouse: MouseConfig,
+    checklist: Option<ChecklistConfig>,
 }
 
 fn config_path() -> PathBuf {
@@ -217,6 +232,7 @@ pub fn load_config() -> MdiffConfig {
         context_lines: file.context_lines,
         agent_models: file.agent_models,
         mouse: file.mouse,
+        checklist: file.checklist,
     }
 }
 
@@ -267,6 +283,42 @@ pub fn save_settings(settings: &PersistentSettings) {
 
     let toml_string = toml::to_string_pretty(&table).unwrap_or_default();
     let _ = std::fs::write(&path, toml_string);
+}
+
+/// Load checklist configuration, checking project-specific .mdiff.toml first,
+/// then falling back to global config.
+pub fn load_checklist_config(repo_path: &Path) -> Option<ChecklistConfig> {
+    // Check for project-specific config first
+    let project_config_path = repo_path.join(".mdiff.toml");
+    if let Ok(contents) = std::fs::read_to_string(&project_config_path) {
+        if let Ok(file) = toml::from_str::<ConfigFile>(&contents) {
+            if let Some(checklist) = file.checklist {
+                return Some(checklist);
+            }
+        }
+    }
+
+    // Fall back to global config
+    let global_config = load_config();
+    global_config.checklist
+}
+
+/// Convert checklist config to (label, key) pairs, validating keys.
+pub fn checklist_config_to_items(config: &ChecklistConfig) -> Vec<(String, char)> {
+    config
+        .items
+        .iter()
+        .take(20) // Limit to 20 items as per spec
+        .filter_map(|item| {
+            // Validate key is a single character
+            let chars: Vec<char> = item.key.chars().collect();
+            if chars.len() == 1 {
+                Some((item.label.clone(), chars[0]))
+            } else {
+                None // Skip invalid keys
+            }
+        })
+        .collect()
 }
 
 /// Save the last-used model for a specific agent to config.toml.

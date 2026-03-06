@@ -5,13 +5,28 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::state::annotation_state::Annotation;
-use crate::state::AnnotationState;
+use crate::state::{AnnotationState, ChecklistState};
 
 #[derive(Serialize, Deserialize)]
 struct SessionFile {
     version: u32,
     target_label: String,
     annotations: Vec<AnnotationEntry>,
+    #[serde(default)]
+    checklist: Option<ChecklistSessionData>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChecklistSessionData {
+    items: Vec<ChecklistItemSession>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChecklistItemSession {
+    label: String,
+    key: char,
+    checked: bool,
+    note: Option<String>,
 }
 
 /// V2 annotation entry with separate old/new ranges.
@@ -67,22 +82,26 @@ fn ensure_gitignore(repo_path: &Path) {
     }
 }
 
-/// Load annotations from the session file, if it exists and matches the target.
-/// Accepts both v1 (line_start/line_end) and v2 (old/new ranges) formats.
-pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
+/// Load both annotations and checklist state from the session file.
+pub fn load_session_data(
+    repo_path: &Path,
+    target_label: &str,
+) -> (AnnotationState, Option<ChecklistState>) {
     let path = session_file(repo_path, target_label);
-    let mut state = AnnotationState::default();
+    let mut annotations_state = AnnotationState::default();
 
     let Ok(contents) = fs::read_to_string(&path) else {
-        return state;
+        return (annotations_state, None);
     };
 
     let Ok(session) = serde_json::from_str::<SessionFile>(&contents) else {
-        return state;
+        return (annotations_state, None);
     };
 
-    if !(session.version == 1 || session.version == 2) || session.target_label != target_label {
-        return state;
+    if !(session.version == 1 || session.version == 2 || session.version == 3)
+        || session.target_label != target_label
+    {
+        return (annotations_state, None);
     }
 
     for entry in session.annotations {
@@ -98,7 +117,7 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
             (old_range, new_range)
         };
 
-        state.add(Annotation {
+        annotations_state.add(Annotation {
             anchor: crate::state::annotation_state::LineAnchor {
                 file_path: entry.file_path,
                 old_range,
@@ -109,11 +128,36 @@ pub fn load_session(repo_path: &Path, target_label: &str) -> AnnotationState {
         });
     }
 
-    state
+    // Load checklist state if present
+    let checklist_state = session.checklist.map(|checklist_data| {
+        let items = checklist_data
+            .items
+            .into_iter()
+            .map(|item| crate::state::ChecklistItem {
+                label: item.label,
+                key: item.key,
+                checked: item.checked,
+                note: item.note,
+            })
+            .collect();
+
+        ChecklistState {
+            items,
+            selected: 0,
+            panel_open: false,
+        }
+    });
+
+    (annotations_state, checklist_state)
 }
 
-/// Save annotations to the session file (always v2 format).
-pub fn save_session(repo_path: &Path, target_label: &str, annotations: &AnnotationState) {
+/// Save both annotations and checklist state to the session file (v3 format).
+pub fn save_session_data(
+    repo_path: &Path,
+    target_label: &str,
+    annotations: &AnnotationState,
+    checklist: Option<&ChecklistState>,
+) {
     let dir = session_dir(repo_path);
     if fs::create_dir_all(&dir).is_err() {
         return;
@@ -137,10 +181,25 @@ pub fn save_session(repo_path: &Path, target_label: &str, annotations: &Annotati
         })
         .collect();
 
+    // Serialize checklist state if present
+    let checklist_data = checklist.map(|cl| ChecklistSessionData {
+        items: cl
+            .items
+            .iter()
+            .map(|item| ChecklistItemSession {
+                label: item.label.clone(),
+                key: item.key,
+                checked: item.checked,
+                note: item.note.clone(),
+            })
+            .collect(),
+    });
+
     let session = SessionFile {
-        version: 2,
+        version: if checklist_data.is_some() { 3 } else { 2 },
         target_label: target_label.to_string(),
         annotations: entries,
+        checklist: checklist_data,
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {

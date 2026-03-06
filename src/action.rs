@@ -196,4 +196,11 @@ pub enum Action {
 
     // Resize
     Resize,
+
+    // Checklist
+    ToggleChecklist, // Toggle checklist panel visibility
+    ChecklistUp,     // Navigate checklist items
+    ChecklistDown,
+    ChecklistToggleItem, // Toggle current item checked/unchecked
+    ChecklistAddNote,    // Open note editor for current item
 }
