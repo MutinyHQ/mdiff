@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/MutinyHQ/mdiff/compare/v0.1.12...v0.1.13) - 2026-03-06
+
+### Added
+
+- implement configurable review checklist system
+- Add mouse support for navigation
+
+### Other
+
+- cargo fmt
+- Fix diff line calculations for ScrollToBottom action
+
 ## [0.1.12](https://github.com/MutinyHQ/mdiff/compare/v0.1.11...v0.1.12) - 2026-03-06
 
 ### Added
