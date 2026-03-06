@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::complexity::file_complexity;
 use crate::state::review_state::FileReviewStatus;
 use crate::state::{app_state::FocusPanel, AppState};
 
@@ -56,10 +57,11 @@ impl Component for Navigator {
         }
 
         let inner_height = area.height.saturating_sub(2) as usize;
-        // Available width for the display text after prefix ("▶ ") and review icon ("✓ ")
+        // Available width for the display text after prefix ("▶ ") and review icon ("✓ ") and complexity badge
         let inner_width = area.width.saturating_sub(2) as usize; // block borders
         let prefix_width = 5; // "▶ " (3) + "✓ " (2, icon is 1 char + space)
-        let max_display_width = inner_width.saturating_sub(prefix_width);
+        let complexity_width = if state.diff.complexity_enabled { 8 } else { 0 }; // " [High] " (8 chars)
+        let max_display_width = inner_width.saturating_sub(prefix_width + complexity_width);
         let selected = state.navigator.selected;
 
         let scroll = if selected >= inner_height {
@@ -103,11 +105,31 @@ impl Component for Navigator {
 
                 let display = middle_ellipsis(&entry.display, max_display_width);
 
-                Line::from(vec![
+                let mut spans = vec![
                     Span::styled(format!("{prefix} "), style),
                     Span::styled(format!("{review_icon} "), Style::default().fg(review_color)),
                     Span::styled(display, style),
-                ])
+                ];
+
+                // Add complexity badge if enabled
+                if state.diff.complexity_enabled {
+                    if let Some(complexity_scores) = state.diff.complexity_scores.get(&entry.path) {
+                        let file_score = file_complexity(complexity_scores);
+                        let badge_color = match file_score.label {
+                            "Low" => theme.success,
+                            "Med" => theme.warning,
+                            "High" => theme.error,
+                            "Critical" => theme.error,
+                            _ => theme.text_muted,
+                        };
+                        spans.push(Span::styled(
+                            format!(" [{}]", file_score.label),
+                            Style::default().fg(badge_color),
+                        ));
+                    }
+                }
+
+                Line::from(spans)
             })
             .collect();
 

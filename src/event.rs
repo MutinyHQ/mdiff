@@ -525,6 +525,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
             KeyCode::Char('N') => Some(Action::DiffSearchPrev),
+            KeyCode::Char('X') => Some(Action::ToggleComplexityIndicators),
             _ => None,
         },
     }
