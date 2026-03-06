@@ -39,6 +39,7 @@ pub enum Action {
     ScrollPageDown,
     ToggleViewMode,
     ToggleWhitespace,
+    ToggleIntraLineDiff,
 
     ExpandContext,
 

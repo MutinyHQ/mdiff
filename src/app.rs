@@ -32,6 +32,7 @@ use crate::git::commands::GitCli;
 use crate::git::types::{ComparisonTarget, DiffLineOrigin, FileDelta};
 use crate::git::worktree;
 use crate::highlight::HighlightEngine;
+use crate::intra_diff::compute_hunk_intra_highlights;
 use crate::pty_runner::{key_event_to_bytes, PtyEvent, PtyRunner};
 use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
@@ -365,6 +366,24 @@ impl App {
         });
     }
 
+    fn compute_intra_line_highlights(&mut self) {
+        self.state.diff.intra_highlights.clear();
+        
+        for delta in &self.state.diff.deltas {
+            let file_path = delta.path.to_string_lossy().to_string();
+            let mut file_highlights = std::collections::HashMap::new();
+            
+            for hunk in &delta.hunks {
+                let hunk_highlights = compute_hunk_intra_highlights(&hunk.lines);
+                file_highlights.extend(hunk_highlights);
+            }
+            
+            if !file_highlights.is_empty() {
+                self.state.diff.intra_highlights.insert(file_path, file_highlights);
+            }
+        }
+    }
+
     fn poll_diff_results(&mut self) {
         while let Some(result) = self.worker.try_recv() {
             if result.generation < self.generation {
@@ -377,6 +396,12 @@ impl App {
                     self.state.review.on_diff_refresh(new_hashes);
                     self.state.navigator.update_from_deltas(&deltas);
                     self.state.diff.deltas = deltas;
+                    
+                    // Compute intra-line highlights if enabled
+                    if self.state.diff.intra_line_enabled {
+                        self.compute_intra_line_highlights();
+                    }
+                    
                     if !self.state.diff.deltas.is_empty() && self.state.diff.selected_file.is_none()
                     {
                         self.state.diff.selected_file = Some(0);
@@ -793,6 +818,18 @@ impl App {
                 self.state.diff.options.ignore_whitespace =
                     !self.state.diff.options.ignore_whitespace;
                 self.request_diff();
+            }
+            Action::ToggleIntraLineDiff => {
+                self.state.diff.intra_line_enabled = !self.state.diff.intra_line_enabled;
+                if self.state.diff.intra_line_enabled {
+                    self.compute_intra_line_highlights();
+                } else {
+                    self.state.diff.intra_highlights.clear();
+                }
+                self.set_status(
+                    format!("Word-level diff: {}", if self.state.diff.intra_line_enabled { "On" } else { "Off" }),
+                    false,
+                );
             }
 
             Action::FocusNavigator => {

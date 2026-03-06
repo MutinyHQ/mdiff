@@ -383,7 +383,11 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     match key.code {
         KeyCode::Char('q') if !ctx.visual_mode_active => return Some(Action::Quit),
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            return Some(Action::ToggleWorktreeBrowser)
+            // Context-sensitive: In diff explorer, toggle word-level diff; otherwise toggle worktree browser
+            return Some(match ctx.active_view {
+                ActiveView::DiffExplorer => Action::ToggleIntraLineDiff,
+                _ => Action::ToggleWorktreeBrowser,
+            })
         }
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenAgentSelector)
