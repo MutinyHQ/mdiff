@@ -11,6 +11,7 @@ use crate::display_map::{
 };
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
+use crate::intra_diff::IntraLineSpan;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
 use crate::theme::Theme;
 
@@ -368,6 +369,10 @@ fn build_split_lines_core<'a>(
 
     let gutter_width = 5;
     let mut gap_id_offset = 0;
+    
+    // Get intra-line highlights for this file
+    let file_path = delta.path.to_string_lossy().to_string();
+    let intra_highlights = state.diff.intra_highlights.get(&file_path);
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
@@ -461,12 +466,16 @@ fn build_split_lines_core<'a>(
                             &line.content,
                             old_spans,
                             None,
+                            None,
+                            None,
                             hl,
                             theme,
                         ));
                         right.push(make_content_only_line(
                             &line.content,
                             new_spans,
+                            None,
+                            None,
                             None,
                             hl,
                             theme,
@@ -501,8 +510,8 @@ fn build_split_lines_core<'a>(
                         let dels: Vec<_> = items[del_start..add_start]
                             .iter()
                             .filter_map(|item| {
-                                if let FilteredItem::Line { line, .. } = item {
-                                    Some(*line)
+                                if let FilteredItem::Line { line, hunk_line_index } = item {
+                                    Some((*line, *hunk_line_index))
                                 } else {
                                     None
                                 }
@@ -511,8 +520,8 @@ fn build_split_lines_core<'a>(
                         let adds: Vec<_> = items[add_start..i]
                             .iter()
                             .filter_map(|item| {
-                                if let FilteredItem::Line { line, .. } = item {
-                                    Some(*line)
+                                if let FilteredItem::Line { line, hunk_line_index } = item {
+                                    Some((*line, *hunk_line_index))
                                 } else {
                                     None
                                 }
@@ -528,12 +537,12 @@ fn build_split_lines_core<'a>(
                             let marker = if ann_marker { "\u{2502}" } else { " " };
 
                             let old_lineno = if j < dels.len() {
-                                dels[j].old_lineno
+                                dels[j].0.old_lineno
                             } else {
                                 None
                             };
                             let new_lineno = if j < adds.len() {
-                                adds[j].new_lineno
+                                adds[j].0.new_lineno
                             } else {
                                 None
                             };
@@ -544,12 +553,15 @@ fn build_split_lines_core<'a>(
                             ));
 
                             if j < dels.len() {
-                                let line = dels[j];
+                                let (line, hunk_idx) = dels[j];
                                 let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                                let intra_spans = intra_highlights.and_then(|h| h.get(&hunk_idx));
                                 left.push(make_content_only_line(
                                     &line.content,
                                     spans,
+                                    intra_spans,
                                     Some(theme.diff_del_bg),
+                                    Some(theme.diff_delete_word_bg),
                                     hl,
                                     theme,
                                 ));
@@ -558,12 +570,15 @@ fn build_split_lines_core<'a>(
                             }
 
                             if j < adds.len() {
-                                let line = adds[j];
+                                let (line, hunk_idx) = adds[j];
                                 let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                                let intra_spans = intra_highlights.and_then(|h| h.get(&hunk_idx));
                                 right.push(make_content_only_line(
                                     &line.content,
                                     spans,
+                                    intra_spans,
                                     Some(theme.diff_add_bg),
+                                    Some(theme.diff_add_word_bg),
                                     hl,
                                     theme,
                                 ));
@@ -592,7 +607,9 @@ fn build_split_lines_core<'a>(
                         right.push(make_content_only_line(
                             &line.content,
                             spans,
+                            None,
                             Some(theme.diff_add_bg),
+                            None,
                             hl,
                             theme,
                         ));
@@ -619,6 +636,10 @@ fn build_unified_lines_core<'a>(
     let mut lines: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
     let mut gap_id_offset = 0;
+    
+    // Get intra-line highlights for this file
+    let file_path = delta.path.to_string_lossy().to_string();
+    let intra_highlights = state.diff.intra_highlights.get(&file_path);
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
@@ -660,7 +681,7 @@ fn build_unified_lines_core<'a>(
                     ));
                     display_row += 1;
                 }
-                FilteredItem::Line { line, .. } => {
+                FilteredItem::Line { line, hunk_line_index } => {
                     let hl = row_highlight(state, display_row);
                     let ann_marker = display_map
                         .get(display_row)
@@ -681,6 +702,8 @@ fn build_unified_lines_core<'a>(
                                 &line.content,
                                 spans,
                                 None,
+                                None,
+                                None,
                                 hl,
                                 ann_marker,
                                 theme,
@@ -688,6 +711,7 @@ fn build_unified_lines_core<'a>(
                         }
                         DiffLineOrigin::Addition => {
                             let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
+                            let intra_spans = intra_highlights.and_then(|h| h.get(hunk_line_index));
                             let blank = " ".repeat(gutter_width);
                             lines.push(make_unified_highlighted(
                                 &blank,
@@ -695,7 +719,9 @@ fn build_unified_lines_core<'a>(
                                 "+",
                                 &line.content,
                                 spans,
+                                intra_spans,
                                 Some(theme.diff_add_bg),
+                                Some(theme.diff_add_word_bg),
                                 hl,
                                 ann_marker,
                                 theme,
@@ -703,6 +729,7 @@ fn build_unified_lines_core<'a>(
                         }
                         DiffLineOrigin::Deletion => {
                             let spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
+                            let intra_spans = intra_highlights.and_then(|h| h.get(hunk_line_index));
                             let blank = " ".repeat(gutter_width);
                             lines.push(make_unified_highlighted(
                                 &old_g,
@@ -710,7 +737,9 @@ fn build_unified_lines_core<'a>(
                                 "-",
                                 &line.content,
                                 spans,
+                                intra_spans,
                                 Some(theme.diff_del_bg),
+                                Some(theme.diff_delete_word_bg),
                                 hl,
                                 ann_marker,
                                 theme,
@@ -762,6 +791,81 @@ fn make_hunk_header_line_unified<'a>(
         Span::styled(gutter_text, gutter_style),
         Span::styled(header.to_string(), content_style),
     ])
+}
+
+/// Apply both syntax highlighting and intra-line highlighting to a string.
+fn apply_highlights_with_intra<'a>(
+    text: &str,
+    hl_spans: &[HighlightSpan],
+    intra_spans: &[IntraLineSpan],
+    base_bg: Option<Color>,
+    intra_bg: Option<Color>,
+    theme: &Theme,
+) -> Vec<Span<'a>> {
+    if text.is_empty() {
+        let mut style = Style::default().fg(theme.text);
+        if let Some(bg_color) = base_bg {
+            style = style.bg(bg_color);
+        }
+        return vec![Span::styled("".to_string(), style)];
+    }
+
+    // Create a list of all boundaries (syntax + intra-line)
+    let mut boundaries = std::collections::BTreeSet::new();
+    boundaries.insert(0);
+    boundaries.insert(text.len());
+
+    // Add syntax highlight boundaries
+    for span in hl_spans {
+        boundaries.insert(span.start.min(text.len()));
+        boundaries.insert(span.end.min(text.len()));
+    }
+
+    // Add intra-line boundaries
+    for span in intra_spans {
+        boundaries.insert(span.start.min(text.len()));
+        boundaries.insert(span.end.min(text.len()));
+    }
+
+    let boundaries: Vec<usize> = boundaries.into_iter().collect();
+    let mut result = Vec::new();
+
+    for window in boundaries.windows(2) {
+        let start = window[0];
+        let end = window[1];
+        if start >= end {
+            continue;
+        }
+
+        // Find the syntax highlight for this range
+        let syntax_style = hl_spans
+            .iter()
+            .find(|span| span.start <= start && end <= span.end)
+            .map(|span| span.style)
+            .unwrap_or_else(|| Style::default().fg(theme.diff_context_fg));
+
+        // Check if this range is within an intra-line highlight
+        let is_intra_highlighted = intra_spans
+            .iter()
+            .any(|span| span.start <= start && end <= span.end);
+
+        // Determine the background color
+        let bg_color = if is_intra_highlighted && intra_bg.is_some() {
+            intra_bg
+        } else {
+            base_bg
+        };
+
+        // Apply the background to the syntax style
+        let mut final_style = syntax_style;
+        if let Some(bg) = bg_color {
+            final_style = final_style.bg(bg);
+        }
+
+        result.push(Span::styled(text[start..end].to_string(), final_style));
+    }
+
+    result
 }
 
 /// Apply highlight spans to a string, blending with diff background.
@@ -845,7 +949,9 @@ fn make_center_gutter_line<'a>(
 fn make_content_only_line<'a>(
     content: &str,
     hl_spans: Option<&Vec<HighlightSpan>>,
+    intra_spans: Option<&Vec<IntraLineSpan>>,
     diff_bg: Option<Color>,
+    intra_bg: Option<Color>,
     hl: RowHighlight,
     theme: &Theme,
 ) -> Line<'a> {
@@ -853,7 +959,13 @@ fn make_content_only_line<'a>(
     let content_bg = hl.content_bg.or(diff_bg);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, content_bg, theme)
+        if let Some(intra_spans) = intra_spans {
+            apply_highlights_with_intra(trimmed, spans, intra_spans, content_bg, intra_bg, theme)
+        } else {
+            apply_highlights(trimmed, spans, content_bg, theme)
+        }
+    } else if let Some(intra_spans) = intra_spans {
+        apply_highlights_with_intra(trimmed, &[], intra_spans, content_bg, intra_bg, theme)
     } else {
         let mut style = Style::default();
         if let Some(bg_color) = content_bg {
@@ -894,7 +1006,9 @@ fn make_unified_highlighted<'a>(
     prefix: &str,
     content: &str,
     hl_spans: Option<&Vec<HighlightSpan>>,
+    intra_spans: Option<&Vec<IntraLineSpan>>,
     diff_bg: Option<Color>,
+    intra_bg: Option<Color>,
     hl: RowHighlight,
     ann_marker: bool,
     theme: &Theme,
@@ -933,7 +1047,13 @@ fn make_unified_highlighted<'a>(
     let prefix_span = Span::styled(prefix.to_string(), prefix_style);
 
     let content_spans = if let Some(spans) = hl_spans {
-        apply_highlights(trimmed, spans, content_bg, theme)
+        if let Some(intra_spans) = intra_spans {
+            apply_highlights_with_intra(trimmed, spans, intra_spans, content_bg, intra_bg, theme)
+        } else {
+            apply_highlights(trimmed, spans, content_bg, theme)
+        }
+    } else if let Some(intra_spans) = intra_spans {
+        apply_highlights_with_intra(trimmed, &[], intra_spans, content_bg, intra_bg, theme)
     } else {
         let mut style = Style::default().fg(theme.text);
         if let Some(bg_color) = content_bg {
