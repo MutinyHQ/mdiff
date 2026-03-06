@@ -51,6 +51,7 @@ pub enum ActiveView {
     DiffExplorer,
     WorktreeBrowser,
     AgentOutputs,
+    FeedbackSummary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +119,9 @@ pub struct AppState {
 
     // Global search across all diff content
     pub global_search: GlobalSearchState,
+
+    // Feedback summary
+    pub feedback_summary_scroll: usize,
 }
 
 impl AppState {
@@ -153,8 +157,9 @@ impl AppState {
             restore_confirm_open: false,
             theme,
             settings: SettingsState::default(),
-            which_key_visible: false,
             global_search: GlobalSearchState::default(),
+            feedback_summary_scroll: 0,
+            which_key_visible: false,
         }
     }
 }

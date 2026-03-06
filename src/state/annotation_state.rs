@@ -224,4 +224,25 @@ impl AnnotationState {
             .last()
             .map(|a| (a.anchor.file_path.as_str(), a.anchor.sort_line()))
     }
+
+    /// Total count of scores (placeholder for spec 003 - quick-reactions).
+    pub fn score_count(&self) -> usize {
+        0
+    }
+
+    /// Get all scores sorted (placeholder for spec 003 - quick-reactions).
+    pub fn all_scores_sorted(&self) -> Vec<LineScore> {
+        Vec::new()
+    }
+
+    /// Count files that have annotations.
+    pub fn files_with_annotations(&self) -> usize {
+        self.annotations.len()
+    }
+}
+
+/// Placeholder for line score (spec 003 - quick-reactions).
+#[derive(Debug, Clone)]
+pub struct LineScore {
+    pub score: u8,
 }

@@ -123,6 +123,7 @@ fn get_context_title(state: &AppState) -> &'static str {
     match state.active_view {
         ActiveView::WorktreeBrowser => "Worktree Browser",
         ActiveView::AgentOutputs => "Agent Outputs",
+        ActiveView::FeedbackSummary => "Feedback Summary",
         ActiveView::DiffExplorer => match state.focus {
             FocusPanel::Navigator => "Navigator",
             FocusPanel::DiffView => "Diff View",
@@ -207,6 +208,24 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
             KeyEntry {
                 key: "Esc",
                 description: "Back",
+            },
+        ],
+        ActiveView::FeedbackSummary => vec![
+            KeyEntry {
+                key: "j/k",
+                description: "Scroll",
+            },
+            KeyEntry {
+                key: "y",
+                description: "Copy JSON",
+            },
+            KeyEntry {
+                key: "p",
+                description: "Copy prompt",
+            },
+            KeyEntry {
+                key: "Esc/F",
+                description: "Back to diff",
             },
         ],
         ActiveView::DiffExplorer => match state.focus {

@@ -107,6 +107,14 @@ impl ReviewState {
         self.files.clear();
         self.current_hashes.clear();
     }
+
+    /// Count files that have been reviewed.
+    pub fn reviewed_count(&self) -> usize {
+        self.files
+            .values()
+            .filter(|(status, _)| matches!(status, FileReviewStatus::Reviewed))
+            .count()
+    }
 }
 
 /// Compute a hash fingerprint of a FileDelta's diff content.
