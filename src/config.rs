@@ -17,6 +17,22 @@ pub struct AgentProviderConfig {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct MouseConfig {
+    #[serde(default = "default_mouse_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for MouseConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+fn default_mouse_enabled() -> bool {
+    true
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct MdiffConfig {
@@ -28,6 +44,7 @@ pub struct MdiffConfig {
     pub context_lines: Option<usize>,
     /// Last-used model per agent name (e.g. "claude" -> "claude-opus-4-6").
     pub agent_models: HashMap<String, String>,
+    pub mouse: MouseConfig,
 }
 
 impl Default for MdiffConfig {
@@ -46,6 +63,7 @@ impl Default for MdiffConfig {
             ignore_whitespace: None,
             context_lines: None,
             agent_models: HashMap::new(),
+            mouse: MouseConfig::default(),
         }
     }
 }
@@ -134,6 +152,8 @@ struct ConfigFile {
     context_lines: Option<usize>,
     #[serde(default)]
     agent_models: HashMap<String, String>,
+    #[serde(default)]
+    mouse: MouseConfig,
 }
 
 fn config_path() -> PathBuf {
@@ -196,6 +216,7 @@ pub fn load_config() -> MdiffConfig {
         ignore_whitespace: file.ignore_whitespace,
         context_lines: file.context_lines,
         agent_models: file.agent_models,
+        mouse: file.mouse,
     }
 }
 
