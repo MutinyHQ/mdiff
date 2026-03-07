@@ -303,6 +303,7 @@ impl App {
                     active_view: self.state.active_view,
                     pty_focus: self.state.pty_focus,
                     checklist_panel_open: self.state.checklist.panel_open,
+                    which_key_visible: self.state.which_key_visible,
                 };
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
@@ -1689,7 +1690,6 @@ impl App {
             Action::ToggleWhichKey => {
                 self.state.which_key_visible = !self.state.which_key_visible;
             }
-
             Action::Tick => {
                 if self.quit_confirm_countdown > 0 {
                     self.quit_confirm_countdown -= 1;
