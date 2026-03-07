@@ -1930,6 +1930,21 @@ impl App {
                     self.set_status("Feedback summary copied to clipboard".to_string(), false);
                 }
             }
+            Action::ExportFeedback => {
+                crate::export::ensure_gitignore(&self.repo_path);
+                match crate::export::export_feedback(
+                    &self.state,
+                    &self.repo_path,
+                    &self.state.target_label,
+                ) {
+                    Ok(path) => {
+                        self.set_status(format!("Exported to {}", path.display()), false);
+                    }
+                    Err(e) => {
+                        self.set_status(format!("Export failed: {e}"), true);
+                    }
+                }
+            }
 
             // Generic text input navigation
             Action::TextCursorLeft => {

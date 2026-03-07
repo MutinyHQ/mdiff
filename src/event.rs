@@ -457,6 +457,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::StartGlobalSearch)
         }
+        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::ExportFeedback)
+        }
         _ => {}
     }
 
