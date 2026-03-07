@@ -62,6 +62,7 @@ pub struct App {
     diff_viewport_height: Cell<usize>,
     config: MdiffConfig,
     pty_runner: Option<PtyRunner>,
+    active_pty_run_id: Option<usize>,
     last_navigator_rect: Rect,
     last_diff_view_rect: Rect,
 }
@@ -111,6 +112,7 @@ impl App {
             diff_viewport_height: Cell::new(20),
             config,
             pty_runner: None,
+            active_pty_run_id: None,
             last_navigator_rect: Rect::default(),
             last_diff_view_rect: Rect::default(),
         }
@@ -502,6 +504,7 @@ impl App {
             }
             self.state.pty_focus = false;
             self.pty_runner = None;
+            self.active_pty_run_id = None;
             // Agent may have changed files — refresh diff
             self.request_diff();
         }
@@ -1533,6 +1536,7 @@ impl App {
                             pty_cols,
                             &self.repo_path,
                         ));
+                        self.active_pty_run_id = Some(run_id);
                         self.state.agent_selector.open = false;
                         self.state.active_view = ActiveView::AgentOutputs;
                         self.state.pty_focus = true;
@@ -1586,12 +1590,31 @@ impl App {
             Action::KillAgentProcess => {
                 if let Some(run) = self.state.agent_outputs.selected() {
                     if matches!(run.status, AgentRunStatus::Running) {
-                        if let Some(runner) = self.pty_runner.as_mut() {
-                            runner.kill();
-                            self.state.pty_focus = false;
-                            self.set_status("Agent process killed".to_string(), false);
+                        // Check if the selected run is the currently active PTY process
+                        if let Some(active_run_id) = self.active_pty_run_id {
+                            if run.id == active_run_id {
+                                if let Some(runner) = self.pty_runner.as_mut() {
+                                    runner.kill();
+                                    self.state.pty_focus = false;
+                                    self.set_status(
+                                        format!("Killed agent: #{} {}/{}", run.id, run.agent_name, run.model),
+                                        false,
+                                    );
+                                }
+                            } else {
+                                self.set_status(
+                                    "Selected agent is not the active process".to_string(),
+                                    true,
+                                );
+                            }
+                        } else {
+                            self.set_status("No active agent process to kill".to_string(), true);
                         }
+                    } else {
+                        self.set_status("Selected agent is not running".to_string(), true);
                     }
+                } else {
+                    self.set_status("No agent selected".to_string(), true);
                 }
             }
             Action::AgentOutputsSwitchWorktree => {
