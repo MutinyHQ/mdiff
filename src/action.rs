@@ -191,6 +191,9 @@ pub enum Action {
     FeedbackSummaryCopyJson,
     FeedbackSummaryCopyPrompt,
 
+    // Feedback export
+    ExportFeedback,
+
     // Generic text input navigation
     TextCursorLeft,
     TextCursorRight,

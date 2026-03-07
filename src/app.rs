@@ -28,7 +28,9 @@ use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{self, MdiffConfig, PersistentSettings};
 use crate::display_map::{build_display_map, DisplayRowInfo};
-use crate::event::{map_key_to_action, map_mouse_to_action, Event, EventReader, KeyContext, MouseContext};
+use crate::event::{
+    map_key_to_action, map_mouse_to_action, Event, EventReader, KeyContext, MouseContext,
+};
 use crate::git::commands::GitCli;
 use crate::git::types::{ComparisonTarget, DiffLineOrigin, FileDelta};
 use crate::git::worktree;
@@ -263,12 +265,9 @@ impl App {
                 let action = match event {
                     Event::Key(key) => map_key_to_action(key, &ctx),
                     Event::Mouse(mouse) => {
-                        // Check if mouse is enabled in config
-                        if !self.config.mouse.enabled {
-                            None
-                        }
-                        // Ignore mouse events when modals are open
-                        else if ctx.commit_dialog_open
+                        // Check if mouse is enabled in config or if modals are open
+                        if !self.config.mouse.enabled
+                            || ctx.commit_dialog_open
                             || ctx.target_dialog_open
                             || ctx.comment_editor_open
                             || ctx.agent_selector_open
@@ -289,14 +288,15 @@ impl App {
                                 }
                             } else {
                                 let visible_entries = self.state.navigator.visible_entries();
-                                let inner_height = self.last_navigator_rect.height.saturating_sub(2) as usize;
+                                let inner_height =
+                                    self.last_navigator_rect.height.saturating_sub(2) as usize;
                                 let selected = self.state.navigator.selected;
                                 let scroll_offset = if selected >= inner_height {
                                     selected - inner_height + 1
                                 } else {
                                     0
                                 };
-                                
+
                                 let mouse_ctx = MouseContext {
                                     navigator_rect: self.last_navigator_rect,
                                     diff_view_rect: self.last_diff_view_rect,
@@ -369,18 +369,21 @@ impl App {
 
     fn compute_intra_line_highlights(&mut self) {
         self.state.diff.intra_highlights.clear();
-        
+
         for delta in &self.state.diff.deltas {
             let file_path = delta.path.to_string_lossy().to_string();
             let mut file_highlights = std::collections::HashMap::new();
-            
+
             for hunk in &delta.hunks {
                 let hunk_highlights = compute_hunk_intra_highlights(&hunk.lines);
                 file_highlights.extend(hunk_highlights);
             }
-            
+
             if !file_highlights.is_empty() {
-                self.state.diff.intra_highlights.insert(file_path, file_highlights);
+                self.state
+                    .diff
+                    .intra_highlights
+                    .insert(file_path, file_highlights);
             }
         }
     }
@@ -397,7 +400,7 @@ impl App {
                     self.state.review.on_diff_refresh(new_hashes);
                     self.state.navigator.update_from_deltas(&deltas);
                     self.state.diff.deltas = deltas;
-                    
+
                     // Analyze complexity for all files
                     self.analyze_complexity();
 
@@ -405,7 +408,7 @@ impl App {
                     if self.state.diff.intra_line_enabled {
                         self.compute_intra_line_highlights();
                     }
-                    
+
                     if !self.state.diff.deltas.is_empty() && self.state.diff.selected_file.is_none()
                     {
                         self.state.diff.selected_file = Some(0);
@@ -422,16 +425,16 @@ impl App {
 
     fn analyze_complexity(&mut self) {
         self.state.diff.complexity_scores.clear();
-        
+
         for delta in &self.state.diff.deltas {
             let file_path = delta.path.to_string_lossy().to_string();
             let mut hunk_complexities = Vec::new();
-            
+
             for hunk in &delta.hunks {
                 // Collect added and removed lines
                 let mut added_lines = Vec::new();
                 let mut removed_lines = Vec::new();
-                
+
                 for line in &hunk.lines {
                     match line.origin {
                         crate::git::types::DiffLineOrigin::Addition => {
@@ -445,12 +448,15 @@ impl App {
                         }
                     }
                 }
-                
+
                 let complexity = analyze_hunk(&added_lines, &removed_lines, &file_path);
                 hunk_complexities.push(complexity);
             }
-            
-            self.state.diff.complexity_scores.insert(file_path, hunk_complexities);
+
+            self.state
+                .diff
+                .complexity_scores
+                .insert(file_path, hunk_complexities);
         }
     }
 
@@ -876,7 +882,14 @@ impl App {
                     self.state.diff.intra_highlights.clear();
                 }
                 self.set_status(
-                    format!("Word-level diff: {}", if self.state.diff.intra_line_enabled { "On" } else { "Off" }),
+                    format!(
+                        "Word-level diff: {}",
+                        if self.state.diff.intra_line_enabled {
+                            "On"
+                        } else {
+                            "Off"
+                        }
+                    ),
                     false,
                 );
             }
@@ -1707,7 +1720,11 @@ impl App {
 
             Action::ToggleComplexityIndicators => {
                 self.state.diff.complexity_enabled = !self.state.diff.complexity_enabled;
-                let status = if self.state.diff.complexity_enabled { "enabled" } else { "disabled" };
+                let status = if self.state.diff.complexity_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
                 self.set_status(format!("Complexity indicators {}", status), false);
             }
 
@@ -1898,6 +1915,23 @@ impl App {
                     self.set_status("Feedback summary copied to clipboard".to_string(), false);
                 }
             }
+            Action::ExportFeedback => {
+                crate::export::ensure_gitignore(&self.repo_path);
+                match crate::export::export_feedback(
+                    &self.state,
+                    &self.repo_path,
+                    &self.state.target_label,
+                ) {
+                    Ok(path) => {
+                        self.state.status_message =
+                            Some((format!("Feedback exported to {}", path.display()), false));
+                    }
+                    Err(e) => {
+                        self.state.status_message = Some((format!("Export failed: {}", e), true));
+                    }
+                }
+                self.hud_collapse_countdown = 100;
+            }
 
             // Generic text input navigation
             Action::TextCursorLeft => {
@@ -1978,7 +2012,6 @@ impl App {
             None
         }
     }
-
 
     fn refresh_worktrees(&mut self) {
         match worktree::list_worktrees(&self.repo_path) {

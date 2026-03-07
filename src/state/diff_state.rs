@@ -72,7 +72,7 @@ pub struct DiffState {
     /// Intra-line highlight spans per file, keyed by file path.
     /// Inner map: hunk_line_index -> Vec<IntraLineSpan>
     pub intra_highlights: HashMap<String, HashMap<usize, Vec<IntraLineSpan>>>,
-    
+
     /// Whether intra-line highlighting is enabled (default: true)
     pub intra_line_enabled: bool,
 }
