@@ -2,12 +2,10 @@
 ///
 /// This module provides complexity scoring for individual hunks and files
 /// to help reviewers prioritize their attention on the most important changes.
-
-
 /// Complexity score for a hunk or file (0-10 scale).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ComplexityScore {
-    pub score: u8,          // 0-10
+    pub score: u8,           // 0-10
     pub label: &'static str, // "Low", "Med", "High", "Critical"
 }
 
@@ -15,11 +13,14 @@ impl ComplexityScore {
     pub fn new(score: u8) -> Self {
         let label = match score {
             0..=2 => "Low",
-            3..=4 => "Med", 
+            3..=4 => "Med",
             5..=7 => "High",
             _ => "Critical",
         };
-        Self { score: score.min(10), label }
+        Self {
+            score: score.min(10),
+            label,
+        }
     }
 }
 
@@ -33,8 +34,8 @@ pub struct HunkComplexity {
 #[derive(Debug, Clone)]
 pub enum ComplexityFactor {
     NestingDepthIncrease(u8),
-    NewControlFlow(u8),      // if/match/loop/for/while added
-    LargeHunkSize(usize),    // lines changed
+    NewControlFlow(u8),   // if/match/loop/for/while added
+    LargeHunkSize(usize), // lines changed
     NewUnsafeBlock,
     NewUnwrapCall(u8),
     ErrorHandlingChange,
@@ -61,7 +62,13 @@ impl ComplexityFactor {
             ComplexityFactor::NestingDepthIncrease(n) => *n,
             ComplexityFactor::NewControlFlow(n) => *n,
             ComplexityFactor::LargeHunkSize(size) => {
-                if *size > 100 { 4 } else if *size > 30 { 2 } else { 0 }
+                if *size > 100 {
+                    4
+                } else if *size > 30 {
+                    2
+                } else {
+                    0
+                }
             }
             ComplexityFactor::NewUnsafeBlock => 3,
             ComplexityFactor::NewUnwrapCall(n) => *n,
@@ -73,7 +80,11 @@ impl ComplexityFactor {
 }
 
 /// Analyze a hunk's added lines for complexity signals.
-pub fn analyze_hunk(added_lines: &[&str], removed_lines: &[&str], file_path: &str) -> HunkComplexity {
+pub fn analyze_hunk(
+    added_lines: &[&str],
+    removed_lines: &[&str],
+    file_path: &str,
+) -> HunkComplexity {
     let mut factors = Vec::new();
     let mut total_points = 0u8;
 
@@ -103,14 +114,16 @@ pub fn analyze_hunk(added_lines: &[&str], removed_lines: &[&str], file_path: &st
 
     for line in added_lines {
         let trimmed = line.trim();
-        
+
         // Control flow keywords
         if contains_control_flow(trimmed) {
             control_flow_count = control_flow_count.saturating_add(1);
         }
 
         // Unsafe blocks (Rust-specific)
-        if is_rust_file(file_path) && (trimmed.contains("unsafe {") || trimmed.contains("unsafe fn")) {
+        if is_rust_file(file_path)
+            && (trimmed.contains("unsafe {") || trimmed.contains("unsafe fn"))
+        {
             has_unsafe = true;
         }
 
@@ -221,12 +234,12 @@ fn calculate_average_indentation(lines: &[&str]) -> f32 {
 fn contains_control_flow(line: &str) -> bool {
     // Language-agnostic control flow patterns
     let keywords = [
-        "if ", "else ", "elif ", "elsif ", "match ", "switch ", "case ",
-        "for ", "while ", "loop ", "do ", "try ", "catch ", "except ",
+        "if ", "else ", "elif ", "elsif ", "match ", "switch ", "case ", "for ", "while ", "loop ",
+        "do ", "try ", "catch ", "except ",
     ];
-    
+
     keywords.iter().any(|&keyword| {
-        line.contains(keyword) && 
+        line.contains(keyword) &&
         // Avoid false positives in comments and strings
         !line.trim_start().starts_with("//") &&
         !line.trim_start().starts_with("#") &&
@@ -236,12 +249,12 @@ fn contains_control_flow(line: &str) -> bool {
 
 /// Check if a line contains error handling patterns.
 fn contains_error_handling(line: &str) -> bool {
-    line.contains("Result") || 
-    line.contains("Error") || 
-    line.contains("?") ||
-    line.contains("try!") ||
-    line.contains("expect(") ||
-    line.contains("panic!(")
+    line.contains("Result")
+        || line.contains("Error")
+        || line.contains("?")
+        || line.contains("try!")
+        || line.contains("expect(")
+        || line.contains("panic!(")
 }
 
 /// Check if a line contains public API declarations.
@@ -263,9 +276,9 @@ fn contains_public_api(line: &str) -> bool {
 /// Check if a line contains a version specifier (for dependency detection).
 fn contains_version_specifier(line: &str) -> bool {
     // Pattern for version numbers like "1.2.3", "^0.5", "~1.0"
-    line.contains("version") && 
-    (line.contains("\"") || line.contains("'")) &&
-    (line.contains(char::is_numeric) || line.contains("^") || line.contains("~"))
+    line.contains("version")
+        && (line.contains("\"") || line.contains("'"))
+        && (line.contains(char::is_numeric) || line.contains("^") || line.contains("~"))
 }
 
 /// Check if a file is a Rust source file.
@@ -294,7 +307,7 @@ mod tests {
         let added = vec!["    println!(\"hello\");"];
         let removed = vec![];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
+
         // Should be low complexity - just a simple print statement
         assert_eq!(result.score.label, "Low");
     }
@@ -308,9 +321,12 @@ mod tests {
         ];
         let removed = vec![];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
+
         // Should detect control flow
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::NewControlFlow(_))));
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::NewControlFlow(_))));
         assert!(result.score.score > 0);
     }
 
@@ -319,8 +335,11 @@ mod tests {
         let added = vec!["unsafe { ptr.read() }"];
         let removed = vec![];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::NewUnsafeBlock)));
+
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::NewUnsafeBlock)));
         assert!(result.score.score >= 3);
     }
 
@@ -329,8 +348,11 @@ mod tests {
         let added: Vec<&str> = (0..50).map(|_| "    some_code();").collect();
         let removed = vec![];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::LargeHunkSize(_))));
+
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::LargeHunkSize(_))));
     }
 
     #[test]
@@ -338,19 +360,34 @@ mod tests {
         let added = vec!["pub fn new_function() -> Result<(), Error> {"];
         let removed = vec![];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::PublicApiChange)));
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::ErrorHandlingChange)));
+
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::PublicApiChange)));
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::ErrorHandlingChange)));
     }
 
     #[test]
     fn test_file_complexity_aggregation() {
         let hunks = vec![
-            HunkComplexity { score: ComplexityScore::new(2), factors: vec![] },
-            HunkComplexity { score: ComplexityScore::new(5), factors: vec![] },
-            HunkComplexity { score: ComplexityScore::new(1), factors: vec![] },
+            HunkComplexity {
+                score: ComplexityScore::new(2),
+                factors: vec![],
+            },
+            HunkComplexity {
+                score: ComplexityScore::new(5),
+                factors: vec![],
+            },
+            HunkComplexity {
+                score: ComplexityScore::new(1),
+                factors: vec![],
+            },
         ];
-        
+
         let file_score = file_complexity(&hunks);
         assert_eq!(file_score.score, 5); // Should use max score
         assert_eq!(file_score.label, "High");
@@ -359,15 +396,18 @@ mod tests {
     #[test]
     fn test_nesting_calculation() {
         let added = vec![
-            "        if condition {", // 8 spaces
+            "        if condition {",      // 8 spaces
             "            do_something();", // 12 spaces
         ];
         let removed = vec![
             "    simple_call();", // 4 spaces
         ];
         let result = analyze_hunk(&added, &removed, "test.rs");
-        
+
         // Should detect nesting increase
-        assert!(result.factors.iter().any(|f| matches!(f, ComplexityFactor::NestingDepthIncrease(_))));
+        assert!(result
+            .factors
+            .iter()
+            .any(|f| matches!(f, ComplexityFactor::NestingDepthIncrease(_))));
     }
 }

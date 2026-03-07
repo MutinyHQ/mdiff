@@ -369,7 +369,7 @@ fn build_split_lines_core<'a>(
 
     let gutter_width = 5;
     let mut gap_id_offset = 0;
-    
+
     // Get intra-line highlights for this file
     let file_path = delta.path.to_string_lossy().to_string();
     let intra_highlights = state.diff.intra_highlights.get(&file_path);
@@ -403,7 +403,10 @@ fn build_split_lines_core<'a>(
             hunk.header.clone()
         };
 
-        left.push(Line::from(Span::styled(header_with_complexity, content_style)));
+        left.push(Line::from(Span::styled(
+            header_with_complexity,
+            content_style,
+        )));
         right.push(Line::from(Span::styled("", content_style)));
         display_row += 1;
 
@@ -518,7 +521,11 @@ fn build_split_lines_core<'a>(
                         let dels: Vec<_> = items[del_start..add_start]
                             .iter()
                             .filter_map(|item| {
-                                if let FilteredItem::Line { line, hunk_line_index } = item {
+                                if let FilteredItem::Line {
+                                    line,
+                                    hunk_line_index,
+                                } = item
+                                {
                                     Some((*line, *hunk_line_index))
                                 } else {
                                     None
@@ -528,7 +535,11 @@ fn build_split_lines_core<'a>(
                         let adds: Vec<_> = items[add_start..i]
                             .iter()
                             .filter_map(|item| {
-                                if let FilteredItem::Line { line, hunk_line_index } = item {
+                                if let FilteredItem::Line {
+                                    line,
+                                    hunk_line_index,
+                                } = item
+                                {
                                     Some((*line, *hunk_line_index))
                                 } else {
                                     None
@@ -644,7 +655,7 @@ fn build_unified_lines_core<'a>(
     let mut lines: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
     let mut gap_id_offset = 0;
-    
+
     // Get intra-line highlights for this file
     let file_path = delta.path.to_string_lossy().to_string();
     let intra_highlights = state.diff.intra_highlights.get(&file_path);
@@ -696,7 +707,10 @@ fn build_unified_lines_core<'a>(
                     ));
                     display_row += 1;
                 }
-                FilteredItem::Line { line, hunk_line_index } => {
+                FilteredItem::Line {
+                    line,
+                    hunk_line_index,
+                } => {
                     let hl = row_highlight(state, display_row);
                     let ann_marker = display_map
                         .get(display_row)
@@ -1480,6 +1494,41 @@ pub(crate) fn compute_unified_visual_row_metrics(
     }
 }
 
+fn add_complexity_badge_to_header(
+    header: &str,
+    state: &AppState,
+    delta: &FileDelta,
+    hunk_idx: usize,
+    _theme: &Theme,
+) -> String {
+    let file_path = delta.path.to_string_lossy().to_string();
+
+    if let Some(complexity_scores) = state.diff.complexity_scores.get(&file_path) {
+        if let Some(hunk_complexity) = complexity_scores.get(hunk_idx) {
+            let score = &hunk_complexity.score;
+
+            // Get top 2 contributing factors for the badge
+            let mut factors = hunk_complexity.factors.clone();
+            factors.sort_by_key(|b| std::cmp::Reverse(b.points()));
+            let top_factors: Vec<String> = factors
+                .iter()
+                .take(2)
+                .map(|f| format!("+{}", f.label()))
+                .collect();
+
+            let factor_text = if top_factors.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", top_factors.join(", "))
+            };
+
+            return format!("{} [{}{}]", header, score.label, factor_text);
+        }
+    }
+
+    header.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{compute_split_visual_row_metrics, compute_unified_visual_row_metrics};
@@ -1560,40 +1609,4 @@ mod tests {
             metrics.row_heights.iter().sum::<usize>()
         );
     }
-}
-
-/// Add complexity badge to hunk header if complexity analysis is available.
-fn add_complexity_badge_to_header(
-    header: &str,
-    state: &AppState,
-    delta: &FileDelta,
-    hunk_idx: usize,
-    _theme: &Theme,
-) -> String {
-    let file_path = delta.path.to_string_lossy().to_string();
-    
-    if let Some(complexity_scores) = state.diff.complexity_scores.get(&file_path) {
-        if let Some(hunk_complexity) = complexity_scores.get(hunk_idx) {
-            let score = &hunk_complexity.score;
-            
-            // Get top 2 contributing factors for the badge
-            let mut factors = hunk_complexity.factors.clone();
-            factors.sort_by(|a, b| b.points().cmp(&a.points()));
-            let top_factors: Vec<String> = factors
-                .iter()
-                .take(2)
-                .map(|f| format!("+{}", f.label()))
-                .collect();
-            
-            let factor_text = if top_factors.is_empty() {
-                String::new()
-            } else {
-                format!(": {}", top_factors.join(", "))
-            };
-            
-            return format!("{} [{}{}]", header, score.label, factor_text);
-        }
-    }
-    
-    header.to_string()
 }
