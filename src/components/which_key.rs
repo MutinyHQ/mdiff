@@ -287,6 +287,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Agent selector",
                 },
                 KeyEntry {
+                    key: "Ctrl+E",
+                    description: "Export feedback",
+                },
+                KeyEntry {
                     key: "Tab",
                     description: "Split/unified",
                 },
@@ -387,6 +391,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 KeyEntry {
                     key: "Tab",
                     description: "Split/unified",
+                },
+                KeyEntry {
+                    key: "Ctrl+E",
+                    description: "Export feedback",
                 },
                 KeyEntry {
                     key: "?",
