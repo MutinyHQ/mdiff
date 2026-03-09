@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/MutinyHQ/mdiff/compare/v0.1.13...v0.1.14) - 2026-03-09
+
+### Added
+
+- implement annotation quick-reactions (line scoring)
+- Add annotation categories and severity levels
+
+### Other
+
+- Merge pull request #14 from MutinyHQ/cursor/annotation-line-scores-e94d
+- Fix which-key dialog flashing bug (Issue #27)
+- Merge branch 'develop'
+
 ## [0.1.13](https://github.com/MutinyHQ/mdiff/compare/v0.1.12...v0.1.13) - 2026-03-06
 
 ### Added
