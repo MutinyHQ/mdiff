@@ -14,6 +14,8 @@ struct SessionFile {
     annotations: Vec<AnnotationEntry>,
     #[serde(default)]
     checklist: Option<ChecklistSessionData>,
+    #[serde(default)]
+    scores: Vec<ScoreEntry>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,6 +49,18 @@ struct AnnotationEntry {
     #[serde(default)]
     line_end: Option<u32>,
     comment: String,
+    created_at: String,
+}
+
+/// Score entry for session persistence.
+#[derive(Serialize, Deserialize)]
+struct ScoreEntry {
+    file_path: String,
+    old_start: Option<u32>,
+    old_end: Option<u32>,
+    new_start: Option<u32>,
+    new_end: Option<u32>,
+    score: u8,
     created_at: String,
 }
 
@@ -150,6 +164,19 @@ pub fn load_session_data(
         }
     });
 
+    // Load scores
+    for entry in session.scores {
+        let old_range = entry.old_start.zip(entry.old_end);
+        let new_range = entry.new_start.zip(entry.new_end);
+        annotations_state.set_score(crate::state::annotation_state::LineScore {
+            file_path: entry.file_path,
+            old_range,
+            new_range,
+            score: entry.score,
+            created_at: entry.created_at,
+        });
+    }
+
     (annotations_state, checklist_state)
 }
 
@@ -197,11 +224,26 @@ pub fn save_session_data(
             .collect(),
     });
 
+    let score_entries: Vec<ScoreEntry> = annotations
+        .all_scores_sorted()
+        .into_iter()
+        .map(|s| ScoreEntry {
+            file_path: s.file_path.clone(),
+            old_start: s.old_range.map(|(s, _)| s),
+            old_end: s.old_range.map(|(_, e)| e),
+            new_start: s.new_range.map(|(s, _)| s),
+            new_end: s.new_range.map(|(_, e)| e),
+            score: s.score,
+            created_at: s.created_at.clone(),
+        })
+        .collect();
+
     let session = SessionFile {
         version: if checklist_data.is_some() { 3 } else { 2 },
         target_label: target_label.to_string(),
         annotations: entries,
         checklist: checklist_data,
+        scores: score_entries,
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {
