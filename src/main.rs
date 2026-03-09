@@ -8,6 +8,7 @@ mod components;
 mod config;
 mod display_map;
 mod event;
+mod export;
 mod git;
 mod highlight;
 mod pty_runner;
