@@ -168,6 +168,7 @@ struct ConfigFile {
     agent_models: HashMap<String, String>,
     #[serde(default)]
     mouse: MouseConfig,
+    #[serde(default)]
     checklist: Option<ChecklistConfig>,
 }
 
