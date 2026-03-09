@@ -1,6 +1,6 @@
 use crossterm::event::{
-    Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind,
+    Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    MouseButton, MouseEvent, MouseEventKind,
 };
 use futures::StreamExt;
 use ratatui::layout::Rect;
@@ -35,7 +35,10 @@ impl EventReader {
             loop {
                 match reader.next().await {
                     Some(Ok(CrosstermEvent::Key(key))) => {
-                        if event_tx.send(Event::Key(key)).is_err() {
+                        // Only forward key press events, not release/repeat
+                        if key.kind == KeyEventKind::Press
+                            && event_tx.send(Event::Key(key)).is_err()
+                        {
                             break;
                         }
                     }
@@ -101,6 +104,7 @@ pub struct KeyContext {
     pub active_view: ActiveView,
     pub pty_focus: bool,
     pub checklist_panel_open: bool,
+    pub which_key_visible: bool,
 }
 
 /// Context for mouse event mapping.
@@ -390,6 +394,11 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Down => Some(Action::NavigatorDown),
             _ => None,
         };
+    }
+
+    // Priority 3.75: Which-key overlay - any key closes the overlay
+    if ctx.which_key_visible {
+        return Some(Action::ToggleWhichKey);
     }
 
     // Priority 4: Global bindings (always active)
