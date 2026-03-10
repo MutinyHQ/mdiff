@@ -73,14 +73,14 @@ pub fn render_global_search_bar(frame: &mut Frame, state: &AppState) {
         if query.is_empty() {
             Line::from(vec![
                 Span::styled(
-                    "[n]",
+                    "[Ctrl+N]",
                     Style::default()
                         .fg(theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("next  ", Style::default().fg(theme.text_muted)),
                 Span::styled(
-                    "[N]",
+                    "[Ctrl+P]",
                     Style::default()
                         .fg(theme.accent)
                         .add_modifier(Modifier::BOLD),
