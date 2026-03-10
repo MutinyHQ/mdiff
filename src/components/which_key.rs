@@ -307,7 +307,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "This help",
                 },
                 KeyEntry {
-                    key: "q",
+                    key: "Ctrl+C/D",
                     description: "Quit",
                 },
             ],
@@ -401,7 +401,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "This help",
                 },
                 KeyEntry {
-                    key: "q",
+                    key: "Ctrl+C/D",
                     description: "Quit",
                 },
             ],

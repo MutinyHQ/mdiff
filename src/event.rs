@@ -448,7 +448,6 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 4: Global bindings (always active)
     match key.code {
-        KeyCode::Char('q') if !ctx.visual_mode_active => return Some(Action::Quit),
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::ToggleWorktreeBrowser)
         }
