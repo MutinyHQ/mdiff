@@ -19,6 +19,7 @@ use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
 #[derive(Debug, Clone)]
 pub enum Action {
     // Lifecycle
+    #[allow(dead_code)]
     Quit,
     ConfirmQuitSignal(QuitCombo),
     Tick,

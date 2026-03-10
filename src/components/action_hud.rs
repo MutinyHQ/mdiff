@@ -39,7 +39,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
         ]
     } else if state.hud_expanded {
         &[
-            ("q", "quit"),
+            ("^C/D", "quit"),
             ("j/k", "nav"),
             ("/", "search"),
             ("Tab", "view"),
@@ -67,7 +67,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
         ]
     } else {
         &[
-            ("q", "quit"),
+            ("^C/D", "quit"),
             ("j/k", "nav"),
             ("/", "search"),
             ("v", "visual"),
