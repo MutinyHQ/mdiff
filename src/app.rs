@@ -362,7 +362,7 @@ impl App {
                         }
                     }
                     Event::Paste(text) if self.state.pty_focus => Some(Action::PtyPaste(text)),
-                    Event::Paste(_) => None,
+                    Event::Paste(text) => Some(Action::TextPaste(text)),
                     Event::Resize => Some(Action::Resize),
                     Event::Tick => Some(Action::Tick),
                 };
@@ -1761,6 +1761,51 @@ impl App {
                 if let Some(runner) = self.pty_runner.as_mut() {
                     runner.write_input(text.as_bytes());
                 }
+            }
+            Action::TextPaste(text) => {
+                if self.state.comment_editor_open {
+                    // Insert each character into the comment editor
+                    for c in text.chars() {
+                        if c == '\n' {
+                            self.state.comment_editor_text.insert_char('\n');
+                        } else if !c.is_control() {
+                            self.state.comment_editor_text.insert_char(c);
+                        }
+                    }
+                } else if self.state.commit_dialog_open {
+                    for c in text.chars() {
+                        if c == '\n' {
+                            self.state.commit_message.insert_char('\n');
+                        } else if !c.is_control() {
+                            self.state.commit_message.insert_char(c);
+                        }
+                    }
+                } else if self.state.target_dialog_open {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.target_dialog_input.insert_char(c);
+                    }
+                } else if self.state.navigator.search_active {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.navigator.search_push(c);
+                    }
+                    self.sync_selection();
+                } else if self.state.diff.search_active {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.diff.search_query.insert_char(c);
+                    }
+                    self.recompute_diff_search_matches();
+                } else if self.state.global_search.active {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.global_search.query.insert_char(c);
+                    }
+                    self.recompute_global_search_matches();
+                } else if self.state.agent_selector.open {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.agent_selector.filter.insert_char(c);
+                    }
+                    self.state.agent_selector.refilter();
+                }
+                // If no text input is active, ignore the paste
             }
             Action::PtyScrollUp => {
                 if let Some(runner) = self.pty_runner.as_mut() {

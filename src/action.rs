@@ -169,6 +169,9 @@ pub enum Action {
     PtyScrollUp,
     PtyScrollDown,
 
+    // Generic text input
+    TextPaste(String),
+
     // Review state
     ToggleFileReviewed,
     NextUnreviewed,
