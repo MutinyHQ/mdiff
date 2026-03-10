@@ -376,18 +376,19 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 KeyCode::Char('a') => Some(Action::TextCursorHome),
                 KeyCode::Char('e') => Some(Action::TextCursorEnd),
                 KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                KeyCode::Char('n') => Some(Action::GlobalSearchNext),
+                KeyCode::Char('p') => Some(Action::GlobalSearchPrev),
                 _ => None,
             };
         }
         return match key.code {
-            KeyCode::Esc | KeyCode::Enter => Some(Action::EndGlobalSearch),
+            KeyCode::Esc => Some(Action::EndGlobalSearch),
+            KeyCode::Enter => Some(Action::GlobalSearchNext),
             KeyCode::Backspace => Some(Action::GlobalSearchBackspace),
             KeyCode::Left => Some(Action::TextCursorLeft),
             KeyCode::Right => Some(Action::TextCursorRight),
             KeyCode::Home => Some(Action::TextCursorHome),
             KeyCode::End => Some(Action::TextCursorEnd),
-            KeyCode::Char('n') => Some(Action::GlobalSearchNext),
-            KeyCode::Char('N') => Some(Action::GlobalSearchPrev),
             KeyCode::Char(c) => Some(Action::GlobalSearchChar(c)),
             _ => None,
         };
