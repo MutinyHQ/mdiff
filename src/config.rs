@@ -109,17 +109,22 @@ fn known_agents() -> Vec<AgentProviderConfig> {
         },
         AgentProviderConfig {
             name: "codex".to_string(),
-            command:
-                "codex --sandbox workspace-write --ask-for-approval untrusted '{rendered_prompt}'"
-                    .to_string(),
-            models: vec![],
-            default_model: String::new(),
+            command: "codex --model {model} --sandbox workspace-write --ask-for-approval untrusted '{rendered_prompt}'"
+                .to_string(),
+            models: vec![
+                "gpt-5.4".to_string(),
+                "gpt-5.3-codex".to_string(),
+                "gpt-5.2-codex".to_string(),
+            ],
+            default_model: "gpt-5.4".to_string(),
             description: "OpenAI Codex CLI".to_string(),
         },
         AgentProviderConfig {
             name: "opencode".to_string(),
             command: "opencode -m {model} --prompt '{rendered_prompt}'".to_string(),
             models: vec![
+                "openai/gpt-5.4".to_string(),
+                "openai/gpt-5.3-codex".to_string(),
                 "anthropic/claude-sonnet-4-6".to_string(),
                 "openai/gpt-5.2-codex".to_string(),
                 "openai/o3".to_string(),
