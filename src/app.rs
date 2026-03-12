@@ -42,7 +42,7 @@ use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
 use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
-use crate::state::review_state::compute_diff_hashes;
+use crate::state::review_state::{compute_diff_hashes, FileReviewStatus};
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, ChecklistState, DiffOptions, DiffViewMode};
 use crate::theme::{next_theme, prev_theme, Theme};
@@ -802,10 +802,12 @@ impl App {
                 }
                 self.state.focus = FocusPanel::Navigator;
                 self.update_highlights();
+                self.check_viewport_review();
             }
             Action::ScrollUp => {
                 self.state.diff.cursor_row = self.state.diff.cursor_row.saturating_sub(1);
                 self.ensure_cursor_visible();
+                self.check_viewport_review();
             }
             Action::ScrollDown => {
                 let max = self.current_display_map().len().saturating_sub(1);
@@ -814,10 +816,12 @@ impl App {
                 }
                 self.ensure_cursor_visible();
                 self.check_auto_review();
+                self.check_viewport_review();
             }
             Action::ScrollToTop => {
                 self.state.diff.cursor_row = 0;
                 self.state.diff.scroll_offset = 0;
+                self.check_viewport_review();
             }
             Action::ScrollToBottom => {
                 let display_map = self.current_display_map();
@@ -833,6 +837,7 @@ impl App {
                 // Ensure cursor is visible within the scrolled viewport
                 self.ensure_cursor_visible();
                 self.check_auto_review();
+                self.check_viewport_review();
             }
             Action::ScrollPageUp => {
                 let vh = self.state.diff.viewport_height.max(1);
@@ -840,6 +845,7 @@ impl App {
                 self.state.diff.cursor_row = self.row_for_visual_offset(new_scroll);
                 self.state.diff.scroll_offset =
                     self.visual_offset_for_row(self.state.diff.cursor_row);
+                self.check_viewport_review();
             }
             Action::ScrollPageDown => {
                 let vh = self.state.diff.viewport_height.max(1);
@@ -849,6 +855,7 @@ impl App {
                 self.state.diff.scroll_offset =
                     self.visual_offset_for_row(self.state.diff.cursor_row);
                 self.check_auto_review();
+                self.check_viewport_review();
             }
             Action::ToggleViewMode => {
                 self.state.diff.options.view_mode = match self.state.diff.options.view_mode {
@@ -878,6 +885,7 @@ impl App {
                 if cursor_visual < scroll || cursor_visual >= scroll + vh {
                     self.state.diff.cursor_row = self.row_for_visual_offset(scroll);
                 }
+                self.check_viewport_review();
             }
             Action::StartSearch => {
                 self.state.navigator.start_search();
@@ -1919,6 +1927,7 @@ impl App {
                     let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
                     self.state.status_message =
                         Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
+                    self.check_viewport_review();
                 }
             }
             Action::JumpPrevHunk => {
@@ -1931,6 +1940,7 @@ impl App {
                     let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
                     self.state.status_message =
                         Some((format!("Hunk {}/{}", current_hunk, total_hunks), false));
+                    self.check_viewport_review();
                 }
             }
             // Settings modal
@@ -2288,6 +2298,36 @@ impl App {
             if let Some(delta) = self.state.diff.selected_delta() {
                 let path = delta.path.to_string_lossy().to_string();
                 self.state.review.mark_reviewed(&path);
+            }
+        }
+    }
+
+    /// Mark the current file as reviewed if the last line is visible in the viewport
+    /// and the diff view is focused. Only marks files that are not already reviewed.
+    fn check_viewport_review(&mut self) {
+        // Only auto-mark when diff panel is focused
+        if self.state.focus != FocusPanel::DiffView {
+            return;
+        }
+
+        // Get total display rows for current file
+        let total_rows = self.state.diff.visual_total_rows;
+        if total_rows == 0 {
+            return;
+        }
+
+        let viewport_bottom = self.state.diff.scroll_offset + self.state.diff.viewport_height;
+
+        // If the last row is visible in the viewport, mark as reviewed
+        if viewport_bottom >= total_rows {
+            if let Some(delta_idx) = self.state.navigator.selected_delta_index() {
+                if let Some(delta) = self.state.diff.deltas.get(delta_idx) {
+                    let path = delta.path.to_string_lossy().to_string();
+                    // Only mark if not already reviewed (don't toggle off)
+                    if self.state.review.status(&path) != FileReviewStatus::Reviewed {
+                        self.state.review.mark_reviewed(&path);
+                    }
+                }
             }
         }
     }
