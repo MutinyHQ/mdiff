@@ -1573,6 +1573,13 @@ impl App {
                         rerun_prompt.or_else(|| self.render_prompt_for_all_files());
 
                     if let Some(prompt) = rendered_prompt {
+                        // Mark any existing running agents as interrupted before starting new one
+                        for run in &mut self.state.agent_outputs.runs {
+                            if matches!(run.status, AgentRunStatus::Running) {
+                                run.status = AgentRunStatus::Failed { exit_code: -1 };
+                            }
+                        }
+
                         let command = build_agent_command(&agent.command, &model, &prompt);
                         let run_id = self.state.agent_outputs.next_id;
 
@@ -1669,14 +1676,45 @@ impl App {
                 }
             }
             Action::KillAgentProcess => {
-                if let Some(run) = self.state.agent_outputs.selected() {
-                    if matches!(run.status, AgentRunStatus::Running) {
+                // Get selected run info first to avoid borrowing issues
+                let selected_info = self.state.agent_outputs.selected().map(|run| {
+                    (
+                        run.id,
+                        run.agent_name.clone(),
+                        run.model.clone(),
+                        run.status.clone(),
+                    )
+                });
+
+                if let Some((selected_id, agent_name, model, status)) = selected_info {
+                    if matches!(status, AgentRunStatus::Running) {
                         if let Some(runner) = self.pty_runner.as_mut() {
                             runner.kill();
                             self.state.pty_focus = false;
-                            self.set_status("Agent process killed".to_string(), false);
+
+                            // Mark the selected run as killed
+                            if let Some(run) = self
+                                .state
+                                .agent_outputs
+                                .runs
+                                .iter_mut()
+                                .find(|r| r.id == selected_id)
+                            {
+                                run.status = AgentRunStatus::Failed { exit_code: -1 };
+                            }
+
+                            self.set_status(
+                                format!("Killed agent: {}/{}", agent_name, model),
+                                false,
+                            );
+                        } else {
+                            self.set_status("No active agent process to kill".to_string(), true);
                         }
+                    } else {
+                        self.set_status("Selected agent is not running".to_string(), true);
                     }
+                } else {
+                    self.set_status("No agent selected".to_string(), true);
                 }
             }
             Action::AgentOutputsSwitchWorktree => {
