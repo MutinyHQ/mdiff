@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/MutinyHQ/mdiff/compare/v0.1.15...v0.1.16) - 2026-03-12
+
+### Other
+
+- Merge pull request #47 from MutinyHQ/cursor/viewport-review-marking-1bcb
+- Fix agent session kill index mapping
+- add 016 - Viewport-Based File Review Marking (Issue #43)
+- add 017 - Add New Opencode Review Models (Issue #37)
+
 ## [0.1.15](https://github.com/MutinyHQ/mdiff/compare/v0.1.14...v0.1.15) - 2026-03-10
 
 ### Other
