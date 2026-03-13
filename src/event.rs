@@ -641,3 +641,108 @@ pub fn map_mouse_to_action(mouse: MouseEvent, ctx: &MouseContext<'_>) -> Option<
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::app_state::{ActiveView, CategoryPickerPhase, FocusPanel};
+
+    fn create_global_search_context() -> KeyContext {
+        KeyContext {
+            focus: FocusPanel::DiffView,
+            search_active: false,
+            diff_search_active: false,
+            global_search_active: true,
+            commit_dialog_open: false,
+            target_dialog_open: false,
+            comment_editor_open: false,
+            category_picker_open: false,
+            category_picker_phase: CategoryPickerPhase::SelectCategory,
+            agent_selector_open: false,
+            annotation_menu_open: false,
+            restore_confirm_open: false,
+            settings_open: false,
+            visual_mode_active: false,
+            active_view: ActiveView::DiffExplorer,
+            pty_focus: false,
+            checklist_panel_open: false,
+            which_key_visible: false,
+        }
+    }
+
+    #[test]
+    fn test_global_search_n_key_inserts_character() {
+        let ctx = create_global_search_context();
+        let key_n = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+        let action = map_key_to_action(key_n, &ctx);
+
+        match action {
+            Some(Action::GlobalSearchChar('n')) => {
+                // This is the expected behavior - 'n' should insert into search query
+            }
+            other => panic!("Expected GlobalSearchChar('n'), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_global_search_ctrl_n_navigates_next() {
+        let ctx = create_global_search_context();
+        let key_ctrl_n = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL);
+        let action = map_key_to_action(key_ctrl_n, &ctx);
+
+        match action {
+            Some(Action::GlobalSearchNext) => {
+                // This is the expected behavior - Ctrl+N should navigate to next match
+            }
+            other => panic!("Expected GlobalSearchNext, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_global_search_ctrl_p_navigates_prev() {
+        let ctx = create_global_search_context();
+        let key_ctrl_p = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL);
+        let action = map_key_to_action(key_ctrl_p, &ctx);
+
+        match action {
+            Some(Action::GlobalSearchPrev) => {
+                // This is the expected behavior - Ctrl+P should navigate to previous match
+            }
+            other => panic!("Expected GlobalSearchPrev, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_global_search_enter_navigates_next() {
+        let ctx = create_global_search_context();
+        let key_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let action = map_key_to_action(key_enter, &ctx);
+
+        match action {
+            Some(Action::GlobalSearchNext) => {
+                // This is the expected behavior - Enter should navigate to next match
+            }
+            other => panic!("Expected GlobalSearchNext, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_global_search_all_chars_insert() {
+        let ctx = create_global_search_context();
+
+        // Test various characters that should all insert into the search query
+        let test_chars = ['f', 'u', 'n', 'c', 't', 'i', 'o', 'n'];
+
+        for ch in test_chars {
+            let key = KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE);
+            let action = map_key_to_action(key, &ctx);
+
+            match action {
+                Some(Action::GlobalSearchChar(c)) if c == ch => {
+                    // Expected behavior - character should insert
+                }
+                other => panic!("Expected GlobalSearchChar('{}'), got {:?}", ch, other),
+            }
+        }
+    }
+}
