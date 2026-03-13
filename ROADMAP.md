@@ -1,10 +1,10 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-12
+> **Last updated**: 2026-03-13
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
-This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, and patterns from RLHF/human feedback research.
+This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, and patterns from RLHF/human feedback research.
 
 ---
 
@@ -19,16 +19,16 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Status**: Merged
 
 #### 3. Global Fuzzy Search Across All Diff Content (`Ctrl+F`)
-**Status**: Merged (core feature). **UX Bug open** — Issue #35, Spec 013, Cursor agent pending.
+**Status**: Merged (core feature). **UX Bug open** — Issue #35, Spec 013, Cursor agent launched (2026-03-13).
 **Known issue**: `n` key conflict prevents typing 'n' in search query. Navigation being moved to Ctrl+N/Ctrl+P.
 
 #### 4. Fix Diff Line Calculations (Issue #25)
-**Status**: Spec written (009), still open
+**Status**: Spec written (009), Cursor agent launched (2026-03-13)
 **Addresses**: GitHub Issue #25
 **Rationale**: When using `G` (ScrollToBottom) in the diff view, the viewport does not render the full diff. Lines below the viewport boundary are inaccessible. Critical usability bug.
 
-#### 5. Remove `q` Keybinding for Quit (Issue #38) — NEW
-**Status**: Spec written (015), Cursor agent pending
+#### 5. Remove `q` Keybinding for Quit (Issue #38)
+**Status**: Spec written (015), Cursor agent launched (2026-03-13)
 **Addresses**: GitHub Issue #38
 **Rationale**: Pressing `q` immediately quits mdiff without any confirmation, even when there are staged annotations. This is a data loss risk. The `q` key is adjacent to common review actions (`w`, `a`, `s`). Filed by repo owner — explicit request to use only Ctrl+C/Ctrl+D for exit.
 **Scope**: Remove `q` -> `Quit` mapping from event.rs global bindings, update which-key overlay.
@@ -43,8 +43,9 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree.
 
 #### 6. Diff Statistics Dashboard
-**Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn.
-**Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size.
+**Status**: Spec written (019), Cursor agent pending — NEW (2026-03-13)
+**Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn. No way to quickly assess changeset scope without scrolling through every file.
+**Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size. Jump-to-file from the dashboard.
 **Competitive reference**: GitHub PR stats bar, `git diff --stat`, diffray summary.
 
 #### 7. Configurable Keybinding System
@@ -86,7 +87,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 #### 16. Fix cmd+K Kill Wrong Session (Issue #24)
 **Status**: Merged (PR #46)
 
-#### Command Palette (`Ctrl+P`) — NEW
+#### Command Palette (`Ctrl+P`)
 **Status**: Spec written (018), Cursor agent pending
 **Rationale**: mdiff has grown to 50+ distinct actions. The which-key overlay shows keybindings for the current context, but users must memorize bindings or scan a static list. A fuzzy-searchable command palette (inspired by VS Code, Fresh editor) would make all actions discoverable in 2-3 keystrokes. As the feature count grows, this becomes critical for onboarding and power-user efficiency.
 **Scope**: Add `Ctrl+P` trigger, floating panel with fuzzy search input (using nucleo crate), register ~30-40 user-facing actions with labels and keybinding hints, dispatch selected action through normal handle_action flow.
@@ -113,7 +114,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: Order files by likely importance using heuristics (test files last, config first, etc.).
 
 #### Glob File Filtering
-**Rationale**: Filter navigator by glob patterns (e.g., `*.rs`, `src/**`).
+**Rationale**: Filter navigator by glob patterns (e.g., `*.rs`, `src/**`). Validated by Codex CLI's path-scoped review filters feature.
 
 #### Diff Heatmap Overlay
 **Rationale**: Color-code regions by change density for quick visual scanning.
@@ -140,16 +141,19 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 #### Diff Bookmarks (Vim-Style Marks)
 **Rationale**: Bookmark specific lines/hunks with `m` + letter, jump with `'` + letter. Power user feature for navigating large changesets.
 
+#### Multi-Agent Session Comparison
+**Rationale**: Inspired by 1Code's multi-agent management. Compare outputs from different agents working on the same task side-by-side. Requires session snapshot infrastructure.
+
 ---
 
 ## Open Issues Triage
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
-| #25 | Bug | P0 | Open | Spec 009 written, needs implementation |
-| #35 | Bug | P0 | Open | Spec 013 written, Cursor agent pending |
-| #37 | Feature | P1 | **Resolved** | PR #45 merged |
-| #38 | UX/Safety | P0 | Open | Spec 015 written, Cursor agent pending |
+| #25 | Bug | P0 | Open | Spec 009 written, Cursor agent launched 2026-03-13 |
+| #35 | Bug | P0 | Open | Spec 013 written, Cursor agent launched 2026-03-13 |
+| #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
+| #38 | UX/Safety | P0 | Open | Spec 015 written, Cursor agent launched 2026-03-13 |
 
 ---
 
@@ -167,6 +171,10 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 - **diffreview** (Zsh): Pipes Git diff into Claude Code or GitHub Copilot CLI for AI-powered review.
 - **Fresh** (Rust): New terminal editor with command palette (`Ctrl+P`), discoverable UX, extreme performance for large files. Architectural inspiration for command palette feature.
 - **claudes-ai-buddies** (CLI): Multi-AI code review via confidence bidding between Claude, Codex, and Gemini.
+- **1Code** (YC W26): Multi-agent management tool addressing "terminal hell" when running multiple AI coding agents. Uses git worktree isolation and GUI layer. Validates the exact pain point mdiff targets from a different angle.
+- **ClaudeTUI** (v0.3): TUI statusline/monitor for Claude Code sessions. Shows growing demand for terminal-native AI agent tooling.
+- **OpenCode**: Terminal-first AI coding agent (TUI + CLI). Representative of agents whose output mdiff reviews.
+- **Codex CLI**: OpenAI's terminal-based coding agent. Adding path-scoped review filters and review queuing — features that validate mdiff's direction.
 - **Kaleidoscope**: macOS-native diff/merge tool. Excellent visual polish but no TUI, no agent integration.
 - **lazygit**: Gold standard for TUI git UX. Hunk-level operations, keyboard-driven workflow.
 - **fzf**: Gold standard for fuzzy search UX in terminals.
@@ -205,9 +213,26 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **Nurture-First Development**: Research framework proposing "Knowledge Crystallization Cycles" for growing agent knowledge from operational feedback. Three-Layer Cognitive Architecture organizes agent knowledge by volatility. Relevant to mdiff's mission of structured feedback loops.
 - **Growing review bottleneck**: AI-assisted code output per engineer up ~200% at companies using coding agents, creating acute demand for structured review tools. mdiff's positioning as a structured feedback tool is increasingly validated.
 
+### Cross-Context Review & Agent Ecosystem (from 2026-03-13 research)
+- **Cross-Context Review (CCR)** (arXiv 2603.12123): Reviewing LLM-generated code in a fresh session (decoupled from generation context) yields significantly better error detection (F1 28.6% vs 24.6%). Validates mdiff's design as a standalone review tool separate from the agent.
+- **1Code (YC W26)**: Addresses "terminal hell" of managing multiple AI coding agents with scattered git diffs. Uses git worktree isolation. Validates the multi-agent review pain point.
+- **Codex CLI review queuing**: Users requesting the ability to queue `/review` during long agent tasks. Shows demand for asynchronous review workflows.
+- **Microsoft Agent Framework human-in-the-loop**: Formal pause/approve/reject pattern with structured rejection feedback passed back to agents. Architectural reference for mdiff's approve/reject workflow.
+- **No direct competitor found**: No tool combines Rust TUI + git diff viewing + AI agent output review specifically. mdiff's niche remains underserved in a rapidly growing market.
+
 ---
 
 ## Changelog
+
+### 2026-03-13
+- **Cursor agents launched** for all 3 open P0 issues: #25 (diff line calc), #35 (global search UX), #38 (remove q keybinding)
+- **ADDED P1 #6 spec**: Diff Statistics Dashboard — spec 019 written, provides changeset overview with file-level stats, sparkline bars, sort modes, and jump-to-file
+- **ADDED P3**: Multi-Agent Session Comparison — inspired by 1Code's multi-agent management
+- **Updated Open Issues Triage**: Issue #37 still open despite PR #45 being merged — needs manual closure
+- **Research**: Cross-Context Review paper (decoupled review improves error detection), 1Code multi-agent management, Codex CLI review queuing, Microsoft Agent Framework human-in-the-loop patterns
+- Added 1Code, ClaudeTUI, OpenCode, Codex CLI to competitive landscape
+- Updated "Glob File Filtering" rationale with Codex CLI path-scoped review reference
+- Added "Cross-Context Review & Agent Ecosystem" research section
 
 ### 2026-03-12
 - **ADDED P0 #5**: Remove `q` keybinding (Issue #38) — spec 015, Cursor agent pending
@@ -222,7 +247,6 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **Cursor agent creation blocked**: Model unavailable — 3 agents queued for next run
 - Added Fresh editor, claudes-ai-buddies to competitive landscape
 - Added "Multi-Agent Review Patterns" research section
-- Added P2 Review Progress Bar, P3 Annotation Export to GitHub, P3 Diff Bookmarks
 
 ### 2026-03-07
 - **PROMOTED Issue #25 to P0** (#4): Diff line calculations bug — spec 009, Cursor agent launched
