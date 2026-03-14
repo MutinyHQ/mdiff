@@ -582,6 +582,13 @@ impl App {
         self.clamp_diff_view_state();
     }
 
+    /// Clamp scroll offset to valid bounds without affecting cursor position.
+    fn clamp_scroll(&mut self) {
+        let vh = self.state.diff.viewport_height.max(1);
+        let max_scroll = self.state.diff.visual_total_rows.saturating_sub(vh);
+        self.state.diff.scroll_offset = self.state.diff.scroll_offset.min(max_scroll);
+    }
+
     fn clamp_diff_view_state(&mut self) {
         let display_map = self.current_display_map();
         let max_cursor_row = display_map.len().saturating_sub(1);
@@ -825,17 +832,32 @@ impl App {
             }
             Action::ScrollToBottom => {
                 let display_map = self.current_display_map();
-                let max_cursor_row = display_map.len().saturating_sub(1);
                 let vh = self.state.diff.viewport_height.max(1);
                 let max_scroll = self.state.diff.visual_total_rows.saturating_sub(vh);
 
-                // Set cursor to the last logical row
-                self.state.diff.cursor_row = max_cursor_row;
-                // Set scroll to show the bottom of the visual content
+                // Set scroll to show the very bottom of the visual content
                 self.state.diff.scroll_offset = max_scroll;
 
-                // Ensure cursor is visible within the scrolled viewport
-                self.ensure_cursor_visible();
+                // Find the last logical row that's visible in the bottom viewport
+                // Start from the last row and work backwards to find one that's visible
+                let max_cursor_row = display_map.len().saturating_sub(1);
+                let mut cursor_row = max_cursor_row;
+
+                // Find the last row that's actually visible in the current viewport
+                for row in (0..=max_cursor_row).rev() {
+                    let visual_offset = self.visual_offset_for_row(row);
+                    if visual_offset >= self.state.diff.scroll_offset
+                        && visual_offset < self.state.diff.scroll_offset + vh
+                    {
+                        cursor_row = row;
+                        break;
+                    }
+                }
+
+                self.state.diff.cursor_row = cursor_row;
+
+                // Don't call ensure_cursor_visible() here as it might adjust scroll_offset
+                // and prevent us from showing the actual bottom
                 self.check_auto_review();
                 self.check_viewport_review();
             }
@@ -845,6 +867,7 @@ impl App {
                 self.state.diff.cursor_row = self.row_for_visual_offset(new_scroll);
                 self.state.diff.scroll_offset =
                     self.visual_offset_for_row(self.state.diff.cursor_row);
+                self.clamp_scroll();
                 self.check_viewport_review();
             }
             Action::ScrollPageDown => {
@@ -854,6 +877,7 @@ impl App {
                 self.state.diff.cursor_row = self.row_for_visual_offset(new_scroll);
                 self.state.diff.scroll_offset =
                     self.visual_offset_for_row(self.state.diff.cursor_row);
+                self.clamp_scroll();
                 self.check_auto_review();
                 self.check_viewport_review();
             }
@@ -1923,6 +1947,7 @@ impl App {
                 {
                     self.state.diff.cursor_row = row;
                     self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    self.clamp_scroll();
                     let total_hunks = display_map.iter().filter(|r| r.is_header).count();
                     let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
                     self.state.status_message =
@@ -1936,6 +1961,7 @@ impl App {
                 {
                     self.state.diff.cursor_row = row;
                     self.state.diff.scroll_offset = self.visual_offset_for_row(row);
+                    self.clamp_scroll();
                     let total_hunks = display_map.iter().filter(|r| r.is_header).count();
                     let current_hunk = display_map[..=row].iter().filter(|r| r.is_header).count();
                     self.state.status_message =
@@ -2520,6 +2546,7 @@ impl App {
             if matches {
                 self.state.diff.cursor_row = row_idx;
                 self.state.diff.scroll_offset = self.visual_offset_for_row(row_idx);
+                self.clamp_scroll();
                 return;
             }
         }
