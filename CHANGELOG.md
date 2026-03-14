@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/MutinyHQ/mdiff/compare/v0.1.17...v0.1.18) - 2026-03-14
+
+### Other
+
+- Fix ScrollToBottom action to show actual bottom of diff
+- add 019 - Diff Statistics Dashboard (S toggle) for changeset overview
+
 ## [0.1.17](https://github.com/MutinyHQ/mdiff/compare/v0.1.16...v0.1.17) - 2026-03-12
 
 ### Other
