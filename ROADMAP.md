@@ -1,10 +1,10 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-13
+> **Last updated**: 2026-03-16
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
-This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, and patterns from RLHF/human feedback research.
+This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, and patterns from RLHF/human feedback research.
 
 ---
 
@@ -19,34 +19,39 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Status**: Merged
 
 #### 3. Global Fuzzy Search Across All Diff Content (`Ctrl+F`)
-**Status**: Merged (core feature). **UX Bug open** — Issue #35, Spec 013, Cursor agent launched (2026-03-13).
-**Known issue**: `n` key conflict prevents typing 'n' in search query. Navigation being moved to Ctrl+N/Ctrl+P.
+**Status**: Merged (core feature). **UX Bug fixed** — Issue #35, PR #51 merged (2026-03-13). Navigation moved to Ctrl+N/Ctrl+P.
 
 #### 4. Fix Diff Line Calculations (Issue #25)
-**Status**: Spec written (009), Cursor agent launched (2026-03-13)
+**Status**: **Fixed** — PR #50 merged (2026-03-14). Added `clamp_scroll()` function to prevent invalid scroll offsets. Issue should be closed.
 **Addresses**: GitHub Issue #25
-**Rationale**: When using `G` (ScrollToBottom) in the diff view, the viewport does not render the full diff. Lines below the viewport boundary are inaccessible. Critical usability bug.
 
 #### 5. Remove `q` Keybinding for Quit (Issue #38)
-**Status**: Spec written (015), Cursor agent launched (2026-03-13)
+**Status**: **Closed** — Issue #38 resolved.
 **Addresses**: GitHub Issue #38
-**Rationale**: Pressing `q` immediately quits mdiff without any confirmation, even when there are staged annotations. This is a data loss risk. The `q` key is adjacent to common review actions (`w`, `a`, `s`). Filed by repo owner — explicit request to use only Ctrl+C/Ctrl+D for exit.
-**Scope**: Remove `q` -> `Quit` mapping from event.rs global bindings, update which-key overlay.
 
 ---
 
 ### P1 — High Impact
 
-#### 5. File Tree Navigator with Directory Grouping
-**Rationale**: When agents modify 30+ files across multiple directories, the flat file list becomes unwieldy. A collapsible tree view grouped by directory would make navigation much faster.
-**Scope**: Add tree view mode to the navigator (toggle with `T`), collapse/expand directories, show file counts per directory.
-**Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree.
+#### 5. File Tree Navigator with Directory Grouping (Issue #53)
+**Status**: Spec written (020), Cursor agent queued — NEW (2026-03-16)
+**Addresses**: GitHub Issue #53
+**Rationale**: When agents modify 30+ files across multiple directories, the flat file list becomes unwieldy. A collapsible tree view grouped by directory would make navigation much faster. Filed by repo owner with detailed acceptance criteria.
+**Scope**: Add tree view mode to the navigator (toggle with `T`), collapse/expand directories with Enter, show file counts per directory, box-drawing indent guides, zM/zR for fold all/unfold all.
+**Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree, Yazi TUI file manager.
 
 #### 6. Diff Statistics Dashboard
-**Status**: Spec written (019), Cursor agent pending — NEW (2026-03-13)
+**Status**: Spec written (019), Cursor agent queued — (2026-03-13)
 **Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn. No way to quickly assess changeset scope without scrolling through every file.
 **Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size. Jump-to-file from the dashboard.
 **Competitive reference**: GitHub PR stats bar, `git diff --stat`, diffray summary.
+
+#### Ask a Question: Inline Q&A Over Diff Context (Issue #52)
+**Status**: Spec written (021), Cursor agent queued — NEW (2026-03-16)
+**Addresses**: GitHub Issue #52
+**Rationale**: Reviewers frequently encounter unfamiliar code or unclear intent during review and must leave the TUI to ask an LLM. This destroys flow state. Inline Q&A with diff context assembly eliminates the context switch entirely. No other TUI diff viewer offers this — a clear differentiator. Filed by repo owner.
+**Scope**: `Ctrl+Q` trigger, question input bar at bottom of diff view, context assembly from visible hunks/selection, answer panel as right-side split, Q&A history with Ctrl+]/Ctrl+[, session persistence.
+**Competitive reference**: Cursor IDE inline chat, Aider terminal AI assistant. No TUI diff viewer competitor has this.
 
 #### 7. Configurable Keybinding System
 **Rationale**: Power users expect to customize their keybindings. As the action set grows, conflicts become more likely.
@@ -102,7 +107,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Spec**: 008
 
 #### Watch Mode with Auto-Refresh
-**Rationale**: Competitive feature from critique. Auto-detect file changes and refresh the diff.
+**Rationale**: Competitive feature from critique and Duff. Auto-detect file changes and refresh the diff.
 
 #### Syntax-Aware Folding
 **Rationale**: Collapse unchanged functions/blocks to focus on actual changes. Would benefit from tree-sitter.
@@ -150,10 +155,12 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
-| #25 | Bug | P0 | Open | Spec 009 written, Cursor agent launched 2026-03-13 |
-| #35 | Bug | P0 | Open | Spec 013 written, Cursor agent launched 2026-03-13 |
+| #53 | Feature | P1 | Open | Spec 020 written, Cursor agent queued 2026-03-16 |
+| #52 | Feature | P1 | Open | Spec 021 written, Cursor agent queued 2026-03-16 |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
-| #38 | UX/Safety | P0 | Open | Spec 015 written, Cursor agent launched 2026-03-13 |
+| #35 | Bug | P0 | Open (PR #51 merged) | Fix merged, issue should be closed |
+| #25 | Bug | P0 | Open (PR #50 merged) | Fix merged, issue should be closed |
+| #38 | UX/Safety | P0 | Closed | Resolved |
 
 ---
 
@@ -175,10 +182,12 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 - **ClaudeTUI** (v0.3): TUI statusline/monitor for Claude Code sessions. Shows growing demand for terminal-native AI agent tooling.
 - **OpenCode**: Terminal-first AI coding agent (TUI + CLI). Representative of agents whose output mdiff reviews.
 - **Codex CLI**: OpenAI's terminal-based coding agent. Adding path-scoped review filters and review queuing — features that validate mdiff's direction.
+- **Duff** (Browser): Browser-based multi-repo Git diff viewer built for reviewing AI coding agent output. Auto-refresh, visual image diffs, commit history graphs, multi-repo workspace persistence. Different niche (browser vs TUI) but validates the same use case.
 - **Kaleidoscope**: macOS-native diff/merge tool. Excellent visual polish but no TUI, no agent integration.
 - **lazygit**: Gold standard for TUI git UX. Hunk-level operations, keyboard-driven workflow.
 - **fzf**: Gold standard for fuzzy search UX in terminals.
 - **jjui**: TUI for jujutsu (jj), panel-based keyboard-driven paradigm.
+- **gstack** (CLI): Garry Tan's open-source Claude Code toolkit with dedicated `/review` mode for production risk assessment and code review.
 
 ### Key Market Gap
 No tool combines all three: (1) TUI-native diff review, (2) structured human feedback collection, (3) direct integration with coding agents. mdiff is uniquely positioned here.
@@ -220,9 +229,28 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **Microsoft Agent Framework human-in-the-loop**: Formal pause/approve/reject pattern with structured rejection feedback passed back to agents. Architectural reference for mdiff's approve/reject workflow.
 - **No direct competitor found**: No tool combines Rust TUI + git diff viewing + AI agent output review specifically. mdiff's niche remains underserved in a rapidly growing market.
 
+### AI-Native Terminal & Inline Q&A Patterns (from 2026-03-16 research)
+- **Duff** (browser-based diff viewer): Launched specifically for reviewing AI coding agent output across multiple repos. Auto-refresh, image diffs, commit history graphs. Validates mdiff's target use case from a browser angle.
+- **gstack** (Garry Tan): Open-source Claude Code toolkit with dedicated `/review` and `/plan-eng-review` commands. Shows growing demand for structured review workflows layered on top of coding agents.
+- **QwenLM multi-model code review**: Parallel review agents across different LLMs with arbitrator producing unified reports. Points toward multi-model review as a future pattern.
+- **AI-native terminal design trend**: Awal Terminal (Rust + Swift), Ghostty forks with Claude Code integration, side panels showing AI session structure. The terminal is becoming an AI-aware workspace.
+- **GitHub Copilot feedback loop**: PR-based RLHF — agent generates code as PR, humans review and leave comments, agent iterates. The pull request is the structured annotation interface. mdiff's annotation system maps directly to this pattern.
+- **CursorBench-3**: Evaluation suite measuring coding agent quality on real developer interactions. Shows growing investment in measuring agent output quality — the exact problem mdiff's feedback system addresses.
+
 ---
 
 ## Changelog
+
+### 2026-03-16
+- **PROMOTED Issue #53 to P1**: File Tree Navigator — spec 020 written with detailed tree data structures, box-drawing indent guides, directory collapse/expand, zM/zR fold commands
+- **PROMOTED Issue #52 to P1**: Ask a Question (Inline Q&A) — spec 021 written with context assembly, answer panel, Q&A history, session persistence
+- **Cursor agents queued** for 3 features: #53 (File Tree Navigator), #52 (Inline Q&A), Diff Statistics Dashboard — model temporarily unavailable
+- **Updated P0 statuses**: #25 FIXED (PR #50 merged), #35 FIXED (PR #51 merged), #38 CLOSED
+- **Updated Open Issues Triage**: 2 new issues (#52, #53) from repo owner, 3 existing issues (#25, #35, #37) have fixes merged and should be closed
+- **Research**: Duff browser-based diff viewer (direct competitor validation), gstack code review CLI, QwenLM multi-model review, AI-native terminal design trend, GitHub Copilot feedback loop patterns, CursorBench-3
+- Added Duff, gstack to competitive landscape
+- Added "AI-Native Terminal & Inline Q&A Patterns" research section
+- No open PRs to review (all merged since last run)
 
 ### 2026-03-13
 - **Cursor agents launched** for all 3 open P0 issues: #25 (diff line calc), #35 (global search UX), #38 (remove q keybinding)
