@@ -1,5 +1,82 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-17 (Run #7)
+
+### Research Findings
+- **critique v0.1.127** (TypeScript/Bun): Now at 1,087 stars with 37 releases. Uses tree-sitter for syntax highlighting/parsing. Key competitive features: split view, word-level diff, watch mode, glob filtering, flexible ref/branch comparison. Iterating rapidly — competitive pressure increasing.
+- **patchcast** (Rust): Novel tool converting git diffs into animated MP4 video walkthroughs using syntect. Scene-based animation sequence: title card → code reveal → red-pulse deletions → green-slide additions. Interesting UX pattern for sequential file review progression.
+- **Agentic review architecture (Archbot)**: Industry shift from fixed LLM pipelines to agentic loops with structured "submit review" actions. Evidence-fetching loops address context gaps that cause confidently wrong reviews. Validates mdiff's structured annotation approach.
+- **PR comments as agent input format**: GitHub Copilot coding agent consumes structured PR review comments to iterate on code changes. PR comment threads are now a de facto machine-readable feedback format — directly validates mdiff's Annotation Export to GitHub PR Comments feature.
+- **Agent instruction file ecosystem**: CLAUDE.md, AGENTS.md, copilot-instructions.md, GEMINI.md, CODEX.md files emerging as structured context format for AI coding agents. Review output could target these formats.
+- **Terminal Power Trio pattern**: Ghostty + Yazi + Lazygit becoming the standard power-user terminal workflow. Single-key operations (lazygit's Space to stage), panel-based layouts, GPU-accelerated rendering.
+- **Harpoon (neovim)**: Quick-navigation UX — bookmark and instantly jump between frequently used files. Inspired Diff Bookmarks idea.
+- **difi** (Go): New TUI diff viewer with Neovim integration — another entrant in the TUI diff space.
+- **No new Rust TUI diff viewers** found — mdiff's niche remains clear and underserved.
+
+### Open Issues Reviewed (5 open)
+| Issue | Category | Priority | Status | Action |
+|-------|----------|----------|--------|--------|
+| #53 | Feature | P1 | Open — filed by repo owner | Spec 020 written (prev run), Cursor agent blocked |
+| #52 | Feature | P1 | Open — filed by repo owner | Spec 021 written (prev run), Cursor agent blocked |
+| #37 | Feature | P1 | Open (PR #45 merged) | Should be closed manually |
+| #35 | Bug | P0 | Open (PR #51 merged) | Should be closed manually |
+| #25 | Bug | P0 | Open (PR #50 merged) | Should be closed manually |
+
+**No new issues filed since last run.** Issues #25, #35, and #37 remain open despite having merged fixes — need manual closure by repo owner.
+
+### Ideas Evaluated
+| Idea | Source | Priority | Verdict |
+|------|--------|----------|---------|
+| Review Progress Bar | Roadmap P2 | P1 (promoted) | **PROMOTED** — high impact for preventing missed files, reasonable scope |
+| Inline Diff Minimap | VS Code pattern, patchcast | P2 (new) | **ADDED** — visual change density indicator, good UX improvement |
+| Annotation Export to GitHub PR Comments | Roadmap P3 | P2 (promoted) | **PROMOTED** — research confirms PR comments are standard agent input format |
+| Review Session Timer / Metrics | New idea | P3 (new) | **ADDED** — useful metadata for feedback export |
+| Evidence-Based Review Annotations | Archbot research | P3 (new) | **ADDED** — structured finding/evidence/confidence, extends annotation system |
+| Structured Export to AGENTS.md format | Agent instruction research | Deferred | Niche; existing JSON/prompt export covers most use cases |
+| Animated Diff Transitions | patchcast pattern | Deferred | Visual polish, not core; TUI animation is complex |
+| File Type Grouping / Smart Sort | critique, VS Code | Deferred | Overlaps with existing Smart Review Ordering (P2) |
+
+### Specs Written
+No new specs written this cycle — the top 3 picks already have specs from previous runs:
+1. `.github/specs/020-file-tree-navigator.md` (Issue #53)
+2. `.github/specs/021-ask-a-question.md` (Issue #52)
+3. `.github/specs/019-diff-statistics-dashboard.md`
+
+### PRs & Agents
+**Open PRs:**
+- PR #54 (chore: release v0.1.19) — release automation PR, version bump only. No action needed.
+
+**Cursor agents blocked (model unavailable — 2nd consecutive run):**
+- File Tree Navigator (spec 020, Issue #53) — failed to create
+- Ask a Question / Inline Q&A (spec 021, Issue #52) — failed to create
+- Diff Statistics Dashboard (spec 019) — failed to create
+
+All 3 agents have been blocked for 2 consecutive runs due to Cursor model unavailability. This is becoming a persistent blocker.
+
+**Previous agent results:** All mdiff Cursor agents from earlier runs are FINISHED. No running or in-progress agents.
+
+### Roadmap Updates
+- **Promoted Review Progress Bar** from P2 to P1 — high impact, prevents missed files
+- **Promoted Annotation Export to GitHub PR Comments** from P3 to P2 — closes the feedback loop
+- **Added Inline Diff Minimap** at P2 — visual orientation aid
+- **Added Review Session Timer / Metrics** at P3
+- **Added Evidence-Based Review Annotations** at P3
+- Added patchcast to competitive landscape
+- Updated critique entry with latest stats (1,087 stars, tree-sitter)
+- Added "Structured Feedback & Agent Instruction Patterns" research section
+- Updated agent status notes with model unavailability dates
+
+### Visual Mockups Generated
+- File Tree Navigator: https://www.town.com/content/image/sd70afgqxmaymxpsx4essaavnx83312a
+- Inline Q&A: https://www.town.com/content/image/sd7b6j17tsmq00cbgt9f0kzrbs833959
+- Diff Statistics Dashboard: https://www.town.com/content/image/sd7f0wfk19yper84qkqp3kwans832n6k
+
+### Running Agent Status
+- All previous mdiff Cursor agents: FINISHED
+- 3 new agents blocked by model unavailability — will retry next cycle (3rd attempt)
+
+---
+
 ## 2026-03-16 (Run #6)
 
 ### Research Findings
