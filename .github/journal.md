@@ -1,5 +1,81 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-18 (Run #8)
+
+### Research Findings
+- **Anduin (Rust + Iced)**: Brand-new Git GUI specifically designed for coding-agent workflows and worktrees. Created March 16, 2026. Uses Rust + Iced (GUI, not TUI). Directly validates mdiff's target use case — the ecosystem is converging on "tools specifically for reviewing coding agent output."
+- **carn (Go TUI)**: New TUI (v0.1.0, March 17) for browsing Claude and Codex AI coding sessions. Features diff display with colored additions/removals, markdown rendering with syntax highlighting, and full-text search across session transcripts. KEY INSIGHT: Session transcript browsing alongside diffs is a pattern mdiff should adopt — inspired the Agent Session Transcript Viewer idea.
+- **Ralph TUI**: Open-source terminal UI orchestrator connecting multiple AI coding agents to task trackers. Autonomous agent loops with subagent tracing and session persistence. Represents the orchestration layer pattern.
+- **critique v0.1.129**: Updated to 1,091 stars (up from 1,087 in 2 days), 38 releases. Competitive pressure continues to increase.
+- **Anthropic Claude Code Review**: Multi-agent architecture dispatching specialized parallel reviewers per PR. Validates mdiff's structured annotation category approach.
+- **Human-in-the-loop as permanent architecture**: Industry consensus shifting to "genuine partnership," not temporary scaffold. mdiff should optimize for permanent review workflows.
+- **Custom instructions for AI code review (Copilot pattern)**: Natural language project-specific review criteria. Inspired the Custom Review Rubric File idea.
+- **78% of production sites use AI-assisted development; ~30% of dev time on code reviews**: Strongest market validation yet for mdiff's mission.
+- **GitTop (Go TUI)**: Git stats dashboard with activity heatmaps built with Bubble Tea.
+- **Split Diff View already exists**: Discovered that DiffViewMode::Split, render_split, and ToggleViewMode are already implemented in the codebase — removed from ideation as a candidate.
+
+### Open Issues Reviewed (5 open)
+| Issue | Category | Priority | Status | Action |
+|-------|----------|----------|--------|--------|
+| #53 | Feature | P1 | Open — filed by repo owner | Spec 020 exists, Cursor agent blocked (4th attempt) |
+| #52 | Feature | P1 | Open — filed by repo owner | Spec 021 exists, Cursor agent blocked (4th attempt) |
+| #37 | Feature | P1 | Open (PR #45 merged) | Should be closed manually |
+| #35 | Bug | P0 | Open (PR #51 merged) | Should be closed manually |
+| #25 | Bug | P0 | Open (PR #50 merged) | Should be closed manually |
+
+**No new issues filed since last run.** Issues #25, #35, and #37 remain open despite having merged fixes — need manual closure by repo owner.
+
+### Ideas Evaluated
+| Idea | Source | Priority | Verdict |
+|------|--------|----------|---------|
+| Agent Session Transcript Viewer | carn, Ralph TUI | P2 (new) | **ADDED** — display agent reasoning alongside diffs |
+| Custom Review Rubric File | Copilot custom instructions, CLAUDE.md ecosystem | P2 (new) | **ADDED** — project-specific review criteria |
+| Review Session Persistence & Resume | carn, Ralph TUI session management | P2 (new) | **ADDED** — full state serialization for multi-session reviews |
+| Batch File Operations (Multi-Select) | lazygit, Yazi | P3 (new) | **ADDED** — multi-select in navigator with batch actions |
+| Diff Blame Integration | git blame, lazygit | P3 (new) | **ADDED** — human vs agent code distinction |
+| Change Impact Graph | Dependency analysis tools | P3 (new) | **ADDED** — blast radius visualization (low feasibility) |
+| Split Diff View (Side-by-Side) | critique, VS Code | N/A | **REJECTED** — already exists in codebase (DiffViewMode::Split) |
+| Annotation Threading / Replies | GitHub PR threads | Deferred | Extends annotation system, medium priority |
+
+### Specs Written
+1. `.github/specs/022-review-progress-bar.md` — NEW: Persistent progress bar in navigator footer showing reviewed/total files with block characters, percentage, and completion celebration state
+
+### PRs & Agents
+**Open PRs:**
+- PR #54 (chore: release v0.1.19) — release automation PR, version bump only. No action needed.
+
+**Cursor agents blocked (model unavailable — 4th consecutive run):**
+- File Tree Navigator (spec 020, Issue #53)
+- Diff Statistics Dashboard (spec 019)
+- Review Progress Bar (spec 022) — NEW this cycle
+
+Also attempted with explicit model names (claude-3.5-sonnet) — same error. cursor_list_repos also returned auth error. The Cursor cloud agent integration appears to have a persistent authentication/model availability issue that has now blocked implementation for 4 consecutive daily runs.
+
+**Previous agent results:** All mdiff Cursor agents from earlier runs are FINISHED. No running or in-progress agents.
+
+### Roadmap Updates
+- **NEW SPEC**: Review Progress Bar (022) — promoted from P2 to P1 last run, now spec'd and queued for implementation
+- **NEW P2**: Agent Session Transcript Viewer — passive log viewing alongside diffs
+- **NEW P2**: Custom Review Rubric File — project-specific review criteria via .mdiff-review.md
+- **NEW P2**: Review Session Persistence & Resume — full state serialization
+- **NEW P3**: Batch File Operations (Multi-Select)
+- **NEW P3**: Diff Blame Integration
+- **NEW P3**: Change Impact Graph
+- Added Anduin, carn, Ralph TUI to competitive landscape
+- Updated critique entry (v0.1.129, 1,091 stars, 38 releases)
+- Added "Coding Agent Review Ecosystem & Session Browsing" research section
+- Updated Open Issues Triage table with Cursor agent status
+
+### Visual Mockups Generated
+- Review Progress Bar: https://www.town.com/content/image/sd75fp3rkk9h0cvemkje3rsv5x83466m
+
+### Running Agent Status
+- All previous mdiff Cursor agents: FINISHED
+- 3 new agents blocked by model unavailability / auth error — 4th consecutive run blocked
+- **Action needed**: Cursor cloud agent integration may require re-authentication or the model (claude-4.6-sonnet-high-thinking) may need to be updated in the Cursor configuration
+
+---
+
 ## 2026-03-17 (Run #7)
 
 ### Research Findings
