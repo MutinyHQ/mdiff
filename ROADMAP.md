@@ -1,10 +1,10 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-17
+> **Last updated**: 2026-03-18
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
-This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, and patterns from RLHF/human feedback research.
+This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, and patterns from RLHF/human feedback research.
 
 ---
 
@@ -34,20 +34,20 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 ### P1 — High Impact
 
 #### 5. File Tree Navigator with Directory Grouping (Issue #53)
-**Status**: Spec written (020), Cursor agent blocked (model unavailable 2026-03-16, 2026-03-17)
+**Status**: Spec written (020), Cursor agent launched (2026-03-18, 3rd attempt after model unavailability 2026-03-16, 2026-03-17)
 **Addresses**: GitHub Issue #53
 **Rationale**: When agents modify 30+ files across multiple directories, the flat file list becomes unwieldy. A collapsible tree view grouped by directory would make navigation much faster. Filed by repo owner with detailed acceptance criteria.
 **Scope**: Add tree view mode to the navigator (toggle with `T`), collapse/expand directories with Enter, show file counts per directory, box-drawing indent guides, zM/zR for fold all/unfold all.
 **Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree, Yazi TUI file manager.
 
 #### 6. Diff Statistics Dashboard
-**Status**: Spec written (019), Cursor agent blocked (model unavailable 2026-03-13, 2026-03-16, 2026-03-17)
+**Status**: Spec written (019), Cursor agent launched (2026-03-18, 4th attempt after model unavailability 2026-03-13, 2026-03-16, 2026-03-17)
 **Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn. No way to quickly assess changeset scope without scrolling through every file.
 **Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size. Jump-to-file from the dashboard.
 **Competitive reference**: GitHub PR stats bar, `git diff --stat`, diffray summary.
 
 #### Ask a Question: Inline Q&A Over Diff Context (Issue #52)
-**Status**: Spec written (021), Cursor agent blocked (model unavailable 2026-03-16, 2026-03-17)
+**Status**: Spec written (021), Cursor agent launched (2026-03-18, 3rd attempt after model unavailability 2026-03-16, 2026-03-17)
 **Addresses**: GitHub Issue #52
 **Rationale**: Reviewers frequently encounter unfamiliar code or unclear intent during review and must leave the TUI to ask an LLM. This destroys flow state. Inline Q&A with diff context assembly eliminates the context switch entirely. No other TUI diff viewer offers this — a clear differentiator. Filed by repo owner.
 **Scope**: `Ctrl+Q` trigger, question input bar at bottom of diff view, context assembly from visible hunks/selection, answer panel as right-side split, Q&A history with Ctrl+]/Ctrl+[, session persistence.
@@ -94,15 +94,13 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 
 #### Command Palette (`Ctrl+P`)
 **Status**: Spec written (018), Cursor agent pending
-**Rationale**: mdiff has grown to 50+ distinct actions. The which-key overlay shows keybindings for the current context, but users must memorize bindings or scan a static list. A fuzzy-searchable command palette (inspired by VS Code, Fresh editor) would make all actions discoverable in 2-3 keystrokes. As the feature count grows, this becomes critical for onboarding and power-user efficiency.
-**Scope**: Add `Ctrl+P` trigger, floating panel with fuzzy search input (using nucleo crate), register ~30-40 user-facing actions with labels and keybinding hints, dispatch selected action through normal handle_action flow.
-**Competitive reference**: VS Code `Ctrl+Shift+P`, Fresh editor `Ctrl+P`, Neovim Telescope command picker.
+**Rationale**: mdiff has grown to 50+ distinct actions. The which-key overlay shows keybindings for the current context, but users must memorize bindings or scan a static list. A fuzzy-search command palette (triggered by `Ctrl+P`) would make all actions instantly discoverable and executable without memorizing keybindings. Standard UX pattern validated by VS Code, Fresh editor, Sublime Text, and every modern editor.
+**Scope**: Fuzzy-search popup listing all available actions with their keybindings. Execute selected action directly. Filter by typing. Show action descriptions. Use nucleo crate for fuzzy matching (already available in the project).
 
 #### Review Progress Bar
-**Status**: NEW — promoted from P2 (2026-03-17)
-**Rationale**: Prevents missed files in large changesets. Show per-file and overall review completion percentage. Track files viewed, annotated, and marked reviewed. Visual progress bar in navigator header. Motivated by patchcast's scene-based sequential review pattern and the growing size of agent changesets. As mdiff adds more features (tree navigator, stats dashboard), users need a persistent visual signal of how much review remains.
-**Scope**: Track review state per file (unviewed / viewed / annotated / marked reviewed). Show compact progress bar `[====----] 4/8 reviewed` in navigator header. Update automatically as user navigates and interacts. Persist across sessions.
-**Competitive reference**: GitHub PR file review checkboxes, Deff per-file review toggles.
+**Status**: Spec written (022), Cursor agent launched (2026-03-18). Promoted from P2 (2026-03-17)
+**Rationale**: Prevents missed files in large changesets. Show per-file and overall review completion percentage. Track files viewed vs total, display progress bar in navigator.
+**Scope**: Progress bar in navigator footer showing reviewed/total with block characters and percentage. Completion celebration state when all files reviewed.
 
 ---
 
@@ -140,6 +138,21 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: One-key export that posts annotations as GitHub PR review comments. Maps mdiff categories/severities to GitHub review format. Closes the loop: review in mdiff -> feedback on GitHub. Research confirms PR comments are the standard AI agent input format (GitHub Copilot coding agent consumes PR review comments to iterate). This is the missing link in mdiff's feedback pipeline.
 **Scope**: GitHub API integration, map annotation categories to review comment format, batch submission as a single review, support for line-specific comments.
 
+#### Agent Session Transcript Viewer
+**Status**: NEW (2026-03-18)
+**Rationale**: When reviewing agent output, the "why" is as important as the "what." Currently, reviewers must leave mdiff to read agent session logs. A side panel showing the AI agent's reasoning/conversation alongside the diff — linked to specific files/hunks the agent modified — would eliminate this context switch. Inspired by carn (Go TUI for browsing Claude/Codex sessions) and Ralph TUI (agent orchestrator with subagent tracing). Complements the Ask a Question feature (#52) but is passive (read existing logs) rather than active (ask new questions).
+**Scope**: Parse agent session formats (Claude JSONL, Codex markdown logs). Side panel toggled with a keybinding. Link log entries to files/hunks where possible. Scrollable, searchable transcript view.
+
+#### Custom Review Rubric File (`.mdiff-review.md`)
+**Status**: NEW (2026-03-18)
+**Rationale**: mdiff's annotation categories and review checklists are currently generic. Projects have specific review criteria (e.g., "always check for SQL injection in DB files," "verify all new API endpoints have auth middleware"). A per-project `.mdiff-review.md` or `.mdiff.toml` file could define custom annotation categories, project-specific checklist items, required review criteria, and custom severity definitions. Inspired by the CLAUDE.md/AGENTS.md/copilot-instructions.md ecosystem and GitHub Copilot's custom instructions mechanism.
+**Scope**: File discovery and parsing, extend annotation categories, populate checklist from project config, display project-specific review guidance.
+
+#### Review Session Persistence & Resume
+**Status**: NEW (2026-03-18)
+**Rationale**: Large agent changesets often cannot be reviewed in a single session. Currently, mdiff persists annotations but not the full review context (scroll position, reviewed files, search history, current file). Named review sessions with full state serialization would allow reviewers to resume exactly where they left off. Inspired by carn's session persistence and Ralph TUI's session management.
+**Scope**: Serialize full AppState to disk (JSON or binary), named sessions, resume command (`mdiff --resume <session>`), auto-save on quit, session listing.
+
 ---
 
 ### P3 — Future / Exploratory
@@ -167,14 +180,29 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Status**: NEW (2026-03-17)
 **Rationale**: Extend annotation system to optionally include evidence/reasoning. Structured annotation includes: finding, evidence, confidence, severity. Maps directly to the agentic code review "submit review" action pattern (Archbot architecture). Would make mdiff's feedback output more useful as training signal for coding agents.
 
+#### Batch File Operations (Multi-Select)
+**Status**: NEW (2026-03-18)
+**Rationale**: When reviewing large changesets, reviewers often want to perform the same operation on multiple files: mark a directory of test files as reviewed, stage all config changes, or apply the same annotation to related files. Currently each operation is per-file. Multi-select in the navigator (visual mode with `V`) with batch actions would significantly speed up review of large changesets. Inspired by lazygit's multi-select and Yazi's batch operations.
+**Scope**: Multi-select state in NavigatorState, visual mode toggle in navigator, batch mark-reviewed, batch stage, batch annotate.
+
+#### Diff Blame Integration
+**Status**: NEW (2026-03-18)
+**Rationale**: When reviewing agent-modified code, it is useful to know which surrounding context lines were written by humans vs. by previous agent runs. A blame overlay (toggled with `B`) showing author and timestamp for context lines helps reviewers calibrate trust — human-authored code that the agent modified deserves more scrutiny than agent-authored code being refactored.
+**Scope**: Git blame parsing for the current file, overlay in diff view gutter, toggle keybinding, author coloring.
+
+#### Change Impact Graph
+**Status**: NEW (2026-03-18)
+**Rationale**: When a coding agent modifies files across a codebase, understanding which changes are connected (via imports, function calls, type dependencies) helps reviewers assess blast radius. A simple dependency visualization showing which changed files import from each other would help prioritize review order. Feasibility is lower due to language-specific import parsing requirements.
+**Scope**: Import/dependency graph extraction (Rust `use`, JS `import`, Python `import`), visualization as a simple ASCII graph or tree, highlight downstream files when viewing a change.
+
 ---
 
 ## Open Issues Triage
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
-| #53 | Feature | P1 | Open | Spec 020 written, Cursor agent blocked (model unavailable) |
-| #52 | Feature | P1 | Open | Spec 021 written, Cursor agent blocked (model unavailable) |
+| #53 | Feature | P1 | Open | Spec 020 written, Cursor agent launched (2026-03-18) |
+| #52 | Feature | P1 | Open | Spec 021 written, Cursor agent launched (2026-03-18) |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
 | #35 | Bug | P0 | Open (PR #51 merged) | Fix merged, issue should be closed |
 | #25 | Bug | P0 | Open (PR #50 merged) | Fix merged, issue should be closed |
@@ -185,7 +213,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 ## Competitive Landscape
 
 ### Tools Tracked
-- **critique** (TypeScript/Bun): TUI diff viewer with watch mode, glob filtering, word-level diff, tree-sitter syntax highlighting. v0.1.127 released 2026-03-15. 1,087 stars, 37 releases, rapid iteration. Key competitive features to track.
+- **critique** (TypeScript/Bun): TUI diff viewer with watch mode, glob filtering, word-level diff, tree-sitter syntax highlighting. v0.1.129 released 2026-03-17. 1,091 stars, 38 releases, rapid iteration. Key competitive features to track.
 - **tuicr** (Rust): Interactive code review TUI, very early stage. Uses Claude AI integration.
 - **acre** (Rust): Another TUI diff viewer, minimal features.
 - **deff** (Rust): New Rust TUI diff viewer (HN launch 2026-03-05, 37 points). Side-by-side, vim motions, per-file review toggles. No annotation or agent feedback.
@@ -202,6 +230,9 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 - **Codex CLI**: OpenAI's terminal-based coding agent. Adding path-scoped review filters and review queuing — features that validate mdiff's direction.
 - **Duff** (Browser): Browser-based multi-repo Git diff viewer built for reviewing AI coding agent output. Auto-refresh, visual image diffs, commit history graphs, multi-repo workspace persistence. Different niche (browser vs TUI) but validates the same use case.
 - **patchcast** (Rust): Converts git diffs into animated MP4 video walkthroughs using syntect. Novel diff visualization with scene-based animations (red-pulse deletions, green-slide additions). Different medium but interesting UX patterns.
+- **Anduin** (Rust + Iced): Brand-new Git GUI specifically designed for coding-agent workflows and worktrees. Created March 16, 2026. Rust-based like mdiff but uses a GUI (Iced) rather than TUI. Directly overlaps with mdiff's target use case from a GUI angle.
+- **carn** (Go TUI): New TUI for browsing Claude and Codex AI coding sessions. Features diff display with colored additions/removals, markdown rendering with syntax highlighting, and full-text search across session transcripts. Targets the agent session review use case.
+- **Ralph TUI**: Open-source terminal UI orchestrator connecting multiple AI coding agents to task trackers. Runs autonomous agent loops with subagent tracing and session persistence. Represents the orchestration layer pattern.
 - **Kaleidoscope**: macOS-native diff/merge tool. Excellent visual polish but no TUI, no agent integration.
 - **lazygit**: Gold standard for TUI git UX. Hunk-level operations, keyboard-driven workflow. Part of "Terminal Power Trio" (Ghostty + Yazi + Lazygit).
 - **fzf**: Gold standard for fuzzy search UX in terminals.
@@ -266,9 +297,36 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **patchcast (Rust)**: Novel approach converting git diffs to animated MP4 walkthroughs. Scene-based progression (title card, code reveal, deletion highlight, addition highlight) is an interesting UX pattern for sequential review.
 - **Terminal Power Trio pattern**: Ghostty + Yazi + Lazygit emerging as the standard power-user terminal workflow. mdiff should integrate well with this ecosystem.
 
+### Coding Agent Review Ecosystem & Session Browsing (from 2026-03-18 research)
+- **Anduin (Rust + Iced)**: Brand-new Git GUI specifically designed for coding-agent workflows and worktrees. Created March 16, 2026. Uses Rust + Iced (GUI, not TUI). Directly validates mdiff's target use case — the ecosystem is converging on "tools specifically for reviewing coding agent output."
+- **carn (Go TUI)**: New TUI (v0.1.0, March 17) for browsing Claude and Codex AI coding sessions. Features diff display, markdown rendering with syntax highlighting, and full-text search across session transcripts. KEY INSIGHT: Session transcript browsing alongside diffs is a pattern mdiff should adopt (inspired Agent Session Transcript Viewer idea).
+- **Ralph TUI**: Open-source terminal UI orchestrator connecting multiple AI coding agents to task trackers. Autonomous agent loops with subagent tracing and session persistence. Represents the orchestration layer pattern — mdiff could display agent traces/reasoning.
+- **critique v0.1.129**: Updated to 1,091 stars (up from 1,087 in 2 days), 38 releases. Competitive pressure continues to increase.
+- **Anthropic Claude Code Review multi-agent architecture**: Dispatches specialized parallel reviewers per PR, each focusing on a different failure mode. Validates mdiff's structured annotation category approach.
+- **Human-in-the-loop as permanent architecture**: Industry consensus shifting from "temporary scaffold" to "genuine partnership." mdiff should optimize for permanent, not temporary, review workflows.
+- **Custom instructions for AI code review (Copilot pattern)**: Natural language project-specific review criteria. Inspired Custom Review Rubric File idea.
+- **78% of production sites use AI-assisted development; ~30% of dev time on code reviews**: Review efficiency is THE bottleneck — strongest market validation yet for mdiff's mission.
+- **GitTop (Go TUI)**: Git stats dashboard built with Bubble Tea. Activity heatmaps and contributor analytics. Heatmap visualization pattern for change activity.
+
 ---
 
 ## Changelog
+
+### 2026-03-18
+- **NEW SPEC**: Review Progress Bar (022) — persistent visual indicator of review completion in navigator footer, block-character progress bar, count and percentage display
+- **NEW P2**: Agent Session Transcript Viewer — display agent reasoning/conversation alongside diffs, inspired by carn and Ralph TUI
+- **NEW P2**: Custom Review Rubric File (`.mdiff-review.md`) — project-specific annotation categories, checklist items, and review criteria
+- **NEW P2**: Review Session Persistence & Resume — named review sessions with full state serialization for multi-session reviews
+- **NEW P3**: Batch File Operations (Multi-Select) — multi-select in navigator with batch mark-reviewed, stage, annotate
+- **NEW P3**: Diff Blame Integration — git blame overlay showing author/timestamp for context lines, distinguishing human vs agent code
+- **NEW P3**: Change Impact Graph — dependency visualization for changed files to assess blast radius
+- **Cursor agents launched** (3rd attempt): File Tree Navigator (spec 020, Issue #53), Diff Statistics Dashboard (spec 019), Review Progress Bar (spec 022)
+- **Discovered**: Split Diff View already exists in codebase (DiffViewMode::Split, render_split, ToggleViewMode action) — removed from ideation
+- **Research**: Anduin (Rust Git GUI for agent workflows), carn (Go TUI for AI sessions), Ralph TUI (agent orchestrator), critique v0.1.129 (1,091 stars), Anthropic multi-agent code review, human-in-the-loop as permanent architecture, custom review instructions pattern, 78% AI-assisted development stat
+- Added Anduin, carn, Ralph TUI to competitive landscape
+- Updated critique entry (v0.1.129, 1,091 stars, 38 releases)
+- Added "Coding Agent Review Ecosystem & Session Browsing" research section
+- PR #54 (release v0.1.19) remains the only open non-feature PR
 
 ### 2026-03-17
 - **PROMOTED Review Progress Bar to P1**: Moved from P2 — high impact for preventing missed files in large changesets, reasonable implementation scope
@@ -282,7 +340,6 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - Added patchcast to competitive landscape
 - Updated critique entry with latest stats
 - Added "Structured Feedback & Agent Instruction Patterns" research section
-- PR #54 (release v0.1.19) is the only open PR — release automation, no action needed
 
 ### 2026-03-16
 - **PROMOTED Issue #53 to P1**: File Tree Navigator — spec 020 written with detailed tree data structures, box-drawing indent guides, directory collapse/expand, zM/zR fold commands
