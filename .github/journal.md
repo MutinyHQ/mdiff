@@ -1,5 +1,78 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-19 (Run #9)
+
+### Research Findings
+- **ftdv (Rust/ratatui)**: Direct competitor discovered — File Tree Diff Viewer combining diffnav navigation with lazygit's flexible diff tool configuration. Has review tracking checkboxes AND pluggable diff backends (delta, bat, ydiff, difftastic). Two key competitive features that overlap with mdiff's roadmap: the file tree navigator (our #53) and pluggable backends (new P2 idea). Built with ratatui like mdiff.
+- **keifu (Rust TUI)**: New Git commit graph visualization tool with colored branch graphs, commit detail panels, changed file stats. Adjacent tool validating continued growth in Rust Git TUI space.
+- **cmux (Ghostty-based terminal)**: Gained 7.7k GitHub stars in its first month with AI agent orchestration focus. Demonstrates massive appetite for specialized terminal tools in the AI workflow space.
+- **skim v4.0.0**: Major release of Rust fuzzy finder (6,682 stars). Benchmark for what a well-executed Rust TUI tool can achieve at scale.
+- **Code review research (2026)**: PRs under 400 lines get 75%+ defect detection; each additional 100 lines adds ~25 minutes of review time. Large diffs (400+ lines) sharply degrade human defect detection. CRITICAL INSIGHT: mdiff needs diff chunking/segmentation for large files — inspired new P2 "Diff Chunking / Smart Segmentation" idea.
+- **Claude Code Review multi-agent architecture**: 5 specialized parallel reviewers per PR (bugs, security, compliance, git context, comment verification), <1% incorrect finding rate by focusing on logic errors over style. Structured categories map directly to mdiff's annotation system. Inspired new P3 "Specialized Review Passes" idea.
+- **CodeScout (RL for code agents)**: Demonstrates RL reward design for code-related tasks. Relevant to future RLHF signal design from mdiff's structured feedback output.
+- **Technical debt increases 30-41% after AI tool adoption**: Code churn expected to double in 2026. Review tools are THE bottleneck — strongest ongoing market validation.
+- **dead-ringer (Rust)**: Binary diff viewer. Broader diff ecosystem tracked: difftastic, delta, diff-so-fancy, icdiff, ydiff, diffr.
+
+### Open Issues Reviewed (5 open)
+| Issue | Category | Priority | Status | Action |
+|-------|----------|----------|--------|--------|
+| #53 | Feature | P1 | Open — filed by repo owner | Spec 020 exists, Cursor agent blocked (5th attempt) |
+| #52 | Feature | P1 | Open — filed by repo owner | Spec 021 exists, Cursor agent blocked (5th attempt) |
+| #37 | Feature | P1 | Open (PR #45 merged) | Should be closed manually |
+| #35 | Bug | P0 | Open (PR #51 merged) | Should be closed manually |
+| #25 | Bug | P0 | Open (PR #50 merged) | Should be closed manually |
+
+**No new issues filed since last run.** Issues #25, #35, and #37 remain open despite having merged fixes — need manual closure by repo owner.
+
+### Ideas Evaluated
+| Idea | Source | Priority | Verdict |
+|------|--------|----------|---------|
+| Pluggable Diff Backend System | ftdv, lazygit research | P2 (new) | **ADDED** — configure external diff renderers (delta, difftastic, bat) via config |
+| Diff Chunking / Smart Segmentation | Code review research (400-line threshold) | P2 (new) | **ADDED** — auto-segment large diffs at function boundaries for improved defect detection |
+| Specialized Review Passes | Claude Code Review multi-agent architecture | P3 (new) | **ADDED** — guided focused review passes (logic, security, style, tests) |
+| Diff Heatmap Overlay enhancement | GitTop, code review UX research | Deferred | Overlaps with existing Complexity Indicators (spec 007) — merge as visual enhancement later |
+| Review Fatigue Detection | Code review 400-line research | Deferred | Enhances existing P3 Review Session Timer — not a separate item |
+| Annotation Export to GitHub PR Comments | Already P2 | P1 candidate | Research continues to validate — consider promoting next cycle |
+
+### Specs Written
+No new specs this cycle — the top 3 picks already have detailed specs from previous runs:
+1. `.github/specs/020-file-tree-navigator.md` (Issue #53)
+2. `.github/specs/021-ask-a-question.md` (Issue #52)
+3. `.github/specs/019-diff-statistics-dashboard.md`
+
+### PRs & Agents
+**Open PRs:**
+- PR #54 (chore: release v0.1.19) — release automation PR, version bump only. No action needed.
+
+**Cursor agents blocked (model unavailable — 5th consecutive run):**
+- File Tree Navigator (spec 020, Issue #53)
+- Diff Statistics Dashboard (spec 019)
+- Ask a Question / Inline Q&A (spec 021, Issue #52)
+
+Attempted with default model (claude-4.6-sonnet-high-thinking) and explicit model name (claude-3.5-sonnet) — both returned "Model not available or invalid." The Cursor cloud agent integration has been blocked for 5 consecutive daily runs. This is a persistent infrastructure issue requiring attention.
+
+**Previous agent results:** All mdiff Cursor agents from earlier runs are FINISHED. No running or in-progress agents.
+
+### Roadmap Updates
+- **NEW P2**: Pluggable Diff Backend System — configure external diff renderers via config, inspired by ftdv and lazygit
+- **NEW P2**: Diff Chunking / Smart Segmentation — auto-segment large diffs at function boundaries, research-backed
+- **NEW P3**: Specialized Review Passes — guided focused review passes, inspired by Claude Code Review multi-agent architecture
+- Added ftdv, keifu, dead-ringer, cmux to competitive landscape
+- Added "Competitive Analysis & Code Review Research (from 2026-03-19)" research section
+- Updated agent launch statuses to reflect 5th consecutive blocked attempt
+
+### Visual Mockups Generated
+- File Tree Navigator: https://www.town.com/content/image/sd7ew697s3c2rf5ehkn58637dx836e41
+- Diff Statistics Dashboard: https://www.town.com/content/image/sd70k3x5scdrcgzsgq8gdmr8g5836edq
+- Inline Q&A: https://www.town.com/content/image/sd7bf5hw75ptt78k82yj3sm259836p7v
+
+### Running Agent Status
+- All previous mdiff Cursor agents: FINISHED
+- 3 new agents blocked by model unavailability / auth error — 5th consecutive run blocked
+- **Action needed**: Cursor cloud agent integration requires investigation. The default model (claude-4.6-sonnet-high-thinking) and explicit alternatives (claude-3.5-sonnet) both fail. This has been blocking implementation for 5 daily runs (since 2026-03-16).
+
+---
+
 ## 2026-03-18 (Run #8)
 
 ### Research Findings
