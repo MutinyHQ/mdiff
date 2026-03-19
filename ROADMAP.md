@@ -1,10 +1,10 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-18
+> **Last updated**: 2026-03-19
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
-This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, and patterns from RLHF/human feedback research.
+This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, **ftdv**, **keifu**, **dead-ringer**, **cmux**, and patterns from RLHF/human feedback research.
 
 ---
 
@@ -34,20 +34,20 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 ### P1 — High Impact
 
 #### 5. File Tree Navigator with Directory Grouping (Issue #53)
-**Status**: Spec written (020), Cursor agent launched (2026-03-18, 3rd attempt after model unavailability 2026-03-16, 2026-03-17)
+**Status**: Spec written (020), Cursor agent launched (2026-03-19, 5th attempt after model unavailability 2026-03-16 through 2026-03-18)
 **Addresses**: GitHub Issue #53
 **Rationale**: When agents modify 30+ files across multiple directories, the flat file list becomes unwieldy. A collapsible tree view grouped by directory would make navigation much faster. Filed by repo owner with detailed acceptance criteria.
 **Scope**: Add tree view mode to the navigator (toggle with `T`), collapse/expand directories with Enter, show file counts per directory, box-drawing indent guides, zM/zR for fold all/unfold all.
 **Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree, Yazi TUI file manager.
 
 #### 6. Diff Statistics Dashboard
-**Status**: Spec written (019), Cursor agent launched (2026-03-18, 4th attempt after model unavailability 2026-03-13, 2026-03-16, 2026-03-17)
+**Status**: Spec written (019), Cursor agent launched (2026-03-19, 5th attempt after model unavailability 2026-03-13 through 2026-03-18)
 **Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn. No way to quickly assess changeset scope without scrolling through every file.
 **Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size. Jump-to-file from the dashboard.
 **Competitive reference**: GitHub PR stats bar, `git diff --stat`, diffray summary.
 
 #### Ask a Question: Inline Q&A Over Diff Context (Issue #52)
-**Status**: Spec written (021), Cursor agent launched (2026-03-18, 3rd attempt after model unavailability 2026-03-16, 2026-03-17)
+**Status**: Spec written (021), Cursor agent launched (2026-03-19, 5th attempt after model unavailability 2026-03-16 through 2026-03-18)
 **Addresses**: GitHub Issue #52
 **Rationale**: Reviewers frequently encounter unfamiliar code or unclear intent during review and must leave the TUI to ask an LLM. This destroys flow state. Inline Q&A with diff context assembly eliminates the context switch entirely. No other TUI diff viewer offers this — a clear differentiator. Filed by repo owner.
 **Scope**: `Ctrl+Q` trigger, question input bar at bottom of diff view, context assembly from visible hunks/selection, answer panel as right-side split, Q&A history with Ctrl+]/Ctrl+[, session persistence.
@@ -153,6 +153,18 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: Large agent changesets often cannot be reviewed in a single session. Currently, mdiff persists annotations but not the full review context (scroll position, reviewed files, search history, current file). Named review sessions with full state serialization would allow reviewers to resume exactly where they left off. Inspired by carn's session persistence and Ralph TUI's session management.
 **Scope**: Serialize full AppState to disk (JSON or binary), named sessions, resume command (`mdiff --resume <session>`), auto-save on quit, session listing.
 
+#### Pluggable Diff Backend System
+**Status**: New (2026-03-19)
+**Rationale**: ftdv and lazygit demonstrate the value of pluggable diff renderers. Users should be able to pipe diff output through their preferred tool (delta, difftastic, bat) for custom syntax highlighting and formatting. This is a key extensibility pattern that competitive tools already offer.
+**Scope**: Add `[diff_backend]` config section to `mdiff.toml` with template variables for external diff commands. Capture ANSI output and render in diff view. Fall back to built-in renderer when no backend configured.
+**Competitive reference**: ftdv (multiple backends), lazygit (template variables for diff tools).
+
+#### Diff Chunking / Smart Segmentation
+**Status**: New (2026-03-19)
+**Rationale**: Code review research shows defect detection drops sharply past 400 lines. Large agent changesets often exceed this threshold per file. Auto-segmenting diffs into reviewable chunks with progress tracking would improve review quality. Extends the Review Progress Bar (022) concept to within-file granularity.
+**Scope**: Heuristic-based chunking at function/block boundaries (using tree-sitter), chunk navigation with `Ctrl+]`/`Ctrl+[`, chunk-level progress tracking, configurable chunk size threshold.
+**Research basis**: PRs under 400 lines get 75%+ defect detection; each additional 100 lines adds ~25 minutes of review time.
+
 ---
 
 ### P3 — Future / Exploratory
@@ -195,14 +207,20 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: When a coding agent modifies files across a codebase, understanding which changes are connected (via imports, function calls, type dependencies) helps reviewers assess blast radius. A simple dependency visualization showing which changed files import from each other would help prioritize review order. Feasibility is lower due to language-specific import parsing requirements.
 **Scope**: Import/dependency graph extraction (Rust `use`, JS `import`, Python `import`), visualization as a simple ASCII graph or tree, highlight downstream files when viewing a change.
 
+#### Specialized Review Passes
+**Status**: New (2026-03-19)
+**Rationale**: Claude Code Review's multi-agent architecture dispatches specialized parallel reviewers (bugs, security, compliance, git context). A similar UX pattern could guide human reviewers through focused passes rather than reviewing everything at once — logic pass, security pass, style pass, test pass.
+**Scope**: Review pass selector UI, per-pass annotation state tracking, pass-specific checklist templates, pass completion indicators.
+**Competitive reference**: Claude Code Review multi-agent architecture, Archbot agentic review loops.
+
 ---
 
 ## Open Issues Triage
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
-| #53 | Feature | P1 | Open | Spec 020 written, Cursor agent launched (2026-03-18) |
-| #52 | Feature | P1 | Open | Spec 021 written, Cursor agent launched (2026-03-18) |
+| #53 | Feature | P1 | Open | Spec 020 written, Cursor agent launched (2026-03-19) |
+| #52 | Feature | P1 | Open | Spec 021 written, Cursor agent launched (2026-03-19) |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
 | #35 | Bug | P0 | Open (PR #51 merged) | Fix merged, issue should be closed |
 | #25 | Bug | P0 | Open (PR #50 merged) | Fix merged, issue should be closed |
@@ -233,6 +251,10 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 - **Anduin** (Rust + Iced): Brand-new Git GUI specifically designed for coding-agent workflows and worktrees. Created March 16, 2026. Rust-based like mdiff but uses a GUI (Iced) rather than TUI. Directly overlaps with mdiff's target use case from a GUI angle.
 - **carn** (Go TUI): New TUI for browsing Claude and Codex AI coding sessions. Features diff display with colored additions/removals, markdown rendering with syntax highlighting, and full-text search across session transcripts. Targets the agent session review use case.
 - **Ralph TUI**: Open-source terminal UI orchestrator connecting multiple AI coding agents to task trackers. Runs autonomous agent loops with subagent tracing and session persistence. Represents the orchestration layer pattern.
+- **ftdv** (Rust/ratatui): File Tree Diff Viewer combining diffnav navigation with lazygit's flexible diff tool configuration. Features: vim-style nav, interactive file tree with directory folding, review tracking checkboxes, real-time search filtering, persistent state, ANSI color support, pluggable diff backends (delta, bat, ydiff, difftastic). Direct competitor to mdiff with overlapping features.
+- **keifu** (Rust): New TUI for Git commit graph visualization with colored branch graphs, commit detail panels, changed file stats, branch search. Adjacent tool in the Rust Git TUI space.
+- **dead-ringer** (Rust): Interactive binary diff viewer with keyboard navigation and color highlighting. Part of broader terminal diff ecosystem.
+- **cmux** (macOS terminal): Ghostty-based terminal gained 7.7k stars in first month. AI agent orchestration focus with vertical tabs. Demonstrates massive appetite for specialized terminal tools.
 - **Kaleidoscope**: macOS-native diff/merge tool. Excellent visual polish but no TUI, no agent integration.
 - **lazygit**: Gold standard for TUI git UX. Hunk-level operations, keyboard-driven workflow. Part of "Terminal Power Trio" (Ghostty + Yazi + Lazygit).
 - **fzf**: Gold standard for fuzzy search UX in terminals.
@@ -308,9 +330,32 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **78% of production sites use AI-assisted development; ~30% of dev time on code reviews**: Review efficiency is THE bottleneck — strongest market validation yet for mdiff's mission.
 - **GitTop (Go TUI)**: Git stats dashboard built with Bubble Tea. Activity heatmaps and contributor analytics. Heatmap visualization pattern for change activity.
 
+### Competitive Analysis & Code Review Research (from 2026-03-19 research)
+- **ftdv (Rust/ratatui)**: Direct competitor discovered — combines diffnav navigation with lazygit's diff tool config. Has review tracking checkboxes AND pluggable diff backends (delta, bat, difftastic). Two key competitive features mdiff should consider: pluggable backends for extensibility and the checkbox review tracking UX.
+- **keifu (Rust TUI)**: New Git commit graph visualization tool. Validates continued growth in Rust Git TUI tooling.
+- **cmux (Ghostty-based terminal)**: Gained 7.7k GitHub stars in first month with AI agent orchestration focus. Shows massive appetite for specialized terminal tools in the AI workflow space.
+- **skim v4.0.0**: Major release of Rust fuzzy finder (6,682 stars). Benchmark for Rust TUI tool success.
+- **Code review research (2026)**: PRs under 400 lines get 75%+ defect detection; each additional 100 lines adds ~25 minutes. Large diffs (400+ lines) sharply degrade human defect detection. Implication: mdiff needs diff chunking/segmentation for large files.
+- **Claude Code Review multi-agent**: 5 specialized parallel reviewers per PR, <1% incorrect finding rate by focusing on logic over style. Structured categories map directly to mdiff's annotation system.
+- **CodeScout (RL for code agents)**: Demonstrates RL reward design for code-related tasks. Relevant to future RLHF signal design from mdiff feedback.
+- **Technical debt increases 30-41% after AI adoption**: Code churn expected to double in 2026. Review tools are THE bottleneck.
+- **dead-ringer (Rust)**: Binary diff viewer. Broader diff ecosystem competitors tracked: difftastic, delta, diff-so-fancy, icdiff, ydiff, diffr.
+
 ---
 
 ## Changelog
+
+### 2026-03-19
+- **NEW P2**: Pluggable Diff Backend System — configure external diff renderers (delta, difftastic, bat) via config, inspired by ftdv and lazygit patterns
+- **NEW P2**: Diff Chunking / Smart Segmentation — auto-segment large diffs at function boundaries for improved defect detection, research-backed (400-line threshold)
+- **NEW P3**: Specialized Review Passes — guided focused review passes (logic, security, style, tests), inspired by Claude Code Review multi-agent architecture
+- **Cursor agents launched** (5th attempt): File Tree Navigator (spec 020, Issue #53), Diff Statistics Dashboard (spec 019), Ask a Question (spec 021, Issue #52)
+- **Competitive discovery**: ftdv (ratatui-based TUI diff viewer with pluggable backends and review checkboxes) — direct competitor with overlapping features
+- **Research**: ftdv competitive analysis, keifu (Rust Git TUI), cmux (7.7k stars terminal), skim v4.0.0, code review research (400-line defect detection threshold), Claude Code Review multi-agent, CodeScout RL, technical debt +30-41% post-AI
+- Added ftdv, keifu, dead-ringer, cmux to competitive landscape
+- Added "Competitive Analysis & Code Review Research" research section
+- PR #54 (release v0.1.19) reviewed — version bump only, no action needed
+- Open issues unchanged: #53, #52 awaiting implementation; #37, #35, #25 have fixes merged and need manual closure
 
 ### 2026-03-18
 - **NEW SPEC**: Review Progress Bar (022) — persistent visual indicator of review completion in navigator footer, block-character progress bar, count and percentage display
