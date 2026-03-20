@@ -199,6 +199,14 @@ fn bookmark_label(
         .label_at(&file_path, row_info.old_lineno, row_info.new_lineno)
 }
 
+/// Check if a line has a suggestion annotation specifically.
+fn has_suggestion(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> bool {
+    let file_path = delta.path.to_string_lossy();
+    state
+        .annotations
+        .has_suggestion_at(&file_path, row_info.old_lineno, row_info.new_lineno)
+}
+
 /// Get the score at a line position, if any.
 fn get_score(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> Option<u8> {
     let file_path = delta.path.to_string_lossy();
@@ -403,13 +411,20 @@ fn build_split_lines_core<'a>(
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
-        let ann_marker = display_map
-            .get(display_row)
-            .is_some_and(|info| has_annotation(state, delta, info));
+        let row_info = display_map.get(display_row);
+        let ann_marker = row_info.is_some_and(|info| has_annotation(state, delta, info));
+        let sug_marker = row_info.is_some_and(|info| has_suggestion(state, delta, info));
 
         let marker = if ann_marker { "\u{2502}" } else { " " };
         let hunk_gutter = format!("{:>gutter_width$} {:>gutter_width$}{marker}", "...", "...");
         let mut gutter_style = Style::default().fg(theme.text_muted);
+        if ann_marker {
+            if sug_marker {
+                gutter_style = gutter_style.fg(Color::Yellow);
+            } else {
+                gutter_style = gutter_style.fg(theme.cursor_line_fg);
+            }
+        }
         if let Some(fg) = hl.gutter_fg {
             gutter_style = gutter_style.fg(fg);
         }
@@ -495,21 +510,19 @@ fn build_split_lines_core<'a>(
                 FilteredItem::Line { line, .. } => match line.origin {
                     DiffLineOrigin::Context => {
                         let hl = row_highlight(state, display_row);
-                        let ann_marker = display_map
-                            .get(display_row)
-                            .is_some_and(|info| has_annotation(state, delta, info));
+                        let row_info = display_map.get(display_row);
+                        let ann_marker =
+                            row_info.is_some_and(|info| has_annotation(state, delta, info));
+                        let sug_marker =
+                            row_info.is_some_and(|info| has_suggestion(state, delta, info));
 
                         let gutter_l = format_lineno(line.old_lineno, gutter_width);
                         let gutter_r = format_lineno(line.new_lineno, gutter_width);
                         let marker = if ann_marker { "\u{2502}" } else { " " };
-                        let score = display_map
-                            .get(display_row)
-                            .and_then(|info| get_score(state, delta, info));
-                        let bm_label = display_map
-                            .get(display_row)
-                            .and_then(|info| bookmark_label(state, delta, info));
+                        let score = row_info.and_then(|info| get_score(state, delta, info));
+                        let bm_label = row_info.and_then(|info| bookmark_label(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label, sug_marker,
                         ));
 
                         let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
@@ -579,9 +592,11 @@ fn build_split_lines_core<'a>(
 
                         for j in 0..max {
                             let hl = row_highlight(state, display_row);
-                            let ann_marker = display_map
-                                .get(display_row)
-                                .is_some_and(|info| has_annotation(state, delta, info));
+                            let row_info = display_map.get(display_row);
+                            let ann_marker =
+                                row_info.is_some_and(|info| has_annotation(state, delta, info));
+                            let sug_marker =
+                                row_info.is_some_and(|info| has_suggestion(state, delta, info));
                             let marker = if ann_marker { "\u{2502}" } else { " " };
 
                             let old_lineno = if j < dels.len() {
@@ -596,14 +611,12 @@ fn build_split_lines_core<'a>(
                             };
                             let gutter_l = format_lineno(old_lineno, gutter_width);
                             let gutter_r = format_lineno(new_lineno, gutter_width);
-                            let score = display_map
-                                .get(display_row)
-                                .and_then(|info| get_score(state, delta, info));
-                            let bm_label = display_map
-                                .get(display_row)
-                                .and_then(|info| bookmark_label(state, delta, info));
+                            let score = row_info.and_then(|info| get_score(state, delta, info));
+                            let bm_label =
+                                row_info.and_then(|info| bookmark_label(state, delta, info));
                             center.push(make_center_gutter_line(
                                 &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                                sug_marker,
                             ));
 
                             if j < dels.len() {
@@ -639,21 +652,19 @@ fn build_split_lines_core<'a>(
                     }
                     DiffLineOrigin::Addition => {
                         let hl = row_highlight(state, display_row);
-                        let ann_marker = display_map
-                            .get(display_row)
-                            .is_some_and(|info| has_annotation(state, delta, info));
+                        let row_info = display_map.get(display_row);
+                        let ann_marker =
+                            row_info.is_some_and(|info| has_annotation(state, delta, info));
+                        let sug_marker =
+                            row_info.is_some_and(|info| has_suggestion(state, delta, info));
                         let marker = if ann_marker { "\u{2502}" } else { " " };
 
                         let gutter_l = " ".repeat(gutter_width);
                         let gutter_r = format_lineno(line.new_lineno, gutter_width);
-                        let score = display_map
-                            .get(display_row)
-                            .and_then(|info| get_score(state, delta, info));
-                        let bm_label = display_map
-                            .get(display_row)
-                            .and_then(|info| bookmark_label(state, delta, info));
+                        let score = row_info.and_then(|info| get_score(state, delta, info));
+                        let bm_label = row_info.and_then(|info| bookmark_label(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label, sug_marker,
                         ));
 
                         left.push(make_empty_content_line(hl, theme));
@@ -691,12 +702,10 @@ fn build_unified_lines_core<'a>(
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
-        let ann_marker = display_map
-            .get(display_row)
-            .is_some_and(|info| has_annotation(state, delta, info));
-        let score = display_map
-            .get(display_row)
-            .and_then(|info| get_score(state, delta, info));
+        let row_info = display_map.get(display_row);
+        let ann_marker = row_info.is_some_and(|info| has_annotation(state, delta, info));
+        let sug_marker = row_info.is_some_and(|info| has_suggestion(state, delta, info));
+        let score = row_info.and_then(|info| get_score(state, delta, info));
 
         lines.push(make_hunk_header_line_unified(
             gutter_width,
@@ -705,6 +714,7 @@ fn build_unified_lines_core<'a>(
             ann_marker,
             score,
             theme,
+            sug_marker,
         ));
         display_row += 1;
 
@@ -739,15 +749,13 @@ fn build_unified_lines_core<'a>(
                 }
                 FilteredItem::Line { line, .. } => {
                     let hl = row_highlight(state, display_row);
-                    let ann_marker = display_map
-                        .get(display_row)
-                        .is_some_and(|info| has_annotation(state, delta, info));
-                    let score = display_map
-                        .get(display_row)
-                        .and_then(|info| get_score(state, delta, info));
-                    let bm_label = display_map
-                        .get(display_row)
-                        .and_then(|info| bookmark_label(state, delta, info));
+                    let row_info = display_map.get(display_row);
+                    let ann_marker =
+                        row_info.is_some_and(|info| has_annotation(state, delta, info));
+                    let sug_marker =
+                        row_info.is_some_and(|info| has_suggestion(state, delta, info));
+                    let score = row_info.and_then(|info| get_score(state, delta, info));
+                    let bm_label = row_info.and_then(|info| bookmark_label(state, delta, info));
 
                     let (old_g, new_g) = (
                         format_lineno(line.old_lineno, gutter_width),
@@ -769,6 +777,7 @@ fn build_unified_lines_core<'a>(
                                 score,
                                 bm_label,
                                 theme,
+                                sug_marker,
                             ));
                         }
                         DiffLineOrigin::Addition => {
@@ -786,6 +795,7 @@ fn build_unified_lines_core<'a>(
                                 score,
                                 bm_label,
                                 theme,
+                                sug_marker,
                             ));
                         }
                         DiffLineOrigin::Deletion => {
@@ -803,6 +813,7 @@ fn build_unified_lines_core<'a>(
                                 score,
                                 bm_label,
                                 theme,
+                                sug_marker,
                             ));
                         }
                     }
@@ -832,10 +843,18 @@ fn make_hunk_header_line_unified<'a>(
     ann_marker: bool,
     score: Option<u8>,
     theme: &Theme,
+    is_suggestion: bool,
 ) -> Line<'a> {
     let marker = if ann_marker { "\u{2502}" } else { " " };
     let gutter_text = format!("{:>gutter_width$}{marker}", "...");
     let mut gutter_style = Style::default().fg(theme.text_muted);
+    if ann_marker {
+        if is_suggestion {
+            gutter_style = gutter_style.fg(Color::Yellow);
+        } else {
+            gutter_style = gutter_style.fg(theme.cursor_line_fg);
+        }
+    }
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);
     }
@@ -923,6 +942,7 @@ fn make_center_gutter_line<'a>(
     theme: &Theme,
     score: Option<u8>,
     bm_label: Option<Option<char>>,
+    is_suggestion: bool,
 ) -> Line<'a> {
     let mut spans = Vec::new();
 
@@ -949,7 +969,11 @@ fn make_center_gutter_line<'a>(
     let text = format!("{gutter_l} {gutter_r}{marker}");
     let mut style = Style::default().fg(theme.text_muted);
     if marker == "\u{2502}" {
-        style = style.fg(theme.cursor_line_fg);
+        if is_suggestion {
+            style = style.fg(Color::Yellow);
+        } else {
+            style = style.fg(theme.cursor_line_fg);
+        }
     }
     if let Some(fg) = hl.gutter_fg {
         style = style.fg(fg);
@@ -1021,6 +1045,7 @@ fn make_unified_highlighted<'a>(
     score: Option<u8>,
     bm_label: Option<Option<char>>,
     theme: &Theme,
+    is_suggestion: bool,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
     let content_bg = hl.content_bg.or(diff_bg);
@@ -1028,7 +1053,11 @@ fn make_unified_highlighted<'a>(
     let marker = if ann_marker { "\u{2502}" } else { " " };
     let mut gutter_style = Style::default().fg(theme.text_muted);
     if ann_marker {
-        gutter_style = gutter_style.fg(theme.cursor_line_fg);
+        if is_suggestion {
+            gutter_style = gutter_style.fg(Color::Yellow);
+        } else {
+            gutter_style = gutter_style.fg(theme.cursor_line_fg);
+        }
     }
     if let Some(fg) = hl.gutter_fg {
         gutter_style = gutter_style.fg(fg);

@@ -114,6 +114,7 @@ pub struct KeyContext {
     pub bracket_pending: Option<char>,
     pub mark_pending: bool,
     pub jump_mark_pending: bool,
+    pub suggestion_editor_open: bool,
 }
 
 /// Context for mouse event mapping.
@@ -193,6 +194,28 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         return match key.code {
             KeyCode::Enter | KeyCode::Char('y') => Some(Action::ConfirmRestore),
             KeyCode::Esc | KeyCode::Char('n') => Some(Action::CancelRestore),
+            _ => None,
+        };
+    }
+
+    // Priority 0.8: Suggestion editor mode
+    if ctx.suggestion_editor_open {
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelSuggestion),
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Action::ConfirmSuggestion)
+            }
+            KeyCode::Enter => Some(Action::SuggestionNewline),
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                Some(Action::SuggestionToggleFocus)
+            }
+            KeyCode::Tab => Some(Action::ToggleSuggestionPreview),
+            KeyCode::Backspace => Some(Action::SuggestionBackspace),
+            KeyCode::Left => Some(Action::SuggestionCursorLeft),
+            KeyCode::Right => Some(Action::SuggestionCursorRight),
+            KeyCode::Up => Some(Action::SuggestionCursorUp),
+            KeyCode::Down => Some(Action::SuggestionCursorDown),
+            KeyCode::Char(c) => Some(Action::SuggestionChar(c)),
             _ => None,
         };
     }
@@ -478,6 +501,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::ExportFeedback)
         }
+        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::OpenSuggestionEditor)
+        }
         _ => {}
     }
 
@@ -748,6 +774,7 @@ mod tests {
             bracket_pending: None,
             mark_pending: false,
             jump_mark_pending: false,
+            suggestion_editor_open: false,
         }
     }
 

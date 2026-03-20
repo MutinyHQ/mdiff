@@ -242,4 +242,19 @@ pub enum Action {
     BookmarkListDown,
     BookmarkListSelect,
     BookmarkListDelete,
+
+    // Annotation suggestions
+    OpenSuggestionEditor,
+    ConfirmSuggestion,
+    CancelSuggestion,
+    SuggestionChar(char),
+    SuggestionBackspace,
+    SuggestionNewline,
+    SuggestionPaste(String),
+    SuggestionCursorLeft,
+    SuggestionCursorRight,
+    SuggestionCursorUp,
+    SuggestionCursorDown,
+    ToggleSuggestionPreview,
+    SuggestionToggleFocus,
 }

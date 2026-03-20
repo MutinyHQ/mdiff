@@ -53,6 +53,12 @@ struct AnnotationEntry {
     line_end: Option<u32>,
     comment: String,
     created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    suggested_code: Option<String>,
 }
 
 /// Bookmark entry for session persistence.
@@ -146,6 +152,17 @@ pub fn load_session_data(
             (old_range, new_range)
         };
 
+        let category = entry
+            .category
+            .as_deref()
+            .and_then(parse_category)
+            .unwrap_or(crate::state::annotation_state::AnnotationCategory::Suggestion);
+        let severity = entry
+            .severity
+            .as_deref()
+            .and_then(parse_severity)
+            .unwrap_or(crate::state::annotation_state::AnnotationSeverity::Minor);
+
         annotations_state.add(Annotation {
             anchor: crate::state::annotation_state::LineAnchor {
                 file_path: entry.file_path,
@@ -154,8 +171,9 @@ pub fn load_session_data(
             },
             comment: entry.comment,
             created_at: entry.created_at,
-            category: crate::state::annotation_state::AnnotationCategory::Suggestion,
-            severity: crate::state::annotation_state::AnnotationSeverity::Minor,
+            category,
+            severity,
+            suggested_code: entry.suggested_code,
         });
     }
 
@@ -234,6 +252,9 @@ pub fn save_session_data(
             line_end: None,
             comment: a.comment.clone(),
             created_at: a.created_at.clone(),
+            category: Some(a.category.label().to_string()),
+            severity: Some(a.severity.label().to_string()),
+            suggested_code: a.suggested_code.clone(),
         })
         .collect();
 
@@ -288,5 +309,30 @@ pub fn save_session_data(
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {
         let _ = fs::write(session_file(repo_path, target_label), json);
+    }
+}
+
+fn parse_category(s: &str) -> Option<crate::state::annotation_state::AnnotationCategory> {
+    use crate::state::annotation_state::AnnotationCategory;
+    match s {
+        "Bug" => Some(AnnotationCategory::Bug),
+        "Style" => Some(AnnotationCategory::Style),
+        "Perf" | "Performance" => Some(AnnotationCategory::Performance),
+        "Security" => Some(AnnotationCategory::Security),
+        "Suggestion" => Some(AnnotationCategory::Suggestion),
+        "Question" => Some(AnnotationCategory::Question),
+        "Nitpick" => Some(AnnotationCategory::Nitpick),
+        _ => None,
+    }
+}
+
+fn parse_severity(s: &str) -> Option<crate::state::annotation_state::AnnotationSeverity> {
+    use crate::state::annotation_state::AnnotationSeverity;
+    match s {
+        "Critical" => Some(AnnotationSeverity::Critical),
+        "Major" => Some(AnnotationSeverity::Major),
+        "Minor" => Some(AnnotationSeverity::Minor),
+        "Info" => Some(AnnotationSeverity::Info),
+        _ => None,
     }
 }

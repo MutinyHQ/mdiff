@@ -46,6 +46,8 @@ pub struct AnnotationExport {
     pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggested_code: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -130,13 +132,21 @@ fn build_export(state: &AppState, target_label: &str) -> FeedbackExport {
         let annotations = if let Some(file_annotations) = state.annotations.annotations.get(&path) {
             file_annotations
                 .iter()
-                .map(|ann| AnnotationExport {
-                    annotation_type: "comment".to_string(),
-                    old_range: ann.anchor.old_range,
-                    new_range: ann.anchor.new_range,
-                    comment: ann.comment.clone(),
-                    category: None, // Could be extended in the future
-                    severity: None, // Could be extended in the future
+                .map(|ann| {
+                    let annotation_type = if ann.suggested_code.is_some() {
+                        "suggestion".to_string()
+                    } else {
+                        "comment".to_string()
+                    };
+                    AnnotationExport {
+                        annotation_type,
+                        old_range: ann.anchor.old_range,
+                        new_range: ann.anchor.new_range,
+                        comment: ann.comment.clone(),
+                        category: Some(ann.category.label().to_string()),
+                        severity: Some(ann.severity.label().to_string()),
+                        suggested_code: ann.suggested_code.clone(),
+                    }
                 })
                 .collect()
         } else {

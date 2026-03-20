@@ -118,6 +118,9 @@ pub fn render_which_key(frame: &mut Frame, area: Rect, state: &AppState) {
 }
 
 fn get_context_title(state: &AppState) -> &'static str {
+    if state.suggestion.active {
+        return "Suggestion Editor";
+    }
     if state.selection.active {
         return "Visual Mode";
     }
@@ -139,6 +142,27 @@ fn get_context_title(state: &AppState) -> &'static str {
 }
 
 fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
+    if state.suggestion.active {
+        return vec![
+            KeyEntry {
+                key: "Ctrl+Enter",
+                description: "Save suggestion",
+            },
+            KeyEntry {
+                key: "Tab",
+                description: "Toggle preview",
+            },
+            KeyEntry {
+                key: "S-Tab",
+                description: "Switch focus",
+            },
+            KeyEntry {
+                key: "Esc",
+                description: "Cancel",
+            },
+        ];
+    }
+
     if state.selection.active {
         return vec![
             KeyEntry {
@@ -148,6 +172,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
             KeyEntry {
                 key: "i",
                 description: "Add annotation",
+            },
+            KeyEntry {
+                key: "Ctrl+S",
+                description: "Suggest replacement",
             },
             KeyEntry {
                 key: "d",
@@ -393,6 +421,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 KeyEntry {
                     key: "a",
                     description: "Annotation menu",
+                },
+                KeyEntry {
+                    key: "Ctrl+S",
+                    description: "Suggest replacement",
                 },
                 KeyEntry {
                     key: "]",

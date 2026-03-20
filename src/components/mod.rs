@@ -15,6 +15,7 @@ pub mod navigator;
 pub mod prompt_preview;
 pub mod restore_confirm;
 pub mod settings_modal;
+pub mod suggestion_editor;
 pub mod target_dialog;
 pub mod text_input;
 pub mod which_key;

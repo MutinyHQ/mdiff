@@ -290,6 +290,12 @@ impl App {
                 if self.state.restore_confirm_open {
                     render_restore_confirm(frame, &self.state);
                 }
+                if self.state.suggestion.active {
+                    crate::components::suggestion_editor::render_suggestion_editor(
+                        frame,
+                        &self.state,
+                    );
+                }
                 if self.state.settings.open {
                     render_settings_modal(frame, &self.state);
                 }
@@ -342,6 +348,7 @@ impl App {
                     bracket_pending: self.bracket_pending,
                     mark_pending: self.mark_pending,
                     jump_mark_pending: self.jump_mark_pending,
+                    suggestion_editor_open: self.state.suggestion.active,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -392,6 +399,7 @@ impl App {
                             || ctx.commit_dialog_open
                             || ctx.target_dialog_open
                             || ctx.comment_editor_open
+                            || ctx.suggestion_editor_open
                             || ctx.agent_selector_open
                             || ctx.annotation_menu_open
                             || ctx.restore_confirm_open
@@ -1415,6 +1423,7 @@ impl App {
                             created_at: now,
                             category,
                             severity,
+                            suggested_code: None,
                         });
                         self.set_status("Comment added".to_string(), false);
                     }
@@ -1931,7 +1940,9 @@ impl App {
                 }
             }
             Action::TextPaste(text) => {
-                if self.state.comment_editor_open {
+                if self.state.suggestion.active {
+                    self.update(Action::SuggestionPaste(text));
+                } else if self.state.comment_editor_open {
                     // Insert each character into the comment editor
                     for c in text.chars() {
                         if c == '\n' {
@@ -2484,6 +2495,97 @@ impl App {
                     }
                 }
             }
+
+            // Suggestion editor actions
+            Action::OpenSuggestionEditor => {
+                if self.state.active_view != ActiveView::DiffExplorer {
+                    return;
+                }
+                if !self.state.selection.active {
+                    self.state.selection.active = true;
+                    self.state.selection.anchor = self.state.diff.cursor_row;
+                    self.state.selection.cursor = self.state.diff.cursor_row;
+                }
+                if let Some(anchor) = self.selection_to_anchor() {
+                    let original_lines = self.extract_selected_code_lines();
+                    let replacement_text = original_lines.join("\n");
+                    self.state.suggestion.active = true;
+                    self.state.suggestion.original_code = original_lines;
+                    self.state.suggestion.replacement.set(&replacement_text);
+                    self.state.suggestion.comment.clear();
+                    self.state.suggestion.preview_visible = false;
+                    self.state.suggestion.focus =
+                        crate::state::suggestion_state::SuggestionFocus::Replacement;
+                    self.state.suggestion.file_path = anchor.file_path;
+                    self.state.suggestion.old_range = anchor.old_range;
+                    self.state.suggestion.new_range = anchor.new_range;
+                }
+            }
+            Action::ConfirmSuggestion => {
+                use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
+                let replacement_text = self.state.suggestion.replacement.text().to_string();
+                let comment_text = self.state.suggestion.comment.text().to_string();
+                let now = chrono::Utc::now().to_rfc3339();
+                self.state.annotations.add(Annotation {
+                    anchor: LineAnchor {
+                        file_path: self.state.suggestion.file_path.clone(),
+                        old_range: self.state.suggestion.old_range,
+                        new_range: self.state.suggestion.new_range,
+                    },
+                    comment: comment_text,
+                    created_at: now,
+                    category: AnnotationCategory::Suggestion,
+                    severity: AnnotationSeverity::Major,
+                    suggested_code: Some(replacement_text),
+                });
+                self.set_status("Suggestion added".to_string(), false);
+                self.state.suggestion.reset();
+                self.state.selection.active = false;
+            }
+            Action::CancelSuggestion => {
+                self.state.suggestion.reset();
+            }
+            Action::SuggestionChar(c) => {
+                self.active_suggestion_buffer().insert_char(c);
+            }
+            Action::SuggestionBackspace => {
+                self.active_suggestion_buffer().delete_back();
+            }
+            Action::SuggestionNewline => {
+                self.active_suggestion_buffer().insert_char('\n');
+            }
+            Action::SuggestionPaste(text) => {
+                let buf = self.active_suggestion_buffer();
+                for c in text.chars() {
+                    if c == '\n' {
+                        buf.insert_char('\n');
+                    } else if !c.is_control() {
+                        buf.insert_char(c);
+                    }
+                }
+            }
+            Action::SuggestionCursorLeft => {
+                self.active_suggestion_buffer().move_left();
+            }
+            Action::SuggestionCursorRight => {
+                self.active_suggestion_buffer().move_right();
+            }
+            Action::SuggestionCursorUp => {
+                self.suggestion_cursor_up();
+            }
+            Action::SuggestionCursorDown => {
+                self.suggestion_cursor_down();
+            }
+            Action::ToggleSuggestionPreview => {
+                self.state.suggestion.preview_visible = !self.state.suggestion.preview_visible;
+            }
+            Action::SuggestionToggleFocus => {
+                use crate::state::suggestion_state::SuggestionFocus;
+                self.state.suggestion.focus = match self.state.suggestion.focus {
+                    SuggestionFocus::Comment => SuggestionFocus::Replacement,
+                    SuggestionFocus::Replacement => SuggestionFocus::Comment,
+                };
+            }
         }
     }
 
@@ -2507,6 +2609,134 @@ impl App {
         } else {
             None
         }
+    }
+
+    fn active_suggestion_buffer(&mut self) -> &mut crate::state::TextBuffer {
+        use crate::state::suggestion_state::SuggestionFocus;
+        match self.state.suggestion.focus {
+            SuggestionFocus::Comment => &mut self.state.suggestion.comment,
+            SuggestionFocus::Replacement => &mut self.state.suggestion.replacement,
+        }
+    }
+
+    /// Move the cursor up one line within the multi-line suggestion buffer.
+    fn suggestion_cursor_up(&mut self) {
+        use crate::state::suggestion_state::SuggestionFocus;
+        let buf = match self.state.suggestion.focus {
+            SuggestionFocus::Comment => &mut self.state.suggestion.comment,
+            SuggestionFocus::Replacement => &mut self.state.suggestion.replacement,
+        };
+        let text = buf.text().to_string();
+        let cursor = buf.cursor_char_index();
+        let chars: Vec<char> = text.chars().collect();
+
+        // Find start of current line
+        let mut line_start = cursor;
+        while line_start > 0 && chars[line_start - 1] != '\n' {
+            line_start -= 1;
+        }
+        if line_start == 0 {
+            buf.move_home();
+            return;
+        }
+        let col = cursor - line_start;
+
+        // Find start of previous line
+        let prev_line_end = line_start - 1;
+        let mut prev_line_start = prev_line_end;
+        while prev_line_start > 0 && chars[prev_line_start - 1] != '\n' {
+            prev_line_start -= 1;
+        }
+        let prev_line_len = prev_line_end - prev_line_start;
+        let target_col = col.min(prev_line_len);
+        let target_pos = prev_line_start + target_col;
+
+        // Move cursor to target position
+        while buf.cursor_char_index() > target_pos {
+            buf.move_left();
+        }
+        while buf.cursor_char_index() < target_pos {
+            buf.move_right();
+        }
+    }
+
+    /// Move the cursor down one line within the multi-line suggestion buffer.
+    fn suggestion_cursor_down(&mut self) {
+        use crate::state::suggestion_state::SuggestionFocus;
+        let buf = match self.state.suggestion.focus {
+            SuggestionFocus::Comment => &mut self.state.suggestion.comment,
+            SuggestionFocus::Replacement => &mut self.state.suggestion.replacement,
+        };
+        let text = buf.text().to_string();
+        let cursor = buf.cursor_char_index();
+        let chars: Vec<char> = text.chars().collect();
+        let total = chars.len();
+
+        // Find start of current line
+        let mut line_start = cursor;
+        while line_start > 0 && chars[line_start - 1] != '\n' {
+            line_start -= 1;
+        }
+        let col = cursor - line_start;
+
+        // Find end of current line
+        let mut line_end = cursor;
+        while line_end < total && chars[line_end] != '\n' {
+            line_end += 1;
+        }
+        if line_end >= total {
+            buf.move_end();
+            return;
+        }
+        // line_end is at the '\n', next line starts at line_end + 1
+        let next_line_start = line_end + 1;
+
+        // Find end of next line
+        let mut next_line_end = next_line_start;
+        while next_line_end < total && chars[next_line_end] != '\n' {
+            next_line_end += 1;
+        }
+        let next_line_len = next_line_end - next_line_start;
+        let target_col = col.min(next_line_len);
+        let target_pos = next_line_start + target_col;
+
+        while buf.cursor_char_index() < target_pos {
+            buf.move_right();
+        }
+        while buf.cursor_char_index() > target_pos {
+            buf.move_left();
+        }
+    }
+
+    /// Extract the source code text from the currently selected lines.
+    fn extract_selected_code_lines(&self) -> Vec<String> {
+        let Some(delta) = self.state.diff.selected_delta() else {
+            return Vec::new();
+        };
+        let display_map = self.current_display_map();
+        let (start, end) = self.state.selection.range();
+        let mut lines = Vec::new();
+        for row_idx in start..=end {
+            if let Some(info) = display_map.get(row_idx) {
+                if let Some(line_idx) = info.line_index {
+                    if let Some(hunk) = delta.hunks.get(info.hunk_index) {
+                        if let Some(diff_line) = hunk.lines.get(line_idx) {
+                            match diff_line.origin {
+                                DiffLineOrigin::Addition | DiffLineOrigin::Context => {
+                                    lines.push(diff_line.content.trim_end().to_string());
+                                }
+                                DiffLineOrigin::Deletion => {
+                                    if info.new_lineno.is_none() {
+                                        lines.push(diff_line.content.trim_end().to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        lines
     }
 
     fn refresh_worktrees(&mut self) {
@@ -3104,6 +3334,12 @@ impl App {
                         line_ref,
                         ann.comment
                     ));
+
+                    if let Some(ref suggested) = ann.suggested_code {
+                        section.push_str("\n\n**Suggested replacement:**\n```\n");
+                        section.push_str(suggested);
+                        section.push_str("\n```");
+                    }
                 }
 
                 group_sections.push(section);

@@ -3,7 +3,7 @@ use crate::theme::Theme;
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
     DiffOptions, DiffState, GlobalSearchState, NavigatorState, ReviewState, SelectionState,
-    TextBuffer, WorktreeState,
+    SuggestionState, TextBuffer, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -144,6 +144,9 @@ pub struct AppState {
 
     // Bookmarks
     pub bookmarks: BookmarkState,
+
+    // Suggestion editor
+    pub suggestion: SuggestionState,
 }
 
 impl AppState {
@@ -188,6 +191,7 @@ impl AppState {
             which_key_visible: false,
             checklist: ChecklistState::new(),
             bookmarks: BookmarkState::new(),
+            suggestion: SuggestionState::default(),
         }
     }
 }

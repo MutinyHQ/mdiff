@@ -182,6 +182,11 @@ pub struct Annotation {
     pub category: AnnotationCategory,
     #[serde(default = "default_severity")]
     pub severity: AnnotationSeverity,
+    /// Optional replacement code for "suggestion" annotations.
+    /// When present, this annotation proposes replacing the anchored lines
+    /// with this code block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_code: Option<String>,
 }
 
 fn default_category() -> AnnotationCategory {
@@ -218,6 +223,21 @@ impl AnnotationState {
     ) -> bool {
         if let Some(anns) = self.annotations.get(file_path) {
             anns.iter().any(|a| a.anchor.covers(old_lineno, new_lineno))
+        } else {
+            false
+        }
+    }
+
+    /// Check if any annotation with suggested_code covers the given line numbers.
+    pub fn has_suggestion_at(
+        &self,
+        file_path: &str,
+        old_lineno: Option<u32>,
+        new_lineno: Option<u32>,
+    ) -> bool {
+        if let Some(anns) = self.annotations.get(file_path) {
+            anns.iter()
+                .any(|a| a.suggested_code.is_some() && a.anchor.covers(old_lineno, new_lineno))
         } else {
             false
         }

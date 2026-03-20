@@ -44,24 +44,41 @@ impl Component for FeedbackSummary {
                 Style::default().fg(theme.text_muted),
             )));
         } else {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {} annotations", total_ann),
-                    Style::default()
-                        .fg(theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" · "),
-                Span::styled(
-                    format!("{} scores", total_scores),
-                    Style::default().fg(theme.accent),
-                ),
-                Span::raw(" · "),
-                Span::styled(
-                    format!("{}/{} files reviewed", reviewed, total_files),
+            let suggestion_count: usize = state
+                .annotations
+                .annotations
+                .values()
+                .flat_map(|v| v.iter())
+                .filter(|a| a.suggested_code.is_some())
+                .count();
+            let comment_count = total_ann - suggestion_count;
+
+            let mut summary_spans = vec![Span::styled(
+                format!("  {} annotations", total_ann),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )];
+            if suggestion_count > 0 {
+                summary_spans.push(Span::styled(
+                    format!(
+                        " ({} comments, {} suggestions)",
+                        comment_count, suggestion_count
+                    ),
                     Style::default().fg(theme.text_muted),
-                ),
-            ]));
+                ));
+            }
+            summary_spans.push(Span::raw(" · "));
+            summary_spans.push(Span::styled(
+                format!("{} scores", total_scores),
+                Style::default().fg(theme.accent),
+            ));
+            summary_spans.push(Span::raw(" · "));
+            summary_spans.push(Span::styled(
+                format!("{}/{} files reviewed", reviewed, total_files),
+                Style::default().fg(theme.text_muted),
+            ));
+            lines.push(Line::from(summary_spans));
             lines.push(Line::from(""));
 
             if total_scores > 0 {
