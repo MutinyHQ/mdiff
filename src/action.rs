@@ -221,4 +221,10 @@ pub enum Action {
     ChecklistDown,
     ChecklistToggleItem, // Toggle current item checked/unchecked
     ChecklistAddNote,    // Open note editor for current item
+
+    // Tree navigator
+    ToggleTreeView,
+    TreeToggleCollapse,
+    TreeCollapseAll,
+    TreeExpandAll,
 }
