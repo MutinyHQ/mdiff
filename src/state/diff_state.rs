@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::display_map::build_display_map;
 use crate::git::types::FileDelta;
 use crate::highlight::HighlightSpan;
 
@@ -90,5 +91,19 @@ impl DiffState {
 
     pub fn selected_delta(&self) -> Option<&FileDelta> {
         self.selected_file.and_then(|i| self.deltas.get(i))
+    }
+
+    /// Get the source file line number at the current cursor position.
+    /// Prefers new-file line number, falls back to old-file line number.
+    pub fn current_source_line(&self) -> Option<u32> {
+        let delta = self.selected_delta()?;
+        let display_map = build_display_map(
+            delta,
+            self.options.view_mode,
+            self.display_context,
+            &self.gap_expansions,
+        );
+        let info = display_map.get(self.cursor_row)?;
+        info.new_lineno.or(info.old_lineno)
     }
 }

@@ -49,6 +49,14 @@ use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
 use crossterm::event::MouseEventKind;
 
+/// Pending request to open a file in an external editor.
+struct PendingEditorOpen {
+    path: PathBuf,
+    line: u32,
+    editor: String,
+    is_gui: bool,
+}
+
 pub struct App {
     state: AppState,
     worker: DiffWorker,
@@ -67,6 +75,7 @@ pub struct App {
     pty_runner: Option<PtyRunner>,
     last_navigator_rect: Rect,
     last_diff_view_rect: Rect,
+    pending_editor: Option<PendingEditorOpen>,
 }
 
 impl App {
@@ -128,6 +137,7 @@ impl App {
             pty_runner: None,
             last_navigator_rect: Rect::default(),
             last_diff_view_rect: Rect::default(),
+            pending_editor: None,
         }
     }
 
@@ -393,6 +403,10 @@ impl App {
                     self.state.which_key_visible = false;
                 }
                 self.update(action);
+            }
+
+            if self.pending_editor.is_some() {
+                self.execute_pending_editor(terminal);
             }
 
             if self.state.should_quit {
@@ -1895,6 +1909,10 @@ impl App {
                 self.set_status("Refreshed".to_string(), false);
             }
 
+            Action::OpenInEditor => {
+                self.prepare_open_in_editor();
+            }
+
             Action::ToggleHud => {
                 self.state.hud_expanded = !self.state.hud_expanded;
                 // 10 seconds at 50ms tick rate
@@ -2250,6 +2268,119 @@ impl App {
     fn set_status_for_ticks(&mut self, msg: String, is_error: bool, ticks: u32) {
         self.state.status_message = Some((msg, is_error));
         self.status_clear_countdown = ticks;
+    }
+
+    fn prepare_open_in_editor(&mut self) {
+        let Some(delta) = self.state.diff.selected_delta() else {
+            return;
+        };
+
+        if delta.binary {
+            self.set_status("Cannot open binary file in editor".to_string(), true);
+            return;
+        }
+
+        let file_path = delta.path.clone();
+        let abs_path = self.repo_path.join(&file_path);
+
+        if delta.status == crate::git::types::FileStatus::Deleted && !abs_path.exists() {
+            self.set_status("File no longer exists on disk".to_string(), true);
+            return;
+        }
+
+        let line = self.state.diff.current_source_line().unwrap_or(1);
+
+        let editor = std::env::var("VISUAL")
+            .or_else(|_| std::env::var("EDITOR"))
+            .unwrap_or_else(|_| "vi".to_string());
+
+        let editor_name = resolve_editor_name(&editor);
+        let is_gui = is_gui_editor(&editor_name);
+
+        self.pending_editor = Some(PendingEditorOpen {
+            path: abs_path,
+            line,
+            editor,
+            is_gui,
+        });
+    }
+
+    fn execute_pending_editor(&mut self, terminal: &mut Tui) {
+        let Some(pending) = self.pending_editor.take() else {
+            return;
+        };
+
+        let path_display = pending
+            .path
+            .strip_prefix(&self.repo_path)
+            .unwrap_or(&pending.path)
+            .display()
+            .to_string();
+
+        let editor_name = resolve_editor_name(&pending.editor);
+        let mut cmd = build_editor_command(&pending.editor, &pending.path, pending.line);
+
+        if pending.is_gui {
+            match cmd.spawn() {
+                Ok(_) => {
+                    self.set_status(
+                        format!(
+                            "Opened {}:{} in {}",
+                            path_display, pending.line, editor_name
+                        ),
+                        false,
+                    );
+                }
+                Err(e) => {
+                    self.set_status(format!("Failed to open editor: {e}"), true);
+                }
+            }
+        } else {
+            let _ = crossterm::terminal::disable_raw_mode();
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::terminal::LeaveAlternateScreen,
+                crossterm::event::DisableMouseCapture,
+                crossterm::event::DisableBracketedPaste
+            );
+
+            let status = cmd.status();
+
+            let _ = crossterm::terminal::enable_raw_mode();
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::terminal::EnterAlternateScreen,
+                crossterm::event::EnableMouseCapture,
+                crossterm::event::EnableBracketedPaste
+            );
+            let _ = terminal.clear();
+
+            match status {
+                Ok(s) if s.success() => {
+                    self.set_status(
+                        format!(
+                            "Opened {}:{} in {}",
+                            path_display, pending.line, editor_name
+                        ),
+                        false,
+                    );
+                }
+                Ok(s) => {
+                    self.set_status(
+                        format!(
+                            "Editor exited with {}",
+                            s.code().map_or("signal".to_string(), |c| c.to_string())
+                        ),
+                        true,
+                    );
+                }
+                Err(e) => {
+                    self.set_status(format!("Failed to open editor: {e}"), true);
+                }
+            }
+
+            self.request_diff();
+        }
     }
 
     /// Validate a ref string against the repo. Returns the ComparisonTarget and a display label.
@@ -2872,4 +3003,47 @@ pub fn parse_target(target: Option<&str>) -> ComparisonTarget {
             ComparisonTarget::Branch(s.to_string())
         }
     }
+}
+
+fn resolve_editor_name(editor: &str) -> String {
+    let first_token = editor.split_whitespace().next().unwrap_or(editor);
+    std::path::Path::new(first_token)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(first_token)
+        .to_string()
+}
+
+fn is_gui_editor(editor_name: &str) -> bool {
+    matches!(
+        editor_name,
+        "code" | "code-insiders" | "subl" | "sublime_text" | "atom" | "zed"
+    )
+}
+
+fn build_editor_command(editor: &str, file: &std::path::Path, line: u32) -> std::process::Command {
+    let parts: Vec<&str> = editor.split_whitespace().collect();
+    let program = parts.first().copied().unwrap_or(editor);
+    let editor_name = resolve_editor_name(editor);
+
+    let mut cmd = std::process::Command::new(program);
+    for arg in &parts[1..] {
+        cmd.arg(arg);
+    }
+
+    let file_str = file.to_string_lossy();
+
+    match editor_name.as_str() {
+        "code" | "code-insiders" => {
+            cmd.arg("--goto").arg(format!("{file_str}:{line}"));
+        }
+        "subl" | "sublime_text" => {
+            cmd.arg(format!("{file_str}:{line}"));
+        }
+        _ => {
+            cmd.arg(format!("+{line}")).arg(file.as_os_str());
+        }
+    }
+
+    cmd
 }

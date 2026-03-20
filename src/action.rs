@@ -180,6 +180,9 @@ pub enum Action {
     // Refresh
     RefreshDiff,
 
+    // Open in editor
+    OpenInEditor,
+
     // HUD
     #[allow(dead_code)]
     ToggleHud,

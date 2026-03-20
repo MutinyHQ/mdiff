@@ -591,6 +591,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
             KeyCode::Char(' ') => Some(Action::ExpandContext),
+            KeyCode::Char('e') => Some(Action::OpenInEditor),
             KeyCode::Char('v') | KeyCode::Char('V') => Some(Action::EnterVisualMode),
             KeyCode::Char('i') => Some(Action::OpenCommentEditor),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
