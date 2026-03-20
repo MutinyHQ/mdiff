@@ -9,6 +9,7 @@ use ratatui::{
 use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::AppState;
 
+#[derive(Clone)]
 struct KeyEntry {
     key: &'static str,
     description: &'static str,
@@ -125,7 +126,13 @@ fn get_context_title(state: &AppState) -> &'static str {
         ActiveView::AgentOutputs => "Agent Outputs",
         ActiveView::FeedbackSummary => "Feedback Summary",
         ActiveView::DiffExplorer => match state.focus {
-            FocusPanel::Navigator => "Navigator",
+            FocusPanel::Navigator => {
+                if state.navigator.tree_mode {
+                    "Navigator (Tree)"
+                } else {
+                    "Navigator"
+                }
+            }
             FocusPanel::DiffView => "Diff View",
         },
     }
@@ -229,88 +236,119 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
             },
         ],
         ActiveView::DiffExplorer => match state.focus {
-            FocusPanel::Navigator => vec![
-                KeyEntry {
-                    key: "j/k",
-                    description: "Navigate files",
-                },
-                KeyEntry {
-                    key: "g/G",
-                    description: "Top/bottom",
-                },
-                KeyEntry {
-                    key: "l/Enter",
-                    description: "Focus diff",
-                },
-                KeyEntry {
-                    key: "/",
-                    description: "Search files",
-                },
-                KeyEntry {
-                    key: "m",
-                    description: "Mark reviewed",
-                },
-                KeyEntry {
-                    key: "n",
-                    description: "Next unreviewed",
-                },
-                KeyEntry {
-                    key: "s",
-                    description: "Stage file",
-                },
-                KeyEntry {
-                    key: "u",
-                    description: "Unstage file",
-                },
-                KeyEntry {
-                    key: "r",
-                    description: "Restore file",
-                },
-                KeyEntry {
-                    key: "c",
-                    description: "Commit",
-                },
-                KeyEntry {
-                    key: "t",
-                    description: "Change target",
-                },
-                KeyEntry {
-                    key: "o",
-                    description: "Agent outputs",
-                },
-                KeyEntry {
-                    key: "Ctrl+W",
-                    description: "Worktrees",
-                },
-                KeyEntry {
-                    key: "Ctrl+A",
-                    description: "Agent selector",
-                },
-                KeyEntry {
-                    key: "Ctrl+E",
-                    description: "Export feedback",
-                },
-                KeyEntry {
-                    key: "Tab",
-                    description: "Split/unified",
-                },
-                KeyEntry {
-                    key: "R",
-                    description: "Refresh",
-                },
-                KeyEntry {
-                    key: ":",
-                    description: "Settings",
-                },
-                KeyEntry {
-                    key: "?",
-                    description: "This help",
-                },
-                KeyEntry {
-                    key: "Ctrl+C/D",
-                    description: "Quit",
-                },
-            ],
+            FocusPanel::Navigator => {
+                let mut entries = vec![
+                    KeyEntry {
+                        key: "j/k",
+                        description: "Navigate files",
+                    },
+                    KeyEntry {
+                        key: "g/G",
+                        description: "Top/bottom",
+                    },
+                    KeyEntry {
+                        key: "l/Enter",
+                        description: if state.navigator.tree_mode {
+                            "Expand/select"
+                        } else {
+                            "Focus diff"
+                        },
+                    },
+                    KeyEntry {
+                        key: "/",
+                        description: "Search files",
+                    },
+                    KeyEntry {
+                        key: "m",
+                        description: "Mark reviewed",
+                    },
+                    KeyEntry {
+                        key: "n",
+                        description: "Next unreviewed",
+                    },
+                    KeyEntry {
+                        key: "T",
+                        description: if state.navigator.tree_mode {
+                            "Flat view"
+                        } else {
+                            "Tree view"
+                        },
+                    },
+                ];
+                if state.navigator.tree_mode {
+                    entries.push(KeyEntry {
+                        key: "h",
+                        description: "Collapse dir",
+                    });
+                    entries.push(KeyEntry {
+                        key: "zM",
+                        description: "Collapse all",
+                    });
+                    entries.push(KeyEntry {
+                        key: "zR",
+                        description: "Expand all",
+                    });
+                }
+                entries.extend_from_slice(&[
+                    KeyEntry {
+                        key: "s",
+                        description: "Stage file",
+                    },
+                    KeyEntry {
+                        key: "u",
+                        description: "Unstage file",
+                    },
+                    KeyEntry {
+                        key: "r",
+                        description: "Restore file",
+                    },
+                    KeyEntry {
+                        key: "c",
+                        description: "Commit",
+                    },
+                    KeyEntry {
+                        key: "t",
+                        description: "Change target",
+                    },
+                    KeyEntry {
+                        key: "o",
+                        description: "Agent outputs",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+W",
+                        description: "Worktrees",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+A",
+                        description: "Agent selector",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+E",
+                        description: "Export feedback",
+                    },
+                    KeyEntry {
+                        key: "Tab",
+                        description: "Split/unified",
+                    },
+                    KeyEntry {
+                        key: "R",
+                        description: "Refresh",
+                    },
+                    KeyEntry {
+                        key: ":",
+                        description: "Settings",
+                    },
+                    KeyEntry {
+                        key: "?",
+                        description: "This help",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+C/D",
+                        description: "Quit",
+                    },
+                ]);
+                entries
+            }
             FocusPanel::DiffView => vec![
                 KeyEntry {
                     key: "j/k",
