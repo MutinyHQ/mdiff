@@ -1,5 +1,81 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-20 (Run #11)
+
+### Research Findings
+- **critique v0.1.129** (1,091 stars): Responsive split view pattern — auto-switches to unified on narrow terminals. Validates new P2 Responsive Layout Mode idea.
+- **Horizon (Rust, 221 stars)**: GPU-accelerated terminal board with infinite 2D canvas, minimap, workspaces, and first-class AI agent integration (dedicated Claude Code/Codex panels). Trending March 2026. Minimap pattern validates existing P2 Inline Diff Minimap idea.
+- **NTM (Go)**: Named Tmux Manager for orchestrating multiple coding agents with conflict detection. Validates multi-agent review workflow.
+- **HubSpot Sidekick**: AI code review with 80% engineer approval rate and 90% faster time-to-first-feedback. Human approve/reject of AI review comments is an emerging implicit RLHF signal — directly validates mdiff's annotation system as structured feedback data source.
+- **CodeRabbit (2M+ repos)**: Line-by-line review with 1-click commit to apply fixes. Accept/reject/modify interaction loop generates implicit human preference data. Directly inspired the Quick Apply Suggestion spec (025).
+- **Robin Wieruch's agentic review pattern**: Documenting project patterns/anti-patterns in structured files, then AI reviews against them. Validates existing P2 Custom Review Rubric File idea.
+- **fzf v0.70.0**: 1.3-1.9x filtering performance improvements. Perceived speed is critical UX factor — inspired P2 Lazy Virtual Scrolling idea.
+- **lazygit custom commands**: YAML-configured prompts with templated commands. Extensibility pattern for TUI tools.
+- **GitHub March 2026 agentic workflows**: Configurable validation tools and complete audit logs for AI code review. Infrastructure for structured feedback at scale.
+- **"Visual confirmation before commit" pattern**: Developers explicitly building 4-pane terminal layouts (Claude Code + dev server + browser + lazygit) to review agent output before committing. Strongest ongoing validation of mdiff's core purpose.
+- **Code review bottleneck**: AI agents produce 200%+ more code per engineer, creating urgent demand for scalable review feedback mechanisms.
+
+### Critical Fix: ROADMAP.md Corruption
+Discovered that the ROADMAP.md file on `main` had been accidentally overwritten with a sandbox path reference (`sandbox:///home/user/session/roadmap_updated.md`) during Run #10's commit. The file went from 449 lines to 1 line in commit `ae3e7f4`. Recovered the full content from the commit diff, applied all updates from this run, and restored the file in commit `9aa607c`.
+
+### Open Issues Reviewed (5 open — unchanged)
+| Issue | Category | Priority | Status | Action |
+|-------|----------|----------|--------|--------|
+| #53 | Feature | P1 | Open — filed by repo owner | Spec 020 exists, Cursor agent LAUNCHED (run #11) |
+| #52 | Feature | P1 | Open — filed by repo owner | Spec 021 exists, not in this run's top 3 |
+| #37 | Feature | P1 | Open (PR #45 merged) | Should be closed manually |
+| #35 | Bug | P0 | Open (PR #51 merged) | Should be closed manually |
+| #25 | Bug | P0 | Open (PR #50 merged) | Should be closed manually |
+
+**No new issues filed since last run.** Issues #25, #35, and #37 continue to need manual closure by repo owner — fixes have been merged for 8+ days now.
+
+### Ideas Evaluated
+| Idea | Source | Priority | Verdict |
+|------|--------|----------|---------|
+| Quick Apply Suggestion (Ctrl+A) | CodeRabbit 1-click apply, GitHub commit suggestion | P1 (new) | **ADDED** — spec 025, write suggestion to working tree file |
+| Responsive Layout Mode | critique responsive split view | P2 (new) | **ADDED** — auto-switch split/unified based on terminal width |
+| Lazy Virtual Scrolling for Large Diffs | fzf performance, Horizon | P2 (new) | **ADDED** — viewport-based rendering for 1000+ line diffs |
+| Review Confidence Self-Assessment | Anthropic confidence scoring, HubSpot Sidekick | P3 (new) | **ADDED** — per-file confidence score (1-5) in feedback export |
+| Agent Instruction Export (.claude.md patches) | CLAUDE.md ecosystem, Robin Wieruch | Deferred | Interesting but overlaps with existing Annotation Export to GH PR Comments — revisit later |
+| Configurable Custom Commands (YAML) | lazygit custom commands | Deferred | Nice extensibility but low priority vs core features |
+| Audit Log of Review Actions | GitHub agentic workflow audit logs | Deferred | Useful for compliance but not core reviewer experience |
+
+### Specs Written
+One new spec this cycle:
+1. `.github/specs/025-quick-apply-suggestion.md` — One-key apply of annotation suggestions to the working tree file. Ctrl+A trigger, confirmation dialog, auto-refresh, undo via Ctrl+Z. Depends on Annotation Suggestions (spec 023).
+
+### PRs & Agents
+**Open PRs:**
+- PR #54 (chore: release v0.1.19) — release automation PR, version bump only. Reviewed; no action needed. Now includes commits from this run (spec 025, ROADMAP restore).
+
+**Cursor agents LAUNCHED SUCCESSFULLY (first successful launch since Run #5 on 2026-03-13):**
+- `bc-f6fc2377` — File Tree Navigator (spec 020, Issue #53) — Status: CREATING, branch: `cursor/file-tree-navigator-1977`
+- `bc-85ef5215` — Annotation Suggestions (spec 023) — Status: RUNNING, branch: `cursor/annotation-code-suggestions-5251`
+- `bc-34758cf7` — Open-in-Editor (spec 024) — Status: CREATING, branch: `cursor/external-editor-support-4507`
+
+This is a major breakthrough — Cursor agents had been blocked for 8 consecutive runs (runs #3 through #10) due to model unavailability. All 3 agents were created without model specification errors this run.
+
+**Previous agent results:** All mdiff Cursor agents from earlier runs are FINISHED. No stale agents.
+
+### Mockups Generated
+- [File Tree Navigator mockup](https://www.town.com/content/image/sd76dnfmbnns8w8ap2dv0fjd1x838e6c) — Collapsible directory tree with box-drawing indent guides and aggregate stats
+- [Annotation Suggestions mockup](https://www.town.com/content/image/sd73kzhg1nmmj3csw6k6yc0gnn838k2r) — Two-pane code suggestion editor overlay
+- [Quick Apply Suggestion mockup](https://www.town.com/content/image/sd7544zk6fxth9x01qq1rwe2hd839szr) — Confirmation dialog with apply/cancel and applied indicator
+
+### Roadmap Updates
+- **CRITICAL FIX**: Restored ROADMAP.md from corruption (commit `9aa607c`)
+- **NEW P1**: Quick Apply Suggestion (`Ctrl+A`) — spec 025
+- **NEW P2**: Responsive Layout Mode — auto-switch split/unified based on terminal width
+- **NEW P2**: Lazy Virtual Scrolling for Large Diffs — viewport-based rendering
+- **NEW P3**: Review Confidence Self-Assessment — per-file confidence score (1-5)
+- Added Plannotator, Horizon, NTM to competitive landscape
+- Updated changelog with 2026-03-20 entry
+
+### Key Insight This Cycle
+The Cursor agent infrastructure blockage has finally been resolved — after 8 consecutive runs of model unavailability, all 3 agents launched successfully this run. One agent ("Annotation code suggestions") reached RUNNING status within seconds. This means the implementation backlog that has been accumulating (specs 019-025) can finally start being worked through. The top 3 picks for this cycle (File Tree Navigator, Annotation Suggestions, Open-in-Editor) are all high-impact P1 features that have been waiting for implementation.
+
+The Quick Apply Suggestion spec (025) completes a three-feature pipeline: Annotation Suggestions (023) lets reviewers propose code -> Quick Apply (025) writes it to disk -> the diff auto-refreshes. This review-suggest-apply-refresh loop is the most complete structured feedback cycle in any TUI diff viewer.
+
 ## 2026-03-20 (Run #10)
 
 ### Research Findings
@@ -268,3 +344,4 @@ Cursor agents blocked — 2nd consecutive run with model unavailability.
 - Initial roadmap created
 - Opened PRs for P0 items #1, #2, #3
 - Competitive analysis of critique, tuicr, acre, Kaleidoscope, lazygit, fzf
+- Researched RLHF/human feedback patterns for annotation design
