@@ -275,6 +275,13 @@ impl App {
                 if self.state.global_search.active {
                     render_global_search_bar(frame, &self.state);
                 }
+                if self.state.export_format_picker_open {
+                    crate::components::export_picker::render_export_picker(
+                        frame,
+                        frame.area(),
+                        &self.state,
+                    );
+                }
                 which_key::render_which_key(frame, frame.area(), &self.state);
             })?;
 
@@ -317,6 +324,7 @@ impl App {
                     which_key_visible: self.state.which_key_visible,
                     tree_mode: self.state.navigator.tree_mode,
                     tree_z_pending: self.tree_z_pending,
+                    export_format_picker_open: self.state.export_format_picker_open,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -339,6 +347,7 @@ impl App {
                             || ctx.annotation_menu_open
                             || ctx.restore_confirm_open
                             || ctx.settings_open
+                            || ctx.export_format_picker_open
                             || ctx.search_active
                             || ctx.diff_search_active
                         {
@@ -2135,6 +2144,79 @@ impl App {
                 ) {
                     Ok(path) => {
                         self.set_status(format!("Exported to {}", path.display()), false);
+                    }
+                    Err(e) => {
+                        self.set_status(format!("Export failed: {e}"), true);
+                    }
+                }
+            }
+            Action::OpenExportFormatPicker => {
+                if self.state.annotations.count() == 0 && self.state.annotations.score_count() == 0
+                {
+                    self.set_status("No annotations to export".to_string(), true);
+                } else {
+                    self.state.export_format_picker_open = true;
+                }
+            }
+            Action::CancelExportFormatPicker => {
+                self.state.export_format_picker_open = false;
+            }
+            Action::SelectExportFormat(format) => {
+                self.state.export_format_picker_open = false;
+                crate::export::ensure_gitignore(&self.repo_path);
+                match crate::export::export_with_format(
+                    &self.state,
+                    &self.repo_path,
+                    &self.state.target_label,
+                    format,
+                ) {
+                    Ok(crate::export::ExportResult::File(path)) => {
+                        self.set_status(
+                            format!("Exported {} to {}", format.label(), path.display()),
+                            false,
+                        );
+                    }
+                    Ok(crate::export::ExportResult::Text(text)) => {
+                        match arboard::Clipboard::new() {
+                            Ok(mut clipboard) => {
+                                let _ = clipboard.set_text(&text);
+                                self.set_status(
+                                    format!(
+                                        "{} copied to clipboard ({} chars)",
+                                        format.label(),
+                                        text.len()
+                                    ),
+                                    false,
+                                );
+                            }
+                            Err(_) => {
+                                // Clipboard unavailable — write to file instead
+                                match crate::export::export_with_format(
+                                    &self.state,
+                                    &self.repo_path,
+                                    &self.state.target_label,
+                                    crate::export::ExportFormat::Json,
+                                ) {
+                                    Ok(crate::export::ExportResult::File(path)) => {
+                                        self.set_status(
+                                            format!(
+                                                "Clipboard unavailable. {} saved to {}",
+                                                format.label(),
+                                                path.display()
+                                            ),
+                                            false,
+                                        );
+                                    }
+                                    _ => {
+                                        self.set_status(
+                                            "Clipboard unavailable and file export failed"
+                                                .to_string(),
+                                            true,
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         self.set_status(format!("Export failed: {e}"), true);

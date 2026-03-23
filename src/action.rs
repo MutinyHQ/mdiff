@@ -202,8 +202,12 @@ pub enum Action {
     FeedbackSummaryCopyJson,
     FeedbackSummaryCopyPrompt,
 
-    // Feedback export
+    // Feedback export (legacy direct JSON export, now accessed via format picker)
+    #[allow(dead_code)]
     ExportFeedback,
+    OpenExportFormatPicker,
+    SelectExportFormat(crate::export::ExportFormat),
+    CancelExportFormatPicker,
 
     // Generic text input navigation
     TextCursorLeft,

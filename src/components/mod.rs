@@ -8,6 +8,7 @@ pub mod comment_editor;
 pub mod commit_dialog;
 pub mod context_bar;
 pub mod diff_view;
+pub mod export_picker;
 pub mod feedback_summary;
 pub mod global_search_bar;
 pub mod navigator;

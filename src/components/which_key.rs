@@ -324,7 +324,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     },
                     KeyEntry {
                         key: "Ctrl+E",
-                        description: "Export feedback",
+                        description: "Export (format picker)",
                     },
                     KeyEntry {
                         key: "Tab",
@@ -432,7 +432,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 },
                 KeyEntry {
                     key: "Ctrl+E",
-                    description: "Export feedback",
+                    description: "Export (format picker)",
                 },
                 KeyEntry {
                     key: "?",

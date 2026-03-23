@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::action::Action;
 use crate::action::QuitCombo;
+use crate::export::ExportFormat;
 use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
 use crate::state::app_state::{ActiveView, CategoryPickerPhase, FocusPanel};
 use crate::state::navigator_state::NavigatorEntry;
@@ -110,6 +111,7 @@ pub struct KeyContext {
     pub which_key_visible: bool,
     pub tree_mode: bool,
     pub tree_z_pending: bool,
+    pub export_format_picker_open: bool,
 }
 
 /// Context for mouse event mapping.
@@ -281,6 +283,29 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 };
             }
         }
+    }
+
+    // Priority 2.05: Export format picker
+    if ctx.export_format_picker_open {
+        return match key.code {
+            KeyCode::Char('J') | KeyCode::Char('j') => {
+                Some(Action::SelectExportFormat(ExportFormat::Json))
+            }
+            KeyCode::Char('M') | KeyCode::Char('m') => {
+                Some(Action::SelectExportFormat(ExportFormat::Markdown))
+            }
+            KeyCode::Char('A') | KeyCode::Char('a') => {
+                Some(Action::SelectExportFormat(ExportFormat::AgentGuidance))
+            }
+            KeyCode::Char('C') | KeyCode::Char('c') => {
+                Some(Action::SelectExportFormat(ExportFormat::ClaudeMd))
+            }
+            KeyCode::Char('G') | KeyCode::Char('g') => {
+                Some(Action::SelectExportFormat(ExportFormat::GitTrailers))
+            }
+            KeyCode::Esc => Some(Action::CancelExportFormatPicker),
+            _ => None,
+        };
     }
 
     // Priority 2: Comment editor mode
@@ -460,7 +485,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             return Some(Action::StartGlobalSearch)
         }
         KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            return Some(Action::ExportFeedback)
+            return Some(Action::OpenExportFormatPicker)
         }
         _ => {}
     }
@@ -692,6 +717,7 @@ mod tests {
             which_key_visible: false,
             tree_mode: false,
             tree_z_pending: false,
+            export_format_picker_open: false,
         }
     }
 

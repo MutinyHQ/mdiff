@@ -138,6 +138,9 @@ pub struct AppState {
     // Feedback summary
     pub feedback_summary_scroll: usize,
 
+    // Export format picker
+    pub export_format_picker_open: bool,
+
     // Checklist
     pub checklist: ChecklistState,
 }
@@ -181,6 +184,7 @@ impl AppState {
             settings: SettingsState::default(),
             global_search: GlobalSearchState::default(),
             feedback_summary_scroll: 0,
+            export_format_picker_open: false,
             which_key_visible: false,
             checklist: ChecklistState::new(),
         }
