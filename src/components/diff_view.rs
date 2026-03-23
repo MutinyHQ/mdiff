@@ -187,6 +187,18 @@ fn has_annotation(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo
         .has_annotation_at(&file_path, row_info.old_lineno, row_info.new_lineno)
 }
 
+/// Check if a line has a bookmark marker in the gutter, returning the optional label.
+fn bookmark_label(
+    state: &AppState,
+    delta: &FileDelta,
+    row_info: &DisplayRowInfo,
+) -> Option<Option<char>> {
+    let file_path = delta.path.to_string_lossy();
+    state
+        .bookmarks
+        .label_at(&file_path, row_info.old_lineno, row_info.new_lineno)
+}
+
 /// Get the score at a line position, if any.
 fn get_score(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> Option<u8> {
     let file_path = delta.path.to_string_lossy();
@@ -493,8 +505,11 @@ fn build_split_lines_core<'a>(
                         let score = display_map
                             .get(display_row)
                             .and_then(|info| get_score(state, delta, info));
+                        let bm_label = display_map
+                            .get(display_row)
+                            .and_then(|info| bookmark_label(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
                         ));
 
                         let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
@@ -584,8 +599,11 @@ fn build_split_lines_core<'a>(
                             let score = display_map
                                 .get(display_row)
                                 .and_then(|info| get_score(state, delta, info));
+                            let bm_label = display_map
+                                .get(display_row)
+                                .and_then(|info| bookmark_label(state, delta, info));
                             center.push(make_center_gutter_line(
-                                &gutter_l, &gutter_r, marker, hl, theme, score,
+                                &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
                             ));
 
                             if j < dels.len() {
@@ -631,8 +649,11 @@ fn build_split_lines_core<'a>(
                         let score = display_map
                             .get(display_row)
                             .and_then(|info| get_score(state, delta, info));
+                        let bm_label = display_map
+                            .get(display_row)
+                            .and_then(|info| bookmark_label(state, delta, info));
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
                         ));
 
                         left.push(make_empty_content_line(hl, theme));
@@ -724,6 +745,9 @@ fn build_unified_lines_core<'a>(
                     let score = display_map
                         .get(display_row)
                         .and_then(|info| get_score(state, delta, info));
+                    let bm_label = display_map
+                        .get(display_row)
+                        .and_then(|info| bookmark_label(state, delta, info));
 
                     let (old_g, new_g) = (
                         format_lineno(line.old_lineno, gutter_width),
@@ -743,6 +767,7 @@ fn build_unified_lines_core<'a>(
                                 hl,
                                 ann_marker,
                                 score,
+                                bm_label,
                                 theme,
                             ));
                         }
@@ -759,6 +784,7 @@ fn build_unified_lines_core<'a>(
                                 hl,
                                 ann_marker,
                                 score,
+                                bm_label,
                                 theme,
                             ));
                         }
@@ -775,6 +801,7 @@ fn build_unified_lines_core<'a>(
                                 hl,
                                 ann_marker,
                                 score,
+                                bm_label,
                                 theme,
                             ));
                         }
@@ -887,6 +914,7 @@ fn apply_highlights<'a>(
 }
 
 /// Build a center gutter line for split view: "{old:>5} {new:>5}{marker}"
+#[allow(clippy::too_many_arguments)]
 fn make_center_gutter_line<'a>(
     gutter_l: &str,
     gutter_r: &str,
@@ -894,6 +922,7 @@ fn make_center_gutter_line<'a>(
     hl: RowHighlight,
     theme: &Theme,
     score: Option<u8>,
+    bm_label: Option<Option<char>>,
 ) -> Line<'a> {
     let mut spans = Vec::new();
 
@@ -901,6 +930,20 @@ fn make_center_gutter_line<'a>(
     if let Some(s) = score {
         let dot_style = Style::default().fg(score_color(s));
         spans.push(Span::styled("●", dot_style));
+    }
+
+    // Add bookmark diamond if present
+    if let Some(label) = bm_label {
+        let diamond = if let Some(c) = label {
+            format!("\u{25c6}{c}")
+        } else {
+            "\u{25c6}".to_string()
+        };
+        let mut bm_style = Style::default().fg(theme.accent);
+        if let Some(bg) = hl.gutter_bg {
+            bm_style = bm_style.bg(bg);
+        }
+        spans.push(Span::styled(diamond, bm_style));
     }
 
     let text = format!("{gutter_l} {gutter_r}{marker}");
@@ -976,6 +1019,7 @@ fn make_unified_highlighted<'a>(
     hl: RowHighlight,
     ann_marker: bool,
     score: Option<u8>,
+    bm_label: Option<Option<char>>,
     theme: &Theme,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
@@ -996,6 +1040,18 @@ fn make_unified_highlighted<'a>(
     let mut all_spans = Vec::new();
     if let Some(s) = score {
         all_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+    }
+    if let Some(label) = bm_label {
+        let diamond = if let Some(c) = label {
+            format!("\u{25c6}{c}")
+        } else {
+            "\u{25c6}".to_string()
+        };
+        let mut bm_style = Style::default().fg(theme.accent);
+        if let Some(bg) = hl.gutter_bg {
+            bm_style = bm_style.bg(bg);
+        }
+        all_spans.push(Span::styled(diamond, bm_style));
     }
     let gutter_span = Span::styled(format!("{old_g} {new_g}{marker}"), gutter_style);
     all_spans.push(gutter_span);

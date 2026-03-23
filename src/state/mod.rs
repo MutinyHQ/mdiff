@@ -1,6 +1,7 @@
 pub mod agent_state;
 pub mod annotation_state;
 pub mod app_state;
+pub mod bookmark_state;
 pub mod checklist_state;
 pub mod diff_state;
 pub mod navigator_state;
@@ -14,6 +15,7 @@ pub mod worktree_state;
 pub use agent_state::{AgentOutputsState, AgentSelectorState};
 pub use annotation_state::AnnotationState;
 pub use app_state::AppState;
+pub use bookmark_state::BookmarkState;
 pub use checklist_state::{ChecklistItem, ChecklistState};
 pub use diff_state::{DiffOptions, DiffState, DiffViewMode};
 pub use navigator_state::NavigatorState;

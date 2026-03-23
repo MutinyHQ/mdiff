@@ -230,4 +230,16 @@ pub enum Action {
     TreeToggleCollapse,
     TreeCollapseAll,
     TreeExpandAll,
+
+    // Bookmarks
+    ToggleBookmark,
+    ToggleBookmarkList,
+    NextBookmark,
+    PrevBookmark,
+    SetNamedBookmark(char),
+    JumpToNamedBookmark(char),
+    BookmarkListUp,
+    BookmarkListDown,
+    BookmarkListSelect,
+    BookmarkListDelete,
 }

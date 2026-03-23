@@ -107,9 +107,13 @@ pub struct KeyContext {
     pub active_view: ActiveView,
     pub pty_focus: bool,
     pub checklist_panel_open: bool,
+    pub bookmark_list_open: bool,
     pub which_key_visible: bool,
     pub tree_mode: bool,
     pub tree_z_pending: bool,
+    pub bracket_pending: Option<char>,
+    pub mark_pending: bool,
+    pub jump_mark_pending: bool,
 }
 
 /// Context for mouse event mapping.
@@ -321,6 +325,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 2.35: Bookmark list panel navigation
+    if ctx.bookmark_list_open {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::BookmarkListDown),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::BookmarkListUp),
+            KeyCode::Enter => Some(Action::BookmarkListSelect),
+            KeyCode::Char('d') => Some(Action::BookmarkListDelete),
+            KeyCode::Esc => Some(Action::ToggleBookmarkList),
+            _ => None,
+        };
+    }
+
     // Priority 2.4: Checklist panel navigation
     if ctx.checklist_panel_open {
         return match key.code {
@@ -465,18 +481,51 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         _ => {}
     }
 
-    // Annotation navigation moved to Ctrl modifier, hunk nav on bare keys
-    if ctx.active_view == ActiveView::DiffExplorer {
-        if key.modifiers.contains(KeyModifiers::CONTROL) {
-            match key.code {
-                KeyCode::Char(']') => return Some(Action::NextAnnotation),
-                KeyCode::Char('[') => return Some(Action::PrevAnnotation),
-                _ => {}
-            }
+    // Priority 4.1: Pending bracket sequence (]b / [b for bookmark nav)
+    if let Some(bracket) = ctx.bracket_pending {
+        if ctx.active_view == ActiveView::DiffExplorer {
+            return match key.code {
+                KeyCode::Char('b') => {
+                    if bracket == ']' {
+                        Some(Action::NextBookmark)
+                    } else {
+                        Some(Action::PrevBookmark)
+                    }
+                }
+                _ => {
+                    if bracket == ']' {
+                        Some(Action::JumpNextHunk)
+                    } else {
+                        Some(Action::JumpPrevHunk)
+                    }
+                }
+            };
         }
+    }
+
+    // Priority 4.2: Pending mark / jump-to-mark (m + letter / ' + letter)
+    if ctx.mark_pending {
+        return match key.code {
+            KeyCode::Char(c) if c.is_ascii_lowercase() => Some(Action::SetNamedBookmark(c)),
+            _ => None,
+        };
+    }
+    if ctx.jump_mark_pending {
+        return match key.code {
+            KeyCode::Char(c) if c.is_ascii_lowercase() => Some(Action::JumpToNamedBookmark(c)),
+            _ => None,
+        };
+    }
+
+    // Annotation navigation: Ctrl+]/[ for annotations.
+    // Bare ] and [ enter bracket-pending state (handled in app.rs) so ]b / [b
+    // can trigger bookmark navigation; the pending logic emits JumpNextHunk /
+    // JumpPrevHunk on the next keypress if it's not 'b'.
+    if ctx.active_view == ActiveView::DiffExplorer && key.modifiers.contains(KeyModifiers::CONTROL)
+    {
         match key.code {
-            KeyCode::Char(']') => return Some(Action::JumpNextHunk),
-            KeyCode::Char('[') => return Some(Action::JumpPrevHunk),
+            KeyCode::Char(']') => return Some(Action::NextAnnotation),
+            KeyCode::Char('[') => return Some(Action::PrevAnnotation),
             _ => {}
         }
     }
@@ -617,6 +666,8 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('e') => Some(Action::OpenInEditor),
             KeyCode::Char('v') | KeyCode::Char('V') => Some(Action::EnterVisualMode),
             KeyCode::Char('i') => Some(Action::OpenCommentEditor),
+            KeyCode::Char('b') => Some(Action::ToggleBookmark),
+            KeyCode::Char('B') => Some(Action::ToggleBookmarkList),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
@@ -690,9 +741,13 @@ mod tests {
             active_view: ActiveView::DiffExplorer,
             pty_focus: false,
             checklist_panel_open: false,
+            bookmark_list_open: false,
             which_key_visible: false,
             tree_mode: false,
             tree_z_pending: false,
+            bracket_pending: None,
+            mark_pending: false,
+            jump_mark_pending: false,
         }
     }
 
