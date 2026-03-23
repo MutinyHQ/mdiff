@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/MutinyHQ/mdiff/compare/v0.1.18...v0.1.19) - 2026-03-23
+
+### Added
+
+- add file tree navigator with collapsible directory hierarchy
+
+### Other
+
+- Merge pull request #60 from MutinyHQ/cursor/review-session-bookmarks-d848
+- add Run #12 entry (2026-03-23) — specs 026-028, Cursor agents launched, ROADMAP fix, PR reviews
+- restore from corruption + add P1 Agent Attribution Labels/Agent Guidance Export, P2 Bookmarks/Commit Split/Terminal Compat/Sync Output, P3 Quality Indicators/Git Notes, 2026-03-23 changelog
+- add 028-review-session-bookmarks for quick line markers during review
+- add 027-agent-guidance-export for structured feedback as agent instructions
+- add 026-agent-attribution-labels for hunk-level agent session markers
+- restore from corruption + add P1 Quick Apply Suggestion, P2 Responsive Layout/Lazy Scrolling, P3 Review Confidence, new competitors (Plannotator, Horizon, NTM), 2026-03-20 changelog
+- add 025 quick apply suggestion (write suggestion to working tree)
+- add run #10 entry — Plannotator discovery, 2 new specs (023, 024), Cursor agents blocked 7th run
+- add P1 Annotation Suggestions + Open-in-Editor, new competitors, 2026-03-20 changelog
+- add 024 open-in-editor at line
+- add 023 annotation suggestions (inline code proposals)
+- add 2026-03-19 entry — ftdv competitive discovery, 3 new roadmap ideas (Pluggable Backends, Diff Chunking, Review Passes), Cursor agents blocked 5th run, mockups generated
+- update for 2026-03-19 — new P2 items (Pluggable Diff Backend, Diff Chunking), new P3 (Specialized Review Passes), ftdv/keifu/cmux/dead-ringer competitive entries, code review research (400-line threshold)
+- add 2026-03-18 entry — spec 022 (Review Progress Bar), 6 new roadmap ideas, Anduin/carn/Ralph TUI research, Cursor agents blocked 4th run
+- update for 2026-03-18 — spec 022 (Review Progress Bar), new P2/P3 ideas (Agent Transcript Viewer, Custom Review Rubric, Session Persistence, Batch Ops, Blame, Impact Graph), Anduin/carn/Ralph TUI competitive entries, research on agent review ecosystem
+- add 022 - Review Progress Bar with file-level completion tracking
+- add 2026-03-17 entry — research on critique/patchcast/agentic review, promoted Review Progress Bar to P1, new P2/P3 ideas, agents blocked by model unavailability (2nd run)
+- update for 2026-03-17 — promote Review Progress Bar to P1, add Inline Diff Minimap (P2), promote GitHub PR Comment Export (P2), new P3 ideas, research on critique/patchcast/agentic review patterns
+- add 2026-03-16 entry — new issues #52/#53 triaged, specs 020/021 written, research on Duff/gstack/AI-native terminals, mockups generated
+- update for 2026-03-16 — promote Issues #52 and #53 to P1, update P0 statuses, add Duff/gstack to competitive landscape, new research section
+- add 021 - Ask a Question inline Q&A over diff context (Issue #52)
+- add 020 - File Tree Navigator with collapsible directory hierarchy (Issue #53)
+
 ## [0.1.18](https://github.com/MutinyHQ/mdiff/compare/v0.1.17...v0.1.18) - 2026-03-14
 
 ### Other
