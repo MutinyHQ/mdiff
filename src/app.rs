@@ -76,6 +76,7 @@ pub struct App {
     last_navigator_rect: Rect,
     last_diff_view_rect: Rect,
     pending_editor: Option<PendingEditorOpen>,
+    tree_z_pending: bool,
 }
 
 impl App {
@@ -138,6 +139,7 @@ impl App {
             last_navigator_rect: Rect::default(),
             last_diff_view_rect: Rect::default(),
             pending_editor: None,
+            tree_z_pending: false,
         }
     }
 
@@ -323,9 +325,19 @@ impl App {
                     pty_focus: self.state.pty_focus,
                     checklist_panel_open: self.state.checklist.panel_open,
                     which_key_visible: self.state.which_key_visible,
+                    tree_mode: self.state.navigator.tree_mode,
+                    tree_z_pending: self.tree_z_pending,
                 };
                 let action = match event {
-                    Event::Key(key) => map_key_to_action(key, &ctx),
+                    Event::Key(key) => {
+                        let mapped = map_key_to_action(key, &ctx);
+                        self.tree_z_pending = ctx.tree_mode
+                            && ctx.focus == FocusPanel::Navigator
+                            && !ctx.tree_z_pending
+                            && key.code == crossterm::event::KeyCode::Char('z')
+                            && mapped.is_none();
+                        mapped
+                    }
                     Event::Mouse(mouse) => {
                         // Check if mouse is enabled in config
                         // Ignore mouse events when modals are open
@@ -789,23 +801,42 @@ impl App {
                 }
             }
             Action::NavigatorUp => {
-                self.state.navigator.select_up();
-                self.sync_selection();
+                if self.state.navigator.tree_mode {
+                    self.state.navigator.tree_select_up();
+                } else {
+                    self.state.navigator.select_up();
+                    self.sync_selection();
+                }
             }
             Action::NavigatorDown => {
-                self.state.navigator.select_down();
-                self.sync_selection();
+                if self.state.navigator.tree_mode {
+                    self.state.navigator.tree_select_down();
+                } else {
+                    self.state.navigator.select_down();
+                    self.sync_selection();
+                }
             }
             Action::NavigatorTop => {
-                self.state.navigator.selected = 0;
-                self.sync_selection();
+                if self.state.navigator.tree_mode {
+                    self.state.navigator.tree_selected = 0;
+                } else {
+                    self.state.navigator.selected = 0;
+                    self.sync_selection();
+                }
             }
             Action::NavigatorBottom => {
-                let len = self.state.navigator.visible_entries().len();
-                if len > 0 {
-                    self.state.navigator.selected = len - 1;
+                if self.state.navigator.tree_mode {
+                    let len = self.state.navigator.tree_nodes.len();
+                    if len > 0 {
+                        self.state.navigator.tree_selected = len - 1;
+                    }
+                } else {
+                    let len = self.state.navigator.visible_entries().len();
+                    if len > 0 {
+                        self.state.navigator.selected = len - 1;
+                    }
+                    self.sync_selection();
                 }
-                self.sync_selection();
             }
             Action::SelectFile(idx) => {
                 self.state.diff.selected_file = Some(idx);
@@ -2223,6 +2254,32 @@ impl App {
                         }
                     }
                 }
+            }
+
+            // Tree navigator
+            Action::ToggleTreeView => {
+                self.state.navigator.toggle_tree_mode();
+            }
+            Action::TreeToggleCollapse => {
+                if let Some(entry_index) = self.state.navigator.tree_toggle_collapse() {
+                    self.state.diff.selected_file = Some(entry_index);
+                    self.state.diff.scroll_offset = 0;
+                    self.state.diff.cursor_row = 0;
+                    self.update_highlights();
+                    self.state.selection.active = false;
+                    self.state.diff.gap_expansions.clear();
+                    self.state.diff.search_query.clear();
+                    self.state.diff.search_matches.clear();
+                    self.state.diff.search_match_index = None;
+                    self.state.diff.search_active = false;
+                    self.state.focus = FocusPanel::DiffView;
+                }
+            }
+            Action::TreeCollapseAll => {
+                self.state.navigator.tree_collapse_all();
+            }
+            Action::TreeExpandAll => {
+                self.state.navigator.tree_expand_all();
             }
         }
     }

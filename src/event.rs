@@ -108,6 +108,8 @@ pub struct KeyContext {
     pub pty_focus: bool,
     pub checklist_panel_open: bool,
     pub which_key_visible: bool,
+    pub tree_mode: bool,
+    pub tree_z_pending: bool,
 }
 
 /// Context for mouse event mapping.
@@ -546,6 +548,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             }
         }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
+        KeyCode::Char('T') if !ctx.visual_mode_active => return Some(Action::ToggleTreeView),
         KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
         KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
@@ -573,15 +576,35 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 8: Focus-dependent bindings
     match ctx.focus {
-        FocusPanel::Navigator => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigatorUp),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigatorDown),
-            KeyCode::Char('g') => Some(Action::NavigatorTop),
-            KeyCode::Char('G') => Some(Action::NavigatorBottom),
-            KeyCode::Char('m') => Some(Action::ToggleFileReviewed),
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => Some(Action::FocusDiffView),
-            _ => None,
-        },
+        FocusPanel::Navigator => {
+            if ctx.tree_mode && ctx.tree_z_pending {
+                return match key.code {
+                    KeyCode::Char('M') => Some(Action::TreeCollapseAll),
+                    KeyCode::Char('R') => Some(Action::TreeExpandAll),
+                    _ => None,
+                };
+            }
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigatorUp),
+                KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigatorDown),
+                KeyCode::Char('g') => Some(Action::NavigatorTop),
+                KeyCode::Char('G') => Some(Action::NavigatorBottom),
+                KeyCode::Char('m') => Some(Action::ToggleFileReviewed),
+                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => {
+                    if ctx.tree_mode {
+                        Some(Action::TreeToggleCollapse)
+                    } else {
+                        Some(Action::FocusDiffView)
+                    }
+                }
+                KeyCode::Char('h') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
+                KeyCode::Char('z') if ctx.tree_mode => {
+                    // z prefix for fold commands; handled via z_pending state
+                    None
+                }
+                _ => None,
+            }
+        }
         FocusPanel::DiffView => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::ScrollUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::ScrollDown),
@@ -668,6 +691,8 @@ mod tests {
             pty_focus: false,
             checklist_panel_open: false,
             which_key_visible: false,
+            tree_mode: false,
+            tree_z_pending: false,
         }
     }
 
