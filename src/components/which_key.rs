@@ -371,6 +371,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Expand context",
                 },
                 KeyEntry {
+                    key: "e",
+                    description: "Open in $EDITOR",
+                },
+                KeyEntry {
                     key: "/",
                     description: "Search in diff",
                 },
