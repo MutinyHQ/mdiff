@@ -598,6 +598,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
         KeyCode::Char('T') if !ctx.visual_mode_active => return Some(Action::ToggleTreeView),
+        KeyCode::Char('A') if !ctx.visual_mode_active => {
+            return Some(Action::CycleAttributionFilter)
+        }
         KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
         KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
         KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
@@ -606,6 +609,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
 
     // Priority 7: Visual mode in DiffView
     if ctx.visual_mode_active && ctx.focus == FocusPanel::DiffView {
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('t') {
+            return Some(Action::TagAttribution("tagged".to_string()));
+        }
         return match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::ExtendSelectionUp),
             KeyCode::Down | KeyCode::Char('j') => Some(Action::ExtendSelectionDown),

@@ -1,3 +1,4 @@
+pub mod attribution;
 pub mod commands;
 pub mod diff;
 pub mod repository;

@@ -242,4 +242,10 @@ pub enum Action {
     BookmarkListDown,
     BookmarkListSelect,
     BookmarkListDelete,
+
+    // Attribution
+    #[allow(dead_code)]
+    ToggleAttribution,
+    CycleAttributionFilter,
+    TagAttribution(String),
 }

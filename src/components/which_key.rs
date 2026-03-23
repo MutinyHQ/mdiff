@@ -162,6 +162,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 description: "Quick score",
             },
             KeyEntry {
+                key: "Ctrl+T",
+                description: "Tag attribution",
+            },
+            KeyEntry {
                 key: "v/Esc",
                 description: "Exit visual",
             },
@@ -425,6 +429,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 KeyEntry {
                     key: "'+a-z",
                     description: "Jump to mark",
+                },
+                KeyEntry {
+                    key: "A",
+                    description: "Cycle attribution",
                 },
                 KeyEntry {
                     key: "p",

@@ -516,6 +516,17 @@ impl App {
                         self.state.diff.selected_file = Some(0);
                         self.update_highlights();
                     }
+
+                    // Compute attribution for the loaded diff
+                    if let Ok(repo) = git2::Repository::discover(&self.repo_path) {
+                        if let Ok(attr) = crate::git::attribution::build_attribution(
+                            &repo,
+                            &self.target,
+                            &self.state.diff.deltas,
+                        ) {
+                            self.state.attribution = attr;
+                        }
+                    }
                 }
                 Err(_e) => {
                     self.state.diff.deltas.clear();
@@ -2481,6 +2492,71 @@ impl App {
                         if new_count == 0 {
                             self.state.bookmarks.list_visible = false;
                         }
+                    }
+                }
+            }
+
+            // Attribution
+            Action::ToggleAttribution => {
+                self.state.attribution.active = !self.state.attribution.active;
+                if self.state.attribution.active {
+                    self.state.attribution.filter_index = None;
+                    self.set_status("Attribution display enabled".to_string(), false);
+                } else {
+                    self.state.attribution.filter_index = None;
+                    self.set_status("Attribution display disabled".to_string(), false);
+                }
+            }
+            Action::CycleAttributionFilter => {
+                if !self.state.attribution.active {
+                    self.state.attribution.active = true;
+                    self.state.attribution.filter_index = None;
+                    self.set_status(
+                        format!("Attribution: {}", self.state.attribution.filter_label()),
+                        false,
+                    );
+                } else if self.state.attribution.filter_index.is_none()
+                    && self.state.attribution.sessions.is_empty()
+                {
+                    self.state.attribution.active = false;
+                    self.set_status("Attribution display disabled".to_string(), false);
+                } else {
+                    self.state.attribution.cycle_filter();
+                    self.set_status(
+                        format!("Attribution: {}", self.state.attribution.filter_label()),
+                        false,
+                    );
+                }
+            }
+            Action::TagAttribution(label) => {
+                if let (Some(file_idx), true) =
+                    (self.state.diff.selected_file, self.state.selection.active)
+                {
+                    if let Some(delta) = self.state.diff.deltas.get(file_idx) {
+                        let file_path = delta.path.to_string_lossy().to_string();
+                        let display_map = build_display_map(
+                            delta,
+                            self.state.diff.options.view_mode,
+                            self.state.diff.display_context,
+                            &self.state.diff.gap_expansions,
+                        );
+                        let (start, end) = self.state.selection.range();
+                        let mut tagged_hunks = std::collections::HashSet::new();
+                        for row in start..=end {
+                            if let Some(info) = display_map.get(row) {
+                                tagged_hunks.insert(info.hunk_index);
+                            }
+                        }
+                        for &hunk_idx in &tagged_hunks {
+                            self.state
+                                .attribution
+                                .tag_hunk(&file_path, hunk_idx, label.clone());
+                        }
+                        self.state.attribution.active = true;
+                        self.set_status(
+                            format!("Tagged {} hunk(s) as '{}'", tagged_hunks.len(), label),
+                            false,
+                        );
                     }
                 }
             }

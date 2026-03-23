@@ -11,6 +11,7 @@ use crate::display_map::{
 };
 use crate::git::types::{DiffLineOrigin, FileDelta};
 use crate::highlight::HighlightSpan;
+use crate::state::attribution_state::session_color;
 use crate::state::{app_state::FocusPanel, AppState, DiffViewMode};
 use crate::theme::Theme;
 
@@ -79,6 +80,12 @@ fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String
         format!(" {path_display} [{view_label}]")
     };
 
+    let attribution_suffix = if state.attribution.active {
+        format!(" {}", state.attribution.filter_label())
+    } else {
+        String::new()
+    };
+
     if state.diff.search_active || !state.diff.search_query.is_empty() {
         let match_info = if state.diff.search_matches.is_empty() {
             if state.diff.search_query.is_empty() {
@@ -95,10 +102,13 @@ fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String
             let ci = state.diff.search_query.cursor_char_index();
             let before: String = q.chars().take(ci).collect();
             let after: String = q.chars().skip(ci).collect();
-            format!("{base} /{}\u{2588}{}{match_info} ", before, after)
+            format!(
+                "{base}{attribution_suffix} /{}\u{2588}{}{match_info} ",
+                before, after
+            )
         }
     } else {
-        format!("{base} ")
+        format!("{base}{attribution_suffix} ")
     }
 }
 
@@ -207,6 +217,37 @@ fn get_score(state: &AppState, delta: &FileDelta, row_info: &DisplayRowInfo) -> 
         .score_at(&file_path, row_info.old_lineno, row_info.new_lineno)
 }
 
+/// Get the attribution session marker for a hunk, if attribution is active.
+fn hunk_attribution_marker<'a>(
+    state: &AppState,
+    delta: &FileDelta,
+    hunk_index: usize,
+) -> Option<Span<'a>> {
+    if !state.attribution.active {
+        return None;
+    }
+    let file_path = delta.path.to_string_lossy();
+    let session = state.attribution.session_for_hunk(&file_path, hunk_index)?;
+    let color = session_color(session.color_index);
+    let label = format!("[S{}]", session.color_index + 1);
+    Some(Span::styled(label, Style::default().fg(color)))
+}
+
+/// Get the gutter attribution dot for a line within a hunk.
+fn gutter_attribution_dot<'a>(
+    state: &AppState,
+    delta: &FileDelta,
+    hunk_index: usize,
+) -> Option<Span<'a>> {
+    if !state.attribution.active {
+        return None;
+    }
+    let file_path = delta.path.to_string_lossy();
+    let session = state.attribution.session_for_hunk(&file_path, hunk_index)?;
+    let color = session_color(session.color_index);
+    Some(Span::styled("\u{25cf}", Style::default().fg(color)))
+}
+
 /// Get the color for a score value.
 fn score_color(score: u8) -> Color {
     match score {
@@ -249,6 +290,17 @@ fn render_split(
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
 
+    let content_area = if state.attribution.active && !state.attribution.sessions.is_empty() {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(inner);
+        render_session_legend(frame, chunks[0], state, theme);
+        chunks[1]
+    } else {
+        inner
+    };
+
     // 3-column layout: left content | center gutter | right content
     // Center gutter: "NNNNN NNNNN " = 5 + 1 + 5 + 1 = 12 chars
     let gutter_width_chars: u16 = 12;
@@ -259,7 +311,7 @@ fn render_split(
             Constraint::Length(gutter_width_chars),
             Constraint::Min(10),
         ])
-        .split(inner);
+        .split(content_area);
 
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
@@ -356,6 +408,19 @@ fn render_unified(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let (legend_area, content_area) =
+        if state.attribution.active && !state.attribution.sessions.is_empty() {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(1), Constraint::Min(0)])
+                .split(inner);
+            render_session_legend(frame, chunks[0], state, theme);
+            (Some(chunks[0]), chunks[1])
+        } else {
+            (None, inner)
+        };
+    let _ = legend_area;
+
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
 
@@ -370,7 +435,7 @@ fn render_unified(
     let lines = build_unified_lines_core(delta, old_hl, new_hl, state, &display_map, theme);
     // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
     let config = WrapConfig {
-        width: inner.width,
+        width: content_area.width,
         gutter_width: 5 + 1 + 5 + 1 + 1,
         wrap_enabled: true,
         theme,
@@ -379,10 +444,10 @@ fn render_unified(
         lines,
         &config,
         state.diff.scroll_offset,
-        inner.height as usize,
+        content_area.height as usize,
     );
     let paragraph = Paragraph::new(wrapped);
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, content_area);
 }
 
 fn build_split_lines_core<'a>(
@@ -401,7 +466,7 @@ fn build_split_lines_core<'a>(
     let gutter_width = 5;
     let mut gap_id_offset = 0;
 
-    for hunk in &delta.hunks {
+    for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         let hl = row_highlight(state, display_row);
         let ann_marker = display_map
             .get(display_row)
@@ -421,8 +486,14 @@ fn build_split_lines_core<'a>(
             .get(display_row)
             .and_then(|info| get_score(state, delta, info));
         let mut hunk_spans = Vec::new();
+        if let Some(attr_dot) = gutter_attribution_dot(state, delta, hunk_idx) {
+            hunk_spans.push(attr_dot);
+        }
         if let Some(s) = score {
-            hunk_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+            hunk_spans.push(Span::styled(
+                "\u{25cf}",
+                Style::default().fg(score_color(s)),
+            ));
         }
         hunk_spans.push(Span::styled(hunk_gutter, gutter_style));
         center.push(Line::from(hunk_spans));
@@ -431,7 +502,12 @@ fn build_split_lines_core<'a>(
         if let Some(bg) = hl.content_bg {
             content_style = content_style.bg(bg);
         }
-        left.push(Line::from(Span::styled(hunk.header.clone(), content_style)));
+        let mut left_spans: Vec<Span> = vec![Span::styled(hunk.header.clone(), content_style)];
+        if let Some(attr_marker) = hunk_attribution_marker(state, delta, hunk_idx) {
+            left_spans.push(Span::styled(" ", content_style));
+            left_spans.push(attr_marker);
+        }
+        left.push(Line::from(left_spans));
         right.push(Line::from(Span::styled("", content_style)));
         display_row += 1;
 
@@ -508,8 +584,9 @@ fn build_split_lines_core<'a>(
                         let bm_label = display_map
                             .get(display_row)
                             .and_then(|info| bookmark_label(state, delta, info));
+                        let attr_dot = gutter_attribution_dot(state, delta, hunk_idx);
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label, attr_dot,
                         ));
 
                         let old_spans = line.old_lineno.and_then(|n| old_hl.get(n as usize));
@@ -602,8 +679,9 @@ fn build_split_lines_core<'a>(
                             let bm_label = display_map
                                 .get(display_row)
                                 .and_then(|info| bookmark_label(state, delta, info));
+                            let attr_dot = gutter_attribution_dot(state, delta, hunk_idx);
                             center.push(make_center_gutter_line(
-                                &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                                &gutter_l, &gutter_r, marker, hl, theme, score, bm_label, attr_dot,
                             ));
 
                             if j < dels.len() {
@@ -652,8 +730,9 @@ fn build_split_lines_core<'a>(
                         let bm_label = display_map
                             .get(display_row)
                             .and_then(|info| bookmark_label(state, delta, info));
+                        let attr_dot = gutter_attribution_dot(state, delta, hunk_idx);
                         center.push(make_center_gutter_line(
-                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label,
+                            &gutter_l, &gutter_r, marker, hl, theme, score, bm_label, attr_dot,
                         ));
 
                         left.push(make_empty_content_line(hl, theme));
@@ -689,7 +768,7 @@ fn build_unified_lines_core<'a>(
     let mut display_row: usize = 0;
     let mut gap_id_offset = 0;
 
-    for hunk in &delta.hunks {
+    for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         let hl = row_highlight(state, display_row);
         let ann_marker = display_map
             .get(display_row)
@@ -697,6 +776,7 @@ fn build_unified_lines_core<'a>(
         let score = display_map
             .get(display_row)
             .and_then(|info| get_score(state, delta, info));
+        let attr_marker = hunk_attribution_marker(state, delta, hunk_idx);
 
         lines.push(make_hunk_header_line_unified(
             gutter_width,
@@ -704,6 +784,7 @@ fn build_unified_lines_core<'a>(
             hl,
             ann_marker,
             score,
+            attr_marker,
             theme,
         ));
         display_row += 1;
@@ -754,6 +835,7 @@ fn build_unified_lines_core<'a>(
                         format_lineno(line.new_lineno, gutter_width),
                     );
 
+                    let attr_dot = gutter_attribution_dot(state, delta, hunk_idx);
                     match line.origin {
                         DiffLineOrigin::Context => {
                             let spans = line.new_lineno.and_then(|n| new_hl.get(n as usize));
@@ -768,6 +850,7 @@ fn build_unified_lines_core<'a>(
                                 ann_marker,
                                 score,
                                 bm_label,
+                                attr_dot,
                                 theme,
                             ));
                         }
@@ -785,6 +868,7 @@ fn build_unified_lines_core<'a>(
                                 ann_marker,
                                 score,
                                 bm_label,
+                                attr_dot,
                                 theme,
                             ));
                         }
@@ -802,6 +886,7 @@ fn build_unified_lines_core<'a>(
                                 ann_marker,
                                 score,
                                 bm_label,
+                                attr_dot,
                                 theme,
                             ));
                         }
@@ -817,6 +902,33 @@ fn build_unified_lines_core<'a>(
 
 // Helper functions
 
+fn render_session_legend(frame: &mut Frame, area: Rect, state: &AppState, theme: &Theme) {
+    let mut spans: Vec<Span> = vec![Span::styled(
+        " Sessions: ",
+        Style::default()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::BOLD),
+    )];
+
+    for (i, session) in state.attribution.sessions.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled("  ", Style::default()));
+        }
+        let color = session_color(session.color_index);
+        let is_filtered = state.attribution.filter_index == Some(i);
+        let mut label_style = Style::default().fg(color);
+        if is_filtered {
+            label_style = label_style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        }
+        spans.push(Span::styled("\u{25cf} ", Style::default().fg(color)));
+        spans.push(Span::styled(session.label.clone(), label_style));
+    }
+
+    let line = Line::from(spans);
+    let paragraph = Paragraph::new(line);
+    frame.render_widget(paragraph, area);
+}
+
 fn format_lineno(lineno: Option<u32>, width: usize) -> String {
     match lineno {
         Some(n) => format!("{n:>width$}"),
@@ -831,6 +943,7 @@ fn make_hunk_header_line_unified<'a>(
     hl: RowHighlight,
     ann_marker: bool,
     score: Option<u8>,
+    attribution: Option<Span<'a>>,
     theme: &Theme,
 ) -> Line<'a> {
     let marker = if ann_marker { "\u{2502}" } else { " " };
@@ -851,10 +964,17 @@ fn make_hunk_header_line_unified<'a>(
 
     let mut spans = Vec::new();
     if let Some(s) = score {
-        spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+        spans.push(Span::styled(
+            "\u{25cf}",
+            Style::default().fg(score_color(s)),
+        ));
     }
     spans.push(Span::styled(gutter_text, gutter_style));
     spans.push(Span::styled(header.to_string(), content_style));
+    if let Some(attr_span) = attribution {
+        spans.push(Span::styled(" ", content_style));
+        spans.push(attr_span);
+    }
     Line::from(spans)
 }
 
@@ -923,13 +1043,16 @@ fn make_center_gutter_line<'a>(
     theme: &Theme,
     score: Option<u8>,
     bm_label: Option<Option<char>>,
+    attribution_dot: Option<Span<'a>>,
 ) -> Line<'a> {
     let mut spans = Vec::new();
 
-    // Add score dot if present
+    if let Some(attr_dot) = attribution_dot {
+        spans.push(attr_dot);
+    }
     if let Some(s) = score {
         let dot_style = Style::default().fg(score_color(s));
-        spans.push(Span::styled("●", dot_style));
+        spans.push(Span::styled("\u{25cf}", dot_style));
     }
 
     // Add bookmark diamond if present
@@ -1020,6 +1143,7 @@ fn make_unified_highlighted<'a>(
     ann_marker: bool,
     score: Option<u8>,
     bm_label: Option<Option<char>>,
+    attribution_dot: Option<Span<'a>>,
     theme: &Theme,
 ) -> Line<'a> {
     let trimmed = content.trim_end_matches('\n');
@@ -1038,8 +1162,14 @@ fn make_unified_highlighted<'a>(
     }
 
     let mut all_spans = Vec::new();
+    if let Some(attr_dot) = attribution_dot {
+        all_spans.push(attr_dot);
+    }
     if let Some(s) = score {
-        all_spans.push(Span::styled("●", Style::default().fg(score_color(s))));
+        all_spans.push(Span::styled(
+            "\u{25cf}",
+            Style::default().fg(score_color(s)),
+        ));
     }
     if let Some(label) = bm_label {
         let diamond = if let Some(c) = label {

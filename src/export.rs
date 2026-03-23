@@ -13,6 +13,14 @@ pub struct FeedbackExport {
     pub summary: FeedbackSummary,
     pub files: Vec<FileFeedback>,
     pub decision: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub agent_sessions: Vec<SessionExport>,
+}
+
+#[derive(Serialize)]
+pub struct SessionExport {
+    pub id: String,
+    pub label: String,
 }
 
 #[derive(Serialize)]
@@ -33,6 +41,15 @@ pub struct FileFeedback {
     pub deletions: usize,
     pub annotations: Vec<AnnotationExport>,
     pub line_scores: Vec<LineScoreExport>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attribution: Vec<HunkAttributionExport>,
+}
+
+#[derive(Serialize)]
+pub struct HunkAttributionExport {
+    pub hunk_index: usize,
+    pub session_id: String,
+    pub session_label: String,
 }
 
 #[derive(Serialize)]
@@ -146,6 +163,19 @@ fn build_export(state: &AppState, target_label: &str) -> FeedbackExport {
         // Get line scores for this file (placeholder - not implemented in current system)
         let line_scores = Vec::new();
 
+        let mut attribution = Vec::new();
+        if state.attribution.active {
+            for (hunk_idx, _) in delta.hunks.iter().enumerate() {
+                if let Some(session) = state.attribution.session_for_hunk(&path, hunk_idx) {
+                    attribution.push(HunkAttributionExport {
+                        hunk_index: hunk_idx,
+                        session_id: session.id.clone(),
+                        session_label: session.label.clone(),
+                    });
+                }
+            }
+        }
+
         files.push(FileFeedback {
             path,
             review_status,
@@ -153,8 +183,19 @@ fn build_export(state: &AppState, target_label: &str) -> FeedbackExport {
             deletions,
             annotations,
             line_scores,
+            attribution,
         });
     }
+
+    let agent_sessions: Vec<SessionExport> = state
+        .attribution
+        .sessions
+        .iter()
+        .map(|s| SessionExport {
+            id: s.id.clone(),
+            label: s.label.clone(),
+        })
+        .collect();
 
     FeedbackExport {
         version: 1,
@@ -162,7 +203,8 @@ fn build_export(state: &AppState, target_label: &str) -> FeedbackExport {
         target: target_label.to_string(),
         summary,
         files,
-        decision: None, // Could be extended to include overall review decision
+        decision: None,
+        agent_sessions,
     }
 }
 
