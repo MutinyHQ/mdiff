@@ -392,11 +392,35 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 },
                 KeyEntry {
                     key: "]",
-                    description: "Next annotation",
+                    description: "Next hunk",
                 },
                 KeyEntry {
                     key: "[",
-                    description: "Prev annotation",
+                    description: "Prev hunk",
+                },
+                KeyEntry {
+                    key: "]b",
+                    description: "Next bookmark",
+                },
+                KeyEntry {
+                    key: "[b",
+                    description: "Prev bookmark",
+                },
+                KeyEntry {
+                    key: "b",
+                    description: "Toggle bookmark",
+                },
+                KeyEntry {
+                    key: "B",
+                    description: "Bookmark list",
+                },
+                KeyEntry {
+                    key: "m+a-z",
+                    description: "Named bookmark",
+                },
+                KeyEntry {
+                    key: "'+a-z",
+                    description: "Jump to mark",
                 },
                 KeyEntry {
                     key: "p",

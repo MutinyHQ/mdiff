@@ -1,8 +1,9 @@
 use crate::theme::Theme;
 
 use super::{
-    AgentOutputsState, AgentSelectorState, AnnotationState, ChecklistState, DiffOptions, DiffState,
-    GlobalSearchState, NavigatorState, ReviewState, SelectionState, TextBuffer, WorktreeState,
+    AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
+    DiffOptions, DiffState, GlobalSearchState, NavigatorState, ReviewState, SelectionState,
+    TextBuffer, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -140,6 +141,9 @@ pub struct AppState {
 
     // Checklist
     pub checklist: ChecklistState,
+
+    // Bookmarks
+    pub bookmarks: BookmarkState,
 }
 
 impl AppState {
@@ -183,6 +187,7 @@ impl AppState {
             feedback_summary_scroll: 0,
             which_key_visible: false,
             checklist: ChecklistState::new(),
+            bookmarks: BookmarkState::new(),
         }
     }
 }

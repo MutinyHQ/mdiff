@@ -10,6 +10,7 @@ use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
+use crate::components::bookmark_list::render_bookmark_list;
 use crate::components::checklist_panel::ChecklistPanel;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
@@ -68,6 +69,9 @@ pub struct App {
     last_navigator_rect: Rect,
     last_diff_view_rect: Rect,
     tree_z_pending: bool,
+    bracket_pending: Option<char>,
+    mark_pending: bool,
+    jump_mark_pending: bool,
 }
 
 impl App {
@@ -93,10 +97,11 @@ impl App {
             state.diff.display_context = ctx;
         }
 
-        // Load session annotations and checklist state
-        let (annotations, saved_checklist) =
+        // Load session annotations, checklist, and bookmark state
+        let (annotations, saved_checklist, bookmarks) =
             session::load_session_data(&repo_path, &state.target_label);
         state.annotations = annotations;
+        state.bookmarks = bookmarks;
 
         // Load checklist configuration or use saved state
         if let Some(saved) = saved_checklist {
@@ -130,6 +135,9 @@ impl App {
             last_navigator_rect: Rect::default(),
             last_diff_view_rect: Rect::default(),
             tree_z_pending: false,
+            bracket_pending: None,
+            mark_pending: false,
+            jump_mark_pending: false,
         }
     }
 
@@ -263,6 +271,9 @@ impl App {
                 if self.state.annotation_menu_open {
                     render_annotation_menu(frame, &self.state);
                 }
+                if self.state.bookmarks.list_visible {
+                    render_bookmark_list(frame, frame.area(), &self.state);
+                }
                 if self.state.agent_selector.open {
                     render_agent_selector(frame, &self.state.agent_selector);
                 }
@@ -314,18 +325,54 @@ impl App {
                     active_view: self.state.active_view,
                     pty_focus: self.state.pty_focus,
                     checklist_panel_open: self.state.checklist.panel_open,
+                    bookmark_list_open: self.state.bookmarks.list_visible,
                     which_key_visible: self.state.which_key_visible,
                     tree_mode: self.state.navigator.tree_mode,
                     tree_z_pending: self.tree_z_pending,
+                    bracket_pending: self.bracket_pending,
+                    mark_pending: self.mark_pending,
+                    jump_mark_pending: self.jump_mark_pending,
                 };
                 let action = match event {
                     Event::Key(key) => {
                         let mapped = map_key_to_action(key, &ctx);
+
                         self.tree_z_pending = ctx.tree_mode
                             && ctx.focus == FocusPanel::Navigator
                             && !ctx.tree_z_pending
                             && key.code == crossterm::event::KeyCode::Char('z')
                             && mapped.is_none();
+
+                        // Clear pending states after they've been consumed
+                        if ctx.bracket_pending.is_some() {
+                            self.bracket_pending = None;
+                        } else if ctx.mark_pending {
+                            self.mark_pending = false;
+                        } else if ctx.jump_mark_pending {
+                            self.jump_mark_pending = false;
+                        } else if ctx.active_view == ActiveView::DiffExplorer
+                            && ctx.focus == FocusPanel::DiffView
+                            && !ctx.visual_mode_active
+                            && mapped.is_none()
+                        {
+                            // Set pending states for bracket/mark sequences
+                            match key.code {
+                                crossterm::event::KeyCode::Char(']') => {
+                                    self.bracket_pending = Some(']');
+                                }
+                                crossterm::event::KeyCode::Char('[') => {
+                                    self.bracket_pending = Some('[');
+                                }
+                                crossterm::event::KeyCode::Char('m') => {
+                                    self.mark_pending = true;
+                                }
+                                crossterm::event::KeyCode::Char('\'') => {
+                                    self.jump_mark_pending = true;
+                                }
+                                _ => {}
+                            }
+                        }
+
                         mapped
                     }
                     Event::Mouse(mouse) => {
@@ -422,6 +469,7 @@ impl App {
             } else {
                 Some(&self.state.checklist)
             },
+            &self.state.bookmarks,
         );
 
         Ok(())
@@ -1698,6 +1746,7 @@ impl App {
                             } else {
                                 Some(&self.state.checklist)
                             },
+                            &self.state.bookmarks,
                         );
 
                         // Persist last-used model for this agent
@@ -2263,6 +2312,151 @@ impl App {
             Action::TreeExpandAll => {
                 self.state.navigator.tree_expand_all();
             }
+
+            // Bookmark actions
+            Action::ToggleBookmark => {
+                if let Some(anchor) = self.cursor_to_anchor() {
+                    let line = anchor
+                        .new_range
+                        .map(|(s, _)| s)
+                        .or(anchor.old_range.map(|(s, _)| s));
+                    let is_new = anchor.new_range.is_some();
+                    if let Some(line) = line {
+                        let added = self.state.bookmarks.toggle(&anchor.file_path, line, is_new);
+                        let msg = if added {
+                            format!("Bookmark added at {}:{}", anchor.file_path, line)
+                        } else {
+                            format!("Bookmark removed at {}:{}", anchor.file_path, line)
+                        };
+                        self.set_status(msg, false);
+                    }
+                }
+            }
+            Action::ToggleBookmarkList => {
+                self.state.bookmarks.list_visible = !self.state.bookmarks.list_visible;
+                if self.state.bookmarks.list_visible && self.state.bookmarks.bookmarks.is_empty() {
+                    self.state.bookmarks.list_visible = false;
+                    self.set_status("No bookmarks set".to_string(), false);
+                }
+            }
+            Action::NextBookmark => {
+                let file_path = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(|d| d.path.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let display_map = self.current_display_map();
+                let current_row = self.state.diff.cursor_row;
+                let current_lineno = display_map
+                    .get(current_row)
+                    .and_then(|info| info.new_lineno.or(info.old_lineno))
+                    .unwrap_or(0);
+
+                if let Some((_, bm)) = self.state.bookmarks.next_after(&file_path, current_lineno) {
+                    let target_file = bm.file_path.clone();
+                    let target_line = bm.line;
+                    self.navigate_to_file_line(&target_file, target_line);
+                } else {
+                    self.set_status("No bookmarks".to_string(), false);
+                }
+            }
+            Action::PrevBookmark => {
+                let file_path = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(|d| d.path.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let display_map = self.current_display_map();
+                let current_row = self.state.diff.cursor_row;
+                let current_lineno = display_map
+                    .get(current_row)
+                    .and_then(|info| info.new_lineno.or(info.old_lineno))
+                    .unwrap_or(0);
+
+                if let Some((_, bm)) = self.state.bookmarks.prev_before(&file_path, current_lineno)
+                {
+                    let target_file = bm.file_path.clone();
+                    let target_line = bm.line;
+                    self.navigate_to_file_line(&target_file, target_line);
+                } else {
+                    self.set_status("No bookmarks".to_string(), false);
+                }
+            }
+            Action::SetNamedBookmark(label) => {
+                if let Some(anchor) = self.cursor_to_anchor() {
+                    let line = anchor
+                        .new_range
+                        .map(|(s, _)| s)
+                        .or(anchor.old_range.map(|(s, _)| s));
+                    let is_new = anchor.new_range.is_some();
+                    if let Some(line) = line {
+                        self.state
+                            .bookmarks
+                            .set_named(&anchor.file_path, line, is_new, label);
+                        self.set_status(
+                            format!("Bookmark '{label}' set at {}:{}", anchor.file_path, line),
+                            false,
+                        );
+                    }
+                }
+            }
+            Action::JumpToNamedBookmark(label) => {
+                if let Some(bm) = self.state.bookmarks.find_named(label) {
+                    let target_file = bm.file_path.clone();
+                    let target_line = bm.line;
+                    self.navigate_to_file_line(&target_file, target_line);
+                } else {
+                    self.set_status(format!("No bookmark '{label}'"), false);
+                }
+            }
+            Action::BookmarkListUp => {
+                if self.state.bookmarks.list_visible && !self.state.bookmarks.bookmarks.is_empty() {
+                    if self.state.bookmarks.list_selected == 0 {
+                        self.state.bookmarks.list_selected =
+                            self.state.bookmarks.all_sorted().len() - 1;
+                    } else {
+                        self.state.bookmarks.list_selected -= 1;
+                    }
+                }
+            }
+            Action::BookmarkListDown => {
+                if self.state.bookmarks.list_visible && !self.state.bookmarks.bookmarks.is_empty() {
+                    let count = self.state.bookmarks.all_sorted().len();
+                    if self.state.bookmarks.list_selected >= count - 1 {
+                        self.state.bookmarks.list_selected = 0;
+                    } else {
+                        self.state.bookmarks.list_selected += 1;
+                    }
+                }
+            }
+            Action::BookmarkListSelect => {
+                if self.state.bookmarks.list_visible {
+                    let sorted = self.state.bookmarks.all_sorted();
+                    if let Some((_, bm)) = sorted.get(self.state.bookmarks.list_selected) {
+                        let target_file = bm.file_path.clone();
+                        let target_line = bm.line;
+                        self.state.bookmarks.list_visible = false;
+                        self.navigate_to_file_line(&target_file, target_line);
+                    }
+                }
+            }
+            Action::BookmarkListDelete => {
+                if self.state.bookmarks.list_visible {
+                    let sorted = self.state.bookmarks.all_sorted();
+                    if let Some(&(real_idx, _)) = sorted.get(self.state.bookmarks.list_selected) {
+                        self.state.bookmarks.delete(real_idx);
+                        let new_count = self.state.bookmarks.bookmarks.len();
+                        if self.state.bookmarks.list_selected >= new_count && new_count > 0 {
+                            self.state.bookmarks.list_selected = new_count - 1;
+                        }
+                        if new_count == 0 {
+                            self.state.bookmarks.list_visible = false;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -2336,15 +2530,18 @@ impl App {
             } else {
                 Some(&self.state.checklist)
             },
+            &self.state.bookmarks,
         );
 
         // Update target
         self.target = target;
         self.state.target_label = label.clone();
 
-        // Load annotations and checklist state for the new target
-        let (annotations, saved_checklist) = session::load_session_data(&self.repo_path, &label);
+        // Load annotations, checklist, and bookmark state for the new target
+        let (annotations, saved_checklist, bookmarks) =
+            session::load_session_data(&self.repo_path, &label);
         self.state.annotations = annotations;
+        self.state.bookmarks = bookmarks;
 
         // Reset checklist to saved state or fresh config
         if let Some(saved) = saved_checklist {
@@ -2592,6 +2789,50 @@ impl App {
         {
             self.state.diff.scroll_offset = cursor_visual.saturating_sub(vh / 4);
         }
+    }
+
+    /// Navigate to a specific file and line, switching files if needed.
+    fn navigate_to_file_line(&mut self, target_file: &str, target_line: u32) {
+        let current_file = self
+            .state
+            .diff
+            .selected_delta()
+            .map(|d| d.path.to_string_lossy().to_string());
+
+        if current_file.as_deref() != Some(target_file) {
+            // Find the file in the navigator and switch to it
+            if let Some(idx) = self
+                .state
+                .diff
+                .deltas
+                .iter()
+                .position(|d| d.path.to_string_lossy() == target_file)
+            {
+                // Update navigator selection
+                if let Some(nav_idx) = self
+                    .state
+                    .navigator
+                    .entries
+                    .iter()
+                    .position(|e| e.delta_index == idx)
+                {
+                    self.state.navigator.selected = nav_idx;
+                }
+                self.state.diff.selected_file = Some(idx);
+                self.state.diff.scroll_offset = 0;
+                self.state.diff.cursor_row = 0;
+                self.update_highlights();
+                self.state.selection.active = false;
+                self.state.diff.gap_expansions.clear();
+                self.state.diff.search_query.clear();
+                self.state.diff.search_matches.clear();
+                self.state.diff.search_match_index = None;
+                self.state.diff.search_active = false;
+            }
+        }
+
+        self.scroll_to_line(target_line);
+        self.state.focus = FocusPanel::DiffView;
     }
 
     /// Scroll to the display row containing the given line number.
