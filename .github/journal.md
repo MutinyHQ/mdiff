@@ -1,5 +1,62 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-23 (Run #12)
+
+### Research Findings
+- **TUI Resurgence** (Leon Mika blog, 2026-03-21): TUIs experiencing resurgence driven by AI coding agents (Claude Code, Codex). Key advantages: SSH access, terminal context, cheaper than GUIs. Strongest validation of mdiff's terminal-native approach.
+- **Muse/Manyana conflict-aware diffs** (GitHub issue #237): Novel diff UX labeling each hunk with the action and which side performed it. Directly inspired Agent Attribution Labels (spec 026).
+- **oh-my-pi** (AI terminal agent): Agentic git tools for fine-grained diff analysis. Automatic atomic commit splitting. Inspired Commit Split Suggestions idea.
+- **Codex diff rendering bug (#15416)**: Green-on-green illegible diffs on terminals without true color support. Inspired Terminal Compatibility feature.
+- **Claude Code TUI flickering (#37283)**: Non-atomic screen redraws cause flickering. DECSET 2026 synchronized output is the fix. Inspired Synchronized Output feature.
+- **Agent-RLVR (Scale Labs)**: Structured "agent guidance" improves coding agent performance from 9.4% to 22.4% on SWE-Bench. Directly inspired Agent Guidance Export (spec 027).
+- **Superset**: Desktop workspace for multi-agent orchestration with built-in diff review. Competing GUI approach.
+- **Orchestrator**: tmux-style split panes for parallel Claude Code sessions.
+- **Gitea inline commit diff comments** (PR #36944): Commit-level code review workflow pattern.
+
+### Critical Fix: ROADMAP.md Corruption (Again)
+ROADMAP.md on main corrupted again — contained literal sandbox path from Run #11. The `github_create_or_update_file` tool treats file paths passed as `content` parameter as literal text. Launched Cursor agent `bc-5b038023` to restore from commit `aad15b4` and apply 2026-03-23 updates. For large files (>25K chars), Cursor agents are the only reliable commit method going forward.
+
+### Open Issues Reviewed (5 open — unchanged)
+| Issue | Category | Priority | Status | Action |
+|-------|----------|----------|--------|--------|
+| #53 | Feature | P1 | PR #56 merged | **Implemented**. Issue should be closed. |
+| #52 | Feature | P1 | Open | Spec 021 exists. Needs re-launch. |
+| #37 | Feature | P1 | PR #45 merged | Should be closed manually |
+| #35 | Bug | P0 | PR #51 merged | Should be closed manually |
+| #25 | Bug | P0 | PR #50 merged | Should be closed manually |
+
+### Ideas Evaluated
+| Idea | Source | Priority | Verdict |
+|------|--------|----------|---------|
+| Agent Attribution Labels | Muse/Manyana | P1 (new) | **ADDED** — spec 026 |
+| Agent Guidance Export | Agent-RLVR, CLAUDE.md | P1 (new) | **ADDED** — spec 027 |
+| Review Session Bookmarks | Vim marks, VS Code | P2 (new) | **ADDED** — spec 028 |
+| Commit Split Suggestions | oh-my-pi | P2 (new) | **ADDED** to roadmap |
+| Terminal Compatibility | Codex bug #15416 | P2 (new) | **ADDED** to roadmap |
+| Synchronized Output | Claude Code bug #37283 | P2 (new) | **ADDED** to roadmap |
+| Diff Rendering Quality Indicators | Code review research | P3 (new) | **ADDED** to roadmap |
+| Commit-Level Annotation Export | Gitea | P3 (new) | **ADDED** to roadmap |
+
+### Specs Written
+1. `.github/specs/026-agent-attribution-labels.md` — Hunk-level agent session markers with gutter markers, session legend, filter-by-session.
+2. `.github/specs/027-agent-guidance-export.md` — Three new export formats: Agent Instruction prompt, CLAUDE.md patch, Git trailers.
+3. `.github/specs/028-review-session-bookmarks.md` — Quick line markers with single-key toggle, named bookmarks, navigation, gutter markers.
+
+### PRs Reviewed
+- **PR #55** (Annotation Code Suggestions) — +911/-66, 14 files. Well-structured, follows patterns. No issues.
+- **PR #57** (Open-in-Editor at Line) — +197/-0, 5 files. Clean implementation. No issues.
+- **PR #56** (File Tree Navigator) — Merged. +1213/-195, 6 files.
+- **PR #54** (release v0.1.19) — Version bump only.
+
+### Cursor Agents
+**Completed from Run #11:** bc-85ef5215 (PR #55), bc-34758cf7 (PR #57), bc-f6fc2377 (PR #56 merged)
+**Launched in Run #12:** bc-cc08ca00 (spec 026), bc-89603837 (spec 027), bc-7b538030 (spec 028), bc-5b038023 (ROADMAP fix)
+
+### Mockups Generated
+- [Agent Attribution Labels](https://www.town.com/content/image/sd751fkvc5gbqpkyw1cc367fjd83e47a)
+- [Agent Guidance Export](https://www.town.com/content/image/sd7bs8npb4actyzks4tj943fj983e3zf)
+- [Review Session Bookmarks](https://www.town.com/content/image/sd79ezg99z09exhk3bn7ct4q0983f276)
+
 ## 2026-03-20 (Run #11)
 
 ### Research Findings
