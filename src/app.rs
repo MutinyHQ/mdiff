@@ -51,7 +51,7 @@ use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, ChecklistState, DiffOptions, DiffViewMode};
 use crate::theme::{next_theme, prev_theme, Theme};
 use crate::tui::Tui;
-use crossterm::event::MouseEventKind;
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 /// Pending request to open a file in an external editor.
 struct PendingEditorOpen {
@@ -107,6 +107,9 @@ impl App {
         }
         if let Some(ctx) = context_lines {
             state.diff.display_context = ctx;
+        }
+        if config.tree_mode == Some(true) {
+            state.navigator.tree_mode = true;
         }
 
         // Load session annotations, checklist, and bookmark state
@@ -421,6 +424,10 @@ impl App {
                                     MouseEventKind::ScrollDown => Some(Action::PtyScrollDown),
                                     _ => None,
                                 }
+                            } else if self.state.navigator.tree_mode
+                                && !self.state.navigator.search_active
+                            {
+                                self.map_tree_mouse_to_action(mouse)
                             } else {
                                 let visible_entries = self.state.navigator.visible_entries();
                                 let inner_height =
@@ -920,7 +927,18 @@ impl App {
                 self.state.diff.scroll_offset = 0;
                 self.state.diff.cursor_row = 0;
                 // Sync navigator selection to match clicked file
-                if let Some(vis_idx) = self
+                if self.state.navigator.tree_mode {
+                    if let Some(tree_idx) = self.state.navigator.tree_nodes.iter().position(|n| {
+                        matches!(
+                            n.kind,
+                            crate::state::navigator_state::TreeNodeKind::File {
+                                entry_index
+                            } if entry_index == idx
+                        )
+                    }) {
+                        self.state.navigator.tree_selected = tree_idx;
+                    }
+                } else if let Some(vis_idx) = self
                     .state
                     .navigator
                     .visible_entries()
@@ -1894,7 +1912,12 @@ impl App {
 
             // Review state
             Action::ToggleFileReviewed => {
-                if let Some(delta_idx) = self.state.navigator.selected_delta_index() {
+                let delta_idx = if self.state.navigator.tree_mode {
+                    self.state.navigator.selected_tree_delta_index()
+                } else {
+                    self.state.navigator.selected_delta_index()
+                };
+                if let Some(delta_idx) = delta_idx {
                     if let Some(delta) = self.state.diff.deltas.get(delta_idx) {
                         let path = delta.path.to_string_lossy().to_string();
                         self.state.review.toggle_reviewed(&path);
@@ -2118,6 +2141,7 @@ impl App {
                     unified: self.state.diff.options.view_mode == DiffViewMode::Unified,
                     ignore_whitespace: self.state.diff.options.ignore_whitespace,
                     context_lines: self.state.diff.display_context,
+                    tree_mode: self.state.navigator.tree_mode,
                 });
             }
             Action::SettingsUp => {
@@ -2161,6 +2185,9 @@ impl App {
                             self.state.diff.display_context -= 1;
                         }
                     }
+                    4 => {
+                        self.state.navigator.toggle_tree_mode();
+                    }
                     _ => {}
                 }
             }
@@ -2194,6 +2221,9 @@ impl App {
                         if self.state.diff.display_context < 20 {
                             self.state.diff.display_context += 1;
                         }
+                    }
+                    4 => {
+                        self.state.navigator.toggle_tree_mode();
                     }
                     _ => {}
                 }
@@ -2348,6 +2378,13 @@ impl App {
             // Tree navigator
             Action::ToggleTreeView => {
                 self.state.navigator.toggle_tree_mode();
+                config::save_settings(&PersistentSettings {
+                    theme: self.state.theme.name.clone(),
+                    unified: self.state.diff.options.view_mode == DiffViewMode::Unified,
+                    ignore_whitespace: self.state.diff.options.ignore_whitespace,
+                    context_lines: self.state.diff.display_context,
+                    tree_mode: self.state.navigator.tree_mode,
+                });
                 if self.state.navigator.tree_mode {
                     self.sync_tree_selection();
                 } else {
@@ -2977,6 +3014,78 @@ impl App {
             .selected_file
             .and_then(|idx| self.state.diff.deltas.get(idx))
             .map(|delta| delta.path.clone())
+    }
+
+    fn map_tree_mouse_to_action(&mut self, mouse: MouseEvent) -> Option<Action> {
+        use crate::state::navigator_state::TreeNodeKind;
+
+        let nav_rect = self.last_navigator_rect;
+        let diff_rect = self.last_diff_view_rect;
+        let col = mouse.column;
+        let row = mouse.row;
+
+        let in_navigator = nav_rect.x <= col
+            && col < nav_rect.x + nav_rect.width
+            && nav_rect.y <= row
+            && row < nav_rect.y + nav_rect.height;
+        let in_diff = diff_rect.x <= col
+            && col < diff_rect.x + diff_rect.width
+            && diff_rect.y <= row
+            && row < diff_rect.y + diff_rect.height;
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                if in_navigator {
+                    Some(Action::NavigatorUp)
+                } else if in_diff {
+                    Some(Action::ScrollUp)
+                } else {
+                    None
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                if in_navigator {
+                    Some(Action::NavigatorDown)
+                } else if in_diff {
+                    Some(Action::ScrollDown)
+                } else {
+                    None
+                }
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if in_navigator {
+                    let inner_height = nav_rect.height.saturating_sub(2) as usize;
+                    let tree_nodes = self.state.navigator.visible_tree_nodes();
+                    let selected = self.state.navigator.tree_selected;
+                    let scroll = if selected >= inner_height {
+                        selected - inner_height + 1
+                    } else {
+                        0
+                    };
+
+                    let relative_row = row.saturating_sub(nav_rect.y + 1) as usize;
+                    let node_index = scroll + relative_row;
+
+                    if node_index < tree_nodes.len() {
+                        let action = match &tree_nodes[node_index].kind {
+                            TreeNodeKind::File { entry_index } => {
+                                Some(Action::SelectFile(*entry_index))
+                            }
+                            TreeNodeKind::Directory { .. } => Some(Action::TreeToggleCollapse),
+                        };
+                        self.state.navigator.tree_selected = node_index;
+                        action
+                    } else {
+                        None
+                    }
+                } else if in_diff {
+                    Some(Action::FocusDiffView)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 
     fn sync_selection(&mut self) {

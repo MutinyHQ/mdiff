@@ -58,6 +58,7 @@ pub struct MdiffConfig {
     pub mouse: MouseConfig,
     /// Checklist configuration for review templates
     pub checklist: Option<ChecklistConfig>,
+    pub tree_mode: Option<bool>,
 }
 
 impl Default for MdiffConfig {
@@ -78,6 +79,7 @@ impl Default for MdiffConfig {
             agent_models: HashMap::new(),
             mouse: MouseConfig::default(),
             checklist: None,
+            tree_mode: None,
         }
     }
 }
@@ -175,6 +177,8 @@ struct ConfigFile {
     mouse: MouseConfig,
     #[serde(default)]
     checklist: Option<ChecklistConfig>,
+    #[serde(default)]
+    tree_mode: Option<bool>,
 }
 
 fn config_path() -> PathBuf {
@@ -239,6 +243,7 @@ pub fn load_config() -> MdiffConfig {
         agent_models: file.agent_models,
         mouse: file.mouse,
         checklist: file.checklist,
+        tree_mode: file.tree_mode,
     }
 }
 
@@ -248,6 +253,7 @@ pub struct PersistentSettings {
     pub unified: bool,
     pub ignore_whitespace: bool,
     pub context_lines: usize,
+    pub tree_mode: bool,
 }
 
 /// Save persistent settings to `~/.config/mdiff/config.toml`.
@@ -280,6 +286,10 @@ pub fn save_settings(settings: &PersistentSettings) {
     table.insert(
         "context_lines".to_string(),
         toml::Value::Integer(settings.context_lines as i64),
+    );
+    table.insert(
+        "tree_mode".to_string(),
+        toml::Value::Boolean(settings.tree_mode),
     );
 
     // Ensure directory exists
