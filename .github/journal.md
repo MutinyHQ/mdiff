@@ -402,3 +402,63 @@ Cursor agents blocked — 2nd consecutive run with model unavailability.
 - Opened PRs for P0 items #1, #2, #3
 - Competitive analysis of critique, tuicr, acre, Kaleidoscope, lazygit, fzf
 - Researched RLHF/human feedback patterns for annotation design
+
+## 2026-03-24 (Run #13)
+
+### Research Findings
+- **OpenDiffs** (released March 22, 2026): New CLI tool for AI-powered structured code review of staged git diffs using Claude Code or Codex. Produces scored markdown reviews. Validates mdiff's problem space from an AI-first angle but takes a different approach.
+- **Agent-RLVR** (Scale Labs): Structured guidance improves agent task completion 9.4% to 22.4%. Directly validates mdiff's Agent Guidance Export feature (spec 027).
+- **Rich Feedback RL**: Modern RL converging toward critiques, comparisons, checklists — maps to mdiff's annotation categories.
+- **git-time-machine** (Rust/ratatui): New TUI for visual git reflog navigation. Growing Rust git TUI ecosystem.
+- **GitHub trending March 2026**: AI agent frameworks dominate, no TUI/diff tools trending — niche opportunity for mdiff.
+
+### Open Issues Review
+3 new owner-filed issues discovered and prioritized:
+- **#65 (Bug, P0)**: File preview on hover broken in tree view. Cursor moves but diff pane shows last selected file.
+- **#64 (Bug, P0)**: Tree view has 5 inconsistencies: `m` key broken, need `x` for collapse, non-persistent setting, mouse click off-by-one, gitignored files shown.
+- **#63 (UX, P1)**: Go-to-line (`:<number>`) and fuzzy file picker (`Ctrl+P`) requested by owner.
+
+All three owner-filed issues prioritized above net-new ideas for implementation.
+
+Existing issues unchanged: #52 (Ask a Question) still needs re-launch, #53/#37/#35/#25 have fixes merged but issues not closed.
+
+### Ideas Evaluated
+
+| Idea | Source | Priority | Action |
+|------|--------|----------|--------|
+| Tree View Bug Fixes | Issue #64 (owner) | P0 | **SPEC 029** written, Cursor agent launched |
+| File Preview on Hover | Issue #65 (owner) | P0 | **SPEC 030** written, Cursor agent launched |
+| Go-to-Line & File Picker | Issue #63 (owner) | P1 | **SPEC 031** written, Cursor agent launched |
+| Structured AI Review Export | OpenDiffs research | Deferred | Overlaps with existing Agent Guidance Export (spec 027) |
+| Agent Guidance Scoring | Agent-RLVR research | Deferred | Interesting but lower priority than owner-filed bugs |
+| Commit Graph Integration | git-time-machine | P3 candidate | Adjacent to existing Diff Snapshot feature |
+| Review Fatigue Detection | Code review research | P3 candidate | Overlaps with Diff Rendering Quality Indicators |
+
+### Specs Written
+1. `.github/specs/029-tree-view-inconsistencies.md` — 5 bug fixes for tree navigator (Issue #64)
+2. `.github/specs/030-file-preview-on-hover.md` — Sync diff pane with tree cursor (Issue #65)
+3. `.github/specs/031-goto-line-and-file-picker.md` — Vim command bar + Ctrl+P fuzzy file search (Issue #63)
+
+### PRs & Agents
+**Open PRs reviewed:**
+- PR #62 (Agent Attribution Labels, +747/-20) — implementation looks solid, adds attribution state, git commit analysis, gutter markers, session filtering
+- PR #61 (Agent Guidance Export, +792/-6, draft) — adds 5 export formats (JSON, Markdown, Agent Guidance, CLAUDE.md, Git Trailers) with format picker UI
+- PR #55 (Annotation Code Suggestions, +911/-66) — full suggestion editor with preview, session persistence, export integration
+
+**Cursor agents launched:**
+- bc-e7400104: Tree View Inconsistencies (spec 029, Issue #64)
+- bc-37d7b27b: File Preview on Hover (spec 030, Issue #65)
+- bc-3bc7c74c: Go-to-Line & Fuzzy File Picker (spec 031, Issue #63)
+
+**Previous agents (from Run #12):**
+- bc-cc08ca00: Agent Attribution Labels — FINISHED, PR #62 opened
+- bc-89603837: Agent Guidance Export — FINISHED, PR #61 opened (draft)
+- bc-7b538030: Review Session Bookmarks — FINISHED, PR #60 opened then closed
+
+### PR Review Notes
+- PR #62 (Attribution): Well-structured implementation. New `attribution_state.rs` module, `git/attribution.rs` for commit analysis, proper integration with diff view rendering, export, and which-key help. Uses session colors for visual differentiation.
+- PR #61 (Guidance Export): Draft PR. Adds `ExportFormat` enum with 5 variants, format picker overlay, extensive export logic in `export.rs` (+619 lines). Agent Guidance and CLAUDE.md formats are novel differentiators.
+- PR #55 (Suggestions): Comprehensive suggestion editor with dual-pane layout (original vs replacement), comment field, preview mode, session persistence. Good separation of concerns with dedicated `suggestion_state.rs`.
+
+### Competitive Landscape Updates
+- Added **OpenDiffs** to tracked tools
