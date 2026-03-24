@@ -477,8 +477,15 @@ impl App {
 
             // Apply remaining actions
             for action in actions {
-                // Auto-dismiss which-key on any keypress (except the ? toggle itself)
-                if self.state.which_key_visible && !matches!(action, Action::ToggleWhichKey) {
+                // Auto-dismiss which-key on any user input (except the ? toggle itself)
+                // Skip non-interactive actions like Tick and Resize to prevent
+                // batched events from immediately closing the overlay.
+                if self.state.which_key_visible
+                    && !matches!(
+                        action,
+                        Action::ToggleWhichKey | Action::Tick | Action::Resize
+                    )
+                {
                     self.state.which_key_visible = false;
                 }
                 self.update(action);
