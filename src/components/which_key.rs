@@ -305,8 +305,8 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 ];
                 if state.navigator.tree_mode {
                     entries.push(KeyEntry {
-                        key: "h",
-                        description: "Collapse dir",
+                        key: "x/h",
+                        description: "Collapse/expand dir",
                     });
                     entries.push(KeyEntry {
                         key: "zM",
@@ -364,7 +364,11 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     },
                     KeyEntry {
                         key: ":",
-                        description: "Settings",
+                        description: "Command bar",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+P",
+                        description: "File picker",
                     },
                     KeyEntry {
                         key: "?",
@@ -489,6 +493,14 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 KeyEntry {
                     key: "Tab",
                     description: "Split/unified",
+                },
+                KeyEntry {
+                    key: ":",
+                    description: "Command bar",
+                },
+                KeyEntry {
+                    key: "Ctrl+P",
+                    description: "File picker",
                 },
                 KeyEntry {
                     key: "Ctrl+E",

@@ -4,6 +4,8 @@ use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
     DiffOptions, DiffState, GlobalSearchState, NavigatorState, ReviewState, SelectionState,
     SuggestionState, TextBuffer, WorktreeState,
+    CommandBarState, DiffOptions, DiffState, FilePickerState, GlobalSearchState, NavigatorState,
+    ReviewState, SelectionState, TextBuffer, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -147,6 +149,12 @@ pub struct AppState {
 
     // Suggestion editor
     pub suggestion: SuggestionState,
+  
+    // Command bar (`:` vim-style)
+    pub command_bar: CommandBarState,
+
+    // File picker (Ctrl+P)
+    pub file_picker: FilePickerState,
 }
 
 impl AppState {
@@ -192,6 +200,8 @@ impl AppState {
             checklist: ChecklistState::new(),
             bookmarks: BookmarkState::new(),
             suggestion: SuggestionState::default(),
+            command_bar: CommandBarState::new(),
+            file_picker: FilePickerState::new(),
         }
     }
 }

@@ -115,6 +115,8 @@ pub struct KeyContext {
     pub mark_pending: bool,
     pub jump_mark_pending: bool,
     pub suggestion_editor_open: bool,
+    pub command_bar_active: bool,
+    pub file_picker_active: bool,
 }
 
 /// Context for mouse event mapping.
@@ -336,6 +338,56 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 2.2: Command bar mode
+    if ctx.command_bar_active {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
+        return match key.code {
+            KeyCode::Esc => Some(Action::CommandBarCancel),
+            KeyCode::Enter => Some(Action::CommandBarConfirm),
+            KeyCode::Backspace => Some(Action::CommandBarBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
+            KeyCode::Char(c) => Some(Action::CommandBarChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 2.25: File picker mode
+    if ctx.file_picker_active {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                KeyCode::Char('j') => Some(Action::FilePickerDown),
+                KeyCode::Char('k') => Some(Action::FilePickerUp),
+                _ => None,
+            };
+        }
+        return match key.code {
+            KeyCode::Esc => Some(Action::FilePickerCancel),
+            KeyCode::Enter => Some(Action::FilePickerConfirm),
+            KeyCode::Up => Some(Action::FilePickerUp),
+            KeyCode::Down => Some(Action::FilePickerDown),
+            KeyCode::Backspace => Some(Action::FilePickerBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
+            KeyCode::Char(c) => Some(Action::FilePickerChar(c)),
+            _ => None,
+        };
+    }
+
     // Priority 2.3: Settings modal
     if ctx.settings_open {
         return match key.code {
@@ -503,6 +555,8 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenSuggestionEditor)
+        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::OpenFilePicker)
         }
         _ => {}
     }
@@ -626,7 +680,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         KeyCode::Char('T') if !ctx.visual_mode_active => return Some(Action::ToggleTreeView),
         KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
         KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
-        KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenSettings),
+        KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenCommandBar),
         _ => {}
     }
 
@@ -673,6 +727,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                     }
                 }
                 KeyCode::Char('h') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
+                KeyCode::Char('x') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
                 KeyCode::Char('z') if ctx.tree_mode => {
                     // z prefix for fold commands; handled via z_pending state
                     None
@@ -775,6 +830,8 @@ mod tests {
             mark_pending: false,
             jump_mark_pending: false,
             suggestion_editor_open: false,
+            command_bar_active: false,
+            file_picker_active: false,
         }
     }
 

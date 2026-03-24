@@ -257,4 +257,20 @@ pub enum Action {
     SuggestionCursorDown,
     ToggleSuggestionPreview,
     SuggestionToggleFocus,
+    // Command bar (`:` vim-style)
+    OpenCommandBar,
+    CommandBarChar(char),
+    CommandBarBackspace,
+    CommandBarConfirm,
+    CommandBarCancel,
+    GoToLine(u32),
+
+    // File picker (Ctrl+P)
+    OpenFilePicker,
+    FilePickerChar(char),
+    FilePickerBackspace,
+    FilePickerUp,
+    FilePickerDown,
+    FilePickerConfirm,
+    FilePickerCancel,
 }
