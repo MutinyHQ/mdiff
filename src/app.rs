@@ -851,6 +851,7 @@ impl App {
             Action::NavigatorUp => {
                 if self.state.navigator.tree_mode {
                     self.state.navigator.tree_select_up();
+                    self.sync_tree_selection();
                 } else {
                     self.state.navigator.select_up();
                     self.sync_selection();
@@ -859,6 +860,7 @@ impl App {
             Action::NavigatorDown => {
                 if self.state.navigator.tree_mode {
                     self.state.navigator.tree_select_down();
+                    self.sync_tree_selection();
                 } else {
                     self.state.navigator.select_down();
                     self.sync_selection();
@@ -867,6 +869,7 @@ impl App {
             Action::NavigatorTop => {
                 if self.state.navigator.tree_mode {
                     self.state.navigator.tree_selected = 0;
+                    self.sync_tree_selection();
                 } else {
                     self.state.navigator.selected = 0;
                     self.sync_selection();
@@ -878,6 +881,7 @@ impl App {
                     if len > 0 {
                         self.state.navigator.tree_selected = len - 1;
                     }
+                    self.sync_tree_selection();
                 } else {
                     let len = self.state.navigator.visible_entries().len();
                     if len > 0 {
@@ -2308,6 +2312,11 @@ impl App {
             // Tree navigator
             Action::ToggleTreeView => {
                 self.state.navigator.toggle_tree_mode();
+                if self.state.navigator.tree_mode {
+                    self.sync_tree_selection();
+                } else {
+                    self.sync_selection();
+                }
             }
             Action::TreeToggleCollapse => {
                 if let Some(entry_index) = self.state.navigator.tree_toggle_collapse() {
@@ -2753,22 +2762,32 @@ impl App {
 
     fn sync_selection(&mut self) {
         if let Some(delta_idx) = self.state.navigator.selected_delta_index() {
-            let changed = self.state.diff.selected_file != Some(delta_idx);
-            self.state.diff.selected_file = Some(delta_idx);
-            self.state.diff.scroll_offset = 0;
-            if changed {
-                self.state.diff.cursor_row = 0;
-                self.update_highlights();
-                // Exit visual mode when switching files
-                self.state.selection.active = false;
-                // Reset context expansions for the new file
-                self.state.diff.gap_expansions.clear();
-                // Clear diff search state for the new file
-                self.state.diff.search_query.clear();
-                self.state.diff.search_matches.clear();
-                self.state.diff.search_match_index = None;
-                self.state.diff.search_active = false;
-            }
+            self.apply_file_selection(delta_idx);
+        }
+    }
+
+    fn sync_tree_selection(&mut self) {
+        if let Some(delta_idx) = self.state.navigator.selected_tree_delta_index() {
+            self.apply_file_selection(delta_idx);
+        }
+    }
+
+    fn apply_file_selection(&mut self, delta_idx: usize) {
+        let changed = self.state.diff.selected_file != Some(delta_idx);
+        self.state.diff.selected_file = Some(delta_idx);
+        self.state.diff.scroll_offset = 0;
+        if changed {
+            self.state.diff.cursor_row = 0;
+            self.update_highlights();
+            // Exit visual mode when switching files
+            self.state.selection.active = false;
+            // Reset context expansions for the new file
+            self.state.diff.gap_expansions.clear();
+            // Clear diff search state for the new file
+            self.state.diff.search_query.clear();
+            self.state.diff.search_matches.clear();
+            self.state.diff.search_match_index = None;
+            self.state.diff.search_active = false;
         }
     }
 
