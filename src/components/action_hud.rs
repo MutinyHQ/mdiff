@@ -60,9 +60,9 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("R", "refresh"),
             ("t", "target"),
             ("o", "outputs"),
-            ("^W", "worktree"),
+            ("^W", "window"),
             ("^A", "agent"),
-            (":", "settings"),
+            (":", "command"),
             ("?", "hide"),
         ]
     } else {
@@ -75,9 +75,9 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("y", "yank"),
             ("Space", "expand"),
             ("o", "outputs"),
-            ("^W", "worktree"),
+            ("^W", "window"),
             ("^A", "agent"),
-            (":", "settings"),
+            (":", "command"),
             ("?", "help"),
         ]
     }

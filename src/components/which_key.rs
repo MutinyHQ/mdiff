@@ -123,7 +123,11 @@ fn get_context_title(state: &AppState) -> &'static str {
     }
     match state.active_view {
         ActiveView::WorktreeBrowser => "Worktree Browser",
-        ActiveView::AgentOutputs => "Agent Outputs",
+        ActiveView::AgentOutputs => match state.focus {
+            FocusPanel::AgentRunList => "Agent Runs",
+            FocusPanel::AgentOutput => "Agent Output",
+            _ => "Agent Outputs",
+        },
         ActiveView::FeedbackSummary => "Feedback Summary",
         ActiveView::DiffExplorer => match state.focus {
             FocusPanel::Navigator => {
@@ -134,6 +138,9 @@ fn get_context_title(state: &AppState) -> &'static str {
                 }
             }
             FocusPanel::DiffView => "Diff View",
+            FocusPanel::ReviewPanel => "Review Panel",
+            FocusPanel::ChecklistPanel => "Checklist",
+            _ => "Diff Explorer",
         },
     }
 }
@@ -191,32 +198,44 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 description: "Back",
             },
         ],
-        ActiveView::AgentOutputs => vec![
-            KeyEntry {
-                key: "j/k",
-                description: "Navigate",
-            },
-            KeyEntry {
-                key: "y",
-                description: "Copy prompt",
-            },
-            KeyEntry {
-                key: "w",
-                description: "Switch worktree",
-            },
-            KeyEntry {
-                key: "Enter",
-                description: "PTY focus",
-            },
-            KeyEntry {
-                key: "Ctrl+K",
-                description: "Kill agent",
-            },
-            KeyEntry {
-                key: "Esc",
-                description: "Back",
-            },
-        ],
+        ActiveView::AgentOutputs => match state.focus {
+            FocusPanel::AgentRunList => vec![
+                KeyEntry {
+                    key: "j/k",
+                    description: "Navigate runs",
+                },
+                KeyEntry {
+                    key: "y",
+                    description: "Copy prompt",
+                },
+                KeyEntry {
+                    key: "w",
+                    description: "Switch worktree",
+                },
+                KeyEntry {
+                    key: "^K",
+                    description: "Kill agent",
+                },
+                KeyEntry {
+                    key: "^W l",
+                    description: "Focus output",
+                },
+            ],
+            FocusPanel::AgentOutput => vec![
+                KeyEntry {
+                    key: "(typing)",
+                    description: "PTY input",
+                },
+                KeyEntry {
+                    key: "^W h",
+                    description: "Focus run list",
+                },
+            ],
+            _ => vec![KeyEntry {
+                key: "^W h/l",
+                description: "Switch pane",
+            }],
+        },
         ActiveView::FeedbackSummary => vec![
             KeyEntry {
                 key: "j/k",
@@ -277,7 +296,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 ];
                 if state.navigator.tree_mode {
                     entries.push(KeyEntry {
-                        key: "x/h",
+                        key: "x",
                         description: "Collapse/expand dir",
                     });
                     entries.push(KeyEntry {
@@ -316,7 +335,7 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     },
                     KeyEntry {
                         key: "Ctrl+W",
-                        description: "Worktrees",
+                        description: "Window mgmt",
                     },
                     KeyEntry {
                         key: "Ctrl+A",
@@ -363,8 +382,8 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Top/bottom",
                 },
                 KeyEntry {
-                    key: "h",
-                    description: "Focus navigator",
+                    key: "^W h/l",
+                    description: "Switch pane",
                 },
                 KeyEntry {
                     key: "PgUp/Dn",
@@ -483,6 +502,39 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Quit",
                 },
             ],
+            FocusPanel::ReviewPanel => vec![
+                KeyEntry {
+                    key: "type",
+                    description: "Compose review",
+                },
+                KeyEntry {
+                    key: "Enter",
+                    description: "Submit review",
+                },
+                KeyEntry {
+                    key: "S-Enter",
+                    description: "Newline",
+                },
+                KeyEntry {
+                    key: "^W w",
+                    description: "Switch pane",
+                },
+            ],
+            FocusPanel::ChecklistPanel => vec![
+                KeyEntry {
+                    key: "j/k",
+                    description: "Navigate items",
+                },
+                KeyEntry {
+                    key: "Space",
+                    description: "Toggle item",
+                },
+                KeyEntry {
+                    key: "^W w",
+                    description: "Switch pane",
+                },
+            ],
+            _ => vec![],
         },
     }
 }

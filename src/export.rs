@@ -62,7 +62,7 @@ pub fn export_feedback(
 ) -> Result<PathBuf, String> {
     let export = build_export(state, target_label);
 
-    let dir = repo_path.join(".mdiff-feedback");
+    let dir = repo_path.join(".mdiff").join("feedback");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
@@ -178,10 +178,10 @@ fn count_reviewed_files(state: &AppState) -> usize {
         .count()
 }
 
-/// Ensure `.mdiff-feedback/` is listed in `.gitignore`.
+/// Ensure `.mdiff/` is listed in `.gitignore`.
 pub fn ensure_gitignore(repo_path: &Path) {
     let gitignore_path = repo_path.join(".gitignore");
-    let entry = ".mdiff-feedback/";
+    let entry = ".mdiff/";
 
     if let Ok(contents) = std::fs::read_to_string(&gitignore_path) {
         if contents.lines().any(|line| line.trim() == entry) {

@@ -66,8 +66,14 @@ pub enum ActiveView {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPanel {
+    // DiffExplorer panels
     Navigator,
     DiffView,
+    ReviewPanel,
+    ChecklistPanel,
+    // AgentOutputs panels
+    AgentRunList,
+    AgentOutput,
 }
 
 pub struct AppState {
@@ -150,6 +156,18 @@ pub struct AppState {
 
     // File picker (Ctrl+P)
     pub file_picker: FilePickerState,
+
+    // Agentic review
+    pub agentic_review_modal_open: bool, // kept for KeyContext compat, always false now
+    pub agentic_review_composing: bool,
+    pub agentic_review_text: TextBuffer,
+    pub agentic_review_running: bool,
+    pub agentic_review_panel_open: bool,
+    pub agentic_review_stream_output: String,
+    pub agentic_review_child_done: usize,
+    pub agentic_review_child_total: usize,
+    pub agentic_review_scroll: usize,
+    pub agentic_review_auto_scroll: bool,
 }
 
 impl AppState {
@@ -196,6 +214,16 @@ impl AppState {
             bookmarks: BookmarkState::new(),
             command_bar: CommandBarState::new(),
             file_picker: FilePickerState::new(),
+            agentic_review_modal_open: false,
+            agentic_review_composing: false,
+            agentic_review_text: TextBuffer::new(),
+            agentic_review_running: false,
+            agentic_review_panel_open: false,
+            agentic_review_stream_output: String::new(),
+            agentic_review_child_done: 0,
+            agentic_review_child_total: 0,
+            agentic_review_scroll: 0,
+            agentic_review_auto_scroll: true,
         }
     }
 }

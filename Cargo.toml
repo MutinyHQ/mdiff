@@ -37,6 +37,7 @@ clap = { version = "4", features = ["derive"] }
 # Error handling
 anyhow = "1"
 color-eyre = "0.6"
+thiserror = "2"
 
 # Syntax highlighting
 tree-sitter = "0.24"
@@ -71,3 +72,6 @@ nucleo = "0.5"
 # PTY + terminal emulation
 portable-pty = "0.8"
 vt100 = "0.15"
+
+# LLM (agentic review)
+rig-core = { version = "0.33", features = ["derive"] }

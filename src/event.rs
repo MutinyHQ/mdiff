@@ -116,6 +116,10 @@ pub struct KeyContext {
     pub jump_mark_pending: bool,
     pub command_bar_active: bool,
     pub file_picker_active: bool,
+    pub agentic_review_modal_open: bool,
+    pub agentic_review_panel_open: bool,
+    pub agentic_review_composing: bool,
+    pub window_pending: bool,
 }
 
 /// Context for mouse event mapping.
@@ -167,12 +171,28 @@ impl MouseContext<'_> {
 
 /// Map a key event to an action based on current app context.
 pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
-    // Priority 0: PTY focus mode - forward ALL keys except Esc to the PTY.
-    // This must come first so Ctrl+C/D go to the agent, not quit mdiff.
+    // Priority 0: PTY focus mode — forward ALL keys except Ctrl+W to the PTY.
+    // Use Ctrl+W to switch away from the PTY panel (no Esc trap needed).
     if ctx.pty_focus {
+        if key.code == KeyCode::Char('w') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            // Fall through to window prefix handling below
+        } else {
+            return Some(Action::PtyInput(key));
+        }
+    }
+
+    // Priority 0.2: Window prefix mode (Ctrl+W + next key)
+    if ctx.window_pending {
+        // Ctrl+W + h/l navigates left/right through the horizontal pane layout:
+        // Navigator ← → DiffView ← → ReviewPanel/ChecklistPanel
         return match key.code {
-            KeyCode::Esc => Some(Action::ExitPtyFocus),
-            _ => Some(Action::PtyInput(key)),
+            KeyCode::Char('h') | KeyCode::Left => Some(Action::FocusPaneLeft),
+            KeyCode::Char('l') | KeyCode::Right => Some(Action::FocusPaneRight),
+            KeyCode::Char('w') => Some(Action::CycleFocus),
+            KeyCode::Char('o') => Some(Action::SwitchToAgentOutputs),
+            KeyCode::Char('b') => Some(Action::ToggleWorktreeBrowser),
+            KeyCode::Esc => None, // Cancel prefix
+            _ => None,
         };
     }
 
@@ -314,6 +334,8 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             _ => None,
         };
     }
+
+    // (Agentic review composing is now handled at Priority 8 under FocusPanel::ReviewPanel)
 
     // Priority 2.2: Command bar mode
     if ctx.command_bar_active {
@@ -516,10 +538,19 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         return Some(Action::ToggleWhichKey);
     }
 
+    // Priority 3.8: Agentic review panel scroll (when panel is visible)
+    if ctx.agentic_review_panel_open && !ctx.agentic_review_modal_open {
+        match key.code {
+            KeyCode::Char('{') => return Some(Action::AgenticReviewPanelUp),
+            KeyCode::Char('}') => return Some(Action::AgenticReviewPanelDown),
+            _ => {}
+        }
+    }
+
     // Priority 4: Global bindings (always active)
     match key.code {
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-            return Some(Action::ToggleWorktreeBrowser)
+            return Some(Action::WindowPrefix)
         }
         KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenAgentSelector)
@@ -532,6 +563,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenFilePicker)
+        }
+        KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::OpenAgenticReview)
         }
         _ => {}
     }
@@ -598,21 +632,33 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
-    // Priority 5.5: Agent outputs tab
+    // Priority 5.5: Agent outputs — focus-based bindings
     if ctx.active_view == ActiveView::AgentOutputs {
-        // Check Ctrl+K first (before plain 'k')
-        if key.code == KeyCode::Char('k') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            return Some(Action::KillAgentProcess);
+        match ctx.focus {
+            FocusPanel::AgentRunList => {
+                if key.code == KeyCode::Char('k') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return Some(Action::KillAgentProcess);
+                }
+                return match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentOutputsUp),
+                    KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
+                    KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
+                    KeyCode::Char('w') => Some(Action::AgentOutputsSwitchWorktree),
+                    _ => None,
+                };
+            }
+            FocusPanel::AgentOutput => {
+                // PTY focus is handled at Priority 0 — all keys go to PTY.
+                // This branch is only reached if pty_focus is false
+                // (e.g. the agent has exited). Show scroll/navigation.
+                return match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => Some(Action::PtyScrollUp),
+                    KeyCode::Down | KeyCode::Char('j') => Some(Action::PtyScrollDown),
+                    _ => None,
+                };
+            }
+            _ => {} // Other focus panels — fall through
         }
-        return match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::AgentOutputsUp),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
-            KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
-            KeyCode::Char('w') => Some(Action::AgentOutputsSwitchWorktree),
-            KeyCode::Enter => Some(Action::EnterPtyFocus),
-            KeyCode::Esc => Some(Action::SwitchToAgentOutputs), // toggle back
-            _ => None,
-        };
     }
 
     // Priority 5.6: Feedback summary view
@@ -636,6 +682,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             return match ctx.focus {
                 FocusPanel::Navigator => Some(Action::StartSearch),
                 FocusPanel::DiffView => Some(Action::StartDiffSearch),
+                _ => None,
             }
         }
         KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
@@ -649,6 +696,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             return match ctx.focus {
                 FocusPanel::DiffView => Some(Action::DiffSearchNext),
                 FocusPanel::Navigator => Some(Action::NextUnreviewed),
+                _ => None,
             }
         }
         KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
@@ -694,14 +742,8 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 KeyCode::Char('g') => Some(Action::NavigatorTop),
                 KeyCode::Char('G') => Some(Action::NavigatorBottom),
                 KeyCode::Char('m') => Some(Action::ToggleFileReviewed),
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Enter => {
-                    if ctx.tree_mode {
-                        Some(Action::TreeToggleCollapse)
-                    } else {
-                        Some(Action::FocusDiffView)
-                    }
-                }
-                KeyCode::Char('h') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
+                KeyCode::Enter if ctx.tree_mode => Some(Action::TreeToggleCollapse),
+                KeyCode::Enter => Some(Action::FocusDiffView),
                 KeyCode::Char('x') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
                 KeyCode::Char('z') if ctx.tree_mode => {
                     // z prefix for fold commands; handled via z_pending state
@@ -715,7 +757,6 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Down | KeyCode::Char('j') => Some(Action::ScrollDown),
             KeyCode::Char('g') => Some(Action::ScrollToTop),
             KeyCode::Char('G') => Some(Action::ScrollToBottom),
-            KeyCode::Left | KeyCode::Char('h') => Some(Action::FocusNavigator),
             KeyCode::PageUp => Some(Action::ScrollPageUp),
             KeyCode::PageDown => Some(Action::ScrollPageDown),
             KeyCode::Char(' ') => Some(Action::ExpandContext),
@@ -736,6 +777,51 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('0') => Some(Action::RemoveLineScore),
             _ => None,
         },
+        FocusPanel::ReviewPanel => {
+            // Text input for composing review
+            if ctx.agentic_review_composing {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    return match key.code {
+                        KeyCode::Char('a') => Some(Action::TextCursorHome),
+                        KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                        KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                        _ => None,
+                    };
+                }
+                match key.code {
+                    KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                        Some(Action::AgenticReviewNewline)
+                    }
+                    KeyCode::Enter => Some(Action::AgenticReviewConfirm),
+                    KeyCode::Backspace => Some(Action::AgenticReviewBackspace),
+                    KeyCode::Left => Some(Action::TextCursorLeft),
+                    KeyCode::Right => Some(Action::TextCursorRight),
+                    KeyCode::Home => Some(Action::TextCursorHome),
+                    KeyCode::End => Some(Action::TextCursorEnd),
+                    KeyCode::Char(c) => Some(Action::AgenticReviewChar(c)),
+                    _ => None,
+                }
+            } else {
+                // Panel is open but not composing — scroll bindings
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => Some(Action::AgenticReviewPanelUp),
+                    KeyCode::Down | KeyCode::Char('j') => Some(Action::AgenticReviewPanelDown),
+                    _ => None,
+                }
+            }
+        }
+        FocusPanel::ChecklistPanel => {
+            // Delegate to existing checklist bindings
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => Some(Action::ChecklistUp),
+                KeyCode::Down | KeyCode::Char('j') => Some(Action::ChecklistDown),
+                KeyCode::Char(' ') | KeyCode::Enter => Some(Action::ChecklistToggleItem),
+                KeyCode::Char('n') => Some(Action::ChecklistAddNote),
+                _ => None,
+            }
+        }
+        // AgentRunList and AgentOutput are handled at Priority 5.5 above
+        FocusPanel::AgentRunList | FocusPanel::AgentOutput => None,
     }
 }
 
@@ -806,6 +892,11 @@ mod tests {
             jump_mark_pending: false,
             command_bar_active: false,
             file_picker_active: false,
+            agentic_review_modal_open: false,
+            agentic_review_running: false,
+            agentic_review_panel_open: false,
+            agentic_review_composing: false,
+            window_pending: false,
         }
     }
 

@@ -1,6 +1,7 @@
 pub mod action_hud;
 pub mod agent_outputs;
 pub mod agent_selector;
+pub mod agentic_review_panel;
 pub mod annotation_menu;
 pub mod bookmark_list;
 pub mod category_picker;

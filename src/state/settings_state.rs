@@ -6,4 +6,4 @@ pub struct SettingsState {
 }
 
 /// Number of setting rows in the modal.
-pub const SETTINGS_ROW_COUNT: usize = 5;
+pub const SETTINGS_ROW_COUNT: usize = 10;

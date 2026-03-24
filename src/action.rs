@@ -13,7 +13,7 @@ impl QuitCombo {
         }
     }
 }
-use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
+use crate::state::annotation_state::{Annotation, AnnotationCategory, AnnotationSeverity};
 
 /// Central action enum — all state mutations flow through here.
 #[derive(Debug, Clone)]
@@ -47,9 +47,12 @@ pub enum Action {
     JumpNextHunk,
     JumpPrevHunk,
 
-    // Focus
-    FocusNavigator,
+    // Focus / Window management
     FocusDiffView,
+    FocusPaneLeft,
+    FocusPaneRight,
+    CycleFocus,
+    WindowPrefix,
 
     // File search (navigator)
     StartSearch,
@@ -163,8 +166,6 @@ pub enum Action {
     AgentOutputsSwitchWorktree,
 
     // PTY focus mode
-    EnterPtyFocus,
-    ExitPtyFocus,
     PtyInput(KeyEvent),
     PtyPaste(String),
     PtyScrollUp,
@@ -259,4 +260,21 @@ pub enum Action {
     FilePickerDown,
     FilePickerConfirm,
     FilePickerCancel,
+
+    // Agentic review — text input modal
+    OpenAgenticReview,
+    AgenticReviewChar(char),
+    AgenticReviewBackspace,
+    AgenticReviewNewline,
+    AgenticReviewConfirm,
+    // Agentic review — side panel
+    ToggleAgenticReviewPanel,
+
+    // Agentic review — async events from orchestration runner
+    AgenticReviewStreamToken(String),
+    AgenticReviewChildProgress(usize, usize),
+    AgenticReviewComplete(Vec<Annotation>),
+    AgenticReviewError(String),
+    AgenticReviewPanelUp,
+    AgenticReviewPanelDown,
 }

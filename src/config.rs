@@ -1,8 +1,73 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::theme::{apply_overrides, Theme, ThemeOverrides};
+
+/// API keys for LLM providers, stored in config.toml [api_keys] section.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ApiKeysConfig {
+    #[serde(default)]
+    pub openai: Option<String>,
+    #[serde(default)]
+    pub anthropic: Option<String>,
+    #[serde(default)]
+    pub moonshot: Option<String>,
+}
+
+/// Configuration for agentic review mode.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgenticReviewConfig {
+    /// Legacy single provider field — used as fallback when per-role providers are absent.
+    #[serde(default)]
+    pub provider: Option<String>,
+    pub parent_model: String,
+    pub child_model: String,
+    #[serde(default)]
+    pub parent_provider: Option<String>,
+    #[serde(default)]
+    pub child_provider: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default = "default_max_agent_turns")]
+    pub max_agent_turns: usize,
+}
+
+fn default_max_agent_turns() -> usize {
+    50
+}
+
+impl AgenticReviewConfig {
+    /// Resolved parent provider (falls back to legacy `provider`, then "anthropic").
+    pub fn resolved_parent_provider(&self) -> &str {
+        self.parent_provider
+            .as_deref()
+            .or(self.provider.as_deref())
+            .unwrap_or("anthropic")
+    }
+
+    /// Resolved child provider (falls back to legacy `provider`, then "anthropic").
+    pub fn resolved_child_provider(&self) -> &str {
+        self.child_provider
+            .as_deref()
+            .or(self.provider.as_deref())
+            .unwrap_or("anthropic")
+    }
+}
+
+impl Default for AgenticReviewConfig {
+    fn default() -> Self {
+        Self {
+            provider: None,
+            parent_model: "claude-sonnet-4-6".to_string(),
+            child_model: "claude-sonnet-4-5".to_string(),
+            parent_provider: Some("anthropic".to_string()),
+            child_provider: Some("anthropic".to_string()),
+            base_url: None,
+            max_agent_turns: 50,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
@@ -59,6 +124,10 @@ pub struct MdiffConfig {
     /// Checklist configuration for review templates
     pub checklist: Option<ChecklistConfig>,
     pub tree_mode: Option<bool>,
+    /// API keys for LLM providers
+    pub api_keys: Option<ApiKeysConfig>,
+    /// Agentic review configuration
+    pub agentic_review: AgenticReviewConfig,
 }
 
 impl Default for MdiffConfig {
@@ -80,6 +149,8 @@ impl Default for MdiffConfig {
             mouse: MouseConfig::default(),
             checklist: None,
             tree_mode: None,
+            api_keys: None,
+            agentic_review: AgenticReviewConfig::default(),
         }
     }
 }
@@ -179,6 +250,10 @@ struct ConfigFile {
     checklist: Option<ChecklistConfig>,
     #[serde(default)]
     tree_mode: Option<bool>,
+    #[serde(default)]
+    api_keys: Option<ApiKeysConfig>,
+    #[serde(default)]
+    agentic_review: Option<AgenticReviewConfig>,
 }
 
 fn config_path() -> PathBuf {
@@ -244,6 +319,8 @@ pub fn load_config() -> MdiffConfig {
         mouse: file.mouse,
         checklist: file.checklist,
         tree_mode: file.tree_mode,
+        api_keys: file.api_keys,
+        agentic_review: file.agentic_review.unwrap_or_default(),
     }
 }
 
@@ -254,6 +331,11 @@ pub struct PersistentSettings {
     pub ignore_whitespace: bool,
     pub context_lines: usize,
     pub tree_mode: bool,
+    pub agentic_parent_provider: String,
+    pub agentic_parent_model: String,
+    pub agentic_child_provider: String,
+    pub agentic_child_model: String,
+    pub max_agent_turns: usize,
 }
 
 /// Save persistent settings to `~/.config/mdiff/config.toml`.
@@ -291,6 +373,33 @@ pub fn save_settings(settings: &PersistentSettings) {
         "tree_mode".to_string(),
         toml::Value::Boolean(settings.tree_mode),
     );
+
+    // Persist agentic review settings
+    let agentic = table
+        .entry("agentic_review")
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    if let toml::Value::Table(ref mut t) = agentic {
+        t.insert(
+            "parent_provider".to_string(),
+            toml::Value::String(settings.agentic_parent_provider.clone()),
+        );
+        t.insert(
+            "parent_model".to_string(),
+            toml::Value::String(settings.agentic_parent_model.clone()),
+        );
+        t.insert(
+            "child_provider".to_string(),
+            toml::Value::String(settings.agentic_child_provider.clone()),
+        );
+        t.insert(
+            "child_model".to_string(),
+            toml::Value::String(settings.agentic_child_model.clone()),
+        );
+        t.insert(
+            "max_agent_turns".to_string(),
+            toml::Value::Integer(settings.max_agent_turns as i64),
+        );
+    }
 
     // Ensure directory exists
     if let Some(parent) = path.parent() {
@@ -335,6 +444,64 @@ pub fn checklist_config_to_items(config: &ChecklistConfig) -> Vec<(String, char)
             }
         })
         .collect()
+}
+
+/// Available providers for agentic review.
+pub const AGENTIC_PROVIDERS: &[&str] = &["anthropic", "openai", "moonshot"];
+
+/// Available models per provider for agentic review.
+pub fn agentic_models_for_provider(provider: &str) -> &'static [&'static str] {
+    match provider {
+        "anthropic" => &["claude-opus-4-6", "claude-sonnet-4-6", "claude-sonnet-4-5"],
+        "openai" => &[
+            "gpt-5.4",
+            "gpt-5.3-codex",
+            "gpt-5.2",
+            "gpt-5.1",
+            "gpt-5.4-mini",
+            "gpt-4.1-mini",
+        ],
+        "moonshot" => &["kimi-k2.5", "kimi-k2-thinking-turbo"],
+        _ => &[],
+    }
+}
+
+/// Cycle to the next model for a given provider, returning the new model string.
+pub fn next_agentic_model(provider: &str, current: &str) -> String {
+    let models = agentic_models_for_provider(provider);
+    if models.is_empty() {
+        return current.to_string();
+    }
+    let idx = models.iter().position(|m| *m == current).unwrap_or(0);
+    models[(idx + 1) % models.len()].to_string()
+}
+
+/// Cycle to the previous model for a given provider, returning the new model string.
+pub fn prev_agentic_model(provider: &str, current: &str) -> String {
+    let models = agentic_models_for_provider(provider);
+    if models.is_empty() {
+        return current.to_string();
+    }
+    let idx = models.iter().position(|m| *m == current).unwrap_or(0);
+    models[(idx + models.len() - 1) % models.len()].to_string()
+}
+
+/// Cycle to the next agentic review provider.
+pub fn next_agentic_provider(current: &str) -> &'static str {
+    let idx = AGENTIC_PROVIDERS
+        .iter()
+        .position(|p| *p == current)
+        .unwrap_or(0);
+    AGENTIC_PROVIDERS[(idx + 1) % AGENTIC_PROVIDERS.len()]
+}
+
+/// Cycle to the previous agentic review provider.
+pub fn prev_agentic_provider(current: &str) -> &'static str {
+    let idx = AGENTIC_PROVIDERS
+        .iter()
+        .position(|p| *p == current)
+        .unwrap_or(0);
+    AGENTIC_PROVIDERS[(idx + AGENTIC_PROVIDERS.len() - 1) % AGENTIC_PROVIDERS.len()]
 }
 
 /// Save the last-used model for a specific agent to config.toml.

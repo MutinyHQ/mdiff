@@ -6,13 +6,14 @@ use ratatui::{
     Frame,
 };
 
+use crate::config::MdiffConfig;
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::AppState;
 use crate::state::DiffViewMode;
 
-pub fn render_settings_modal(frame: &mut Frame, state: &AppState) {
+pub fn render_settings_modal(frame: &mut Frame, state: &AppState, config: &MdiffConfig) {
     let area = frame.area();
-    let dialog_width = 50.min(area.width.saturating_sub(4));
+    let dialog_width = 60.min(area.width.saturating_sub(4));
     let dialog_height = (SETTINGS_ROW_COUNT as u16 + 4).min(area.height.saturating_sub(4));
 
     let x = (area.width.saturating_sub(dialog_width)) / 2;
@@ -101,6 +102,63 @@ pub fn render_settings_modal(frame: &mut Frame, state: &AppState) {
         "File View",
         tree_value,
         selected == 4,
+        theme,
+    );
+
+    // Row 5: Parent Agent Provider
+    let parent_provider = config.agentic_review.resolved_parent_provider();
+    let pp_value = format!("< {} >", parent_provider);
+    render_setting_row(
+        frame,
+        rows[5],
+        "Review Provider",
+        &pp_value,
+        selected == 5,
+        theme,
+    );
+
+    // Row 6: Parent Agent Model
+    let parent_value = format!("< {} >", config.agentic_review.parent_model);
+    render_setting_row(
+        frame,
+        rows[6],
+        "Review Model",
+        &parent_value,
+        selected == 6,
+        theme,
+    );
+
+    // Row 7: Sub-agent Provider
+    let child_provider = config.agentic_review.resolved_child_provider();
+    let cp_value = format!("< {} >", child_provider);
+    render_setting_row(
+        frame,
+        rows[7],
+        "Sub-agent Provider",
+        &cp_value,
+        selected == 7,
+        theme,
+    );
+
+    // Row 8: Sub-agent Model
+    let child_value = format!("< {} >", config.agentic_review.child_model);
+    render_setting_row(
+        frame,
+        rows[8],
+        "Sub-agent Model",
+        &child_value,
+        selected == 8,
+        theme,
+    );
+
+    // Row 9: Max Agent Turns
+    let turns_value = format!("< {} >", config.agentic_review.max_agent_turns);
+    render_setting_row(
+        frame,
+        rows[9],
+        "Max Agent Turns",
+        &turns_value,
+        selected == 9,
         theme,
     );
 

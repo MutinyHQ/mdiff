@@ -9,6 +9,7 @@ use crate::async_diff::{DiffRequest, DiffWorker};
 use crate::components::action_hud::{hud_height, ActionHud};
 use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
+use crate::components::agentic_review_panel::AgenticReviewPanel;
 use crate::components::annotation_menu::render_annotation_menu;
 use crate::components::bookmark_list::render_bookmark_list;
 use crate::components::checklist_panel::ChecklistPanel;
@@ -30,7 +31,9 @@ use crate::components::which_key;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
 use crate::config::{
-    self, checklist_config_to_items, load_checklist_config, MdiffConfig, PersistentSettings,
+    self, agentic_models_for_provider, checklist_config_to_items, load_checklist_config,
+    next_agentic_model, next_agentic_provider, prev_agentic_model, prev_agentic_provider,
+    MdiffConfig, PersistentSettings,
 };
 use crate::display_map::{build_display_map, DisplayRowInfo};
 use crate::event::{
@@ -84,6 +87,8 @@ pub struct App {
     bracket_pending: Option<char>,
     mark_pending: bool,
     jump_mark_pending: bool,
+    window_pending: bool,
+    agentic_review_runner: Option<crate::agentic_review::AgenticReviewRunner>,
 }
 
 impl App {
@@ -154,6 +159,8 @@ impl App {
             bracket_pending: None,
             mark_pending: false,
             jump_mark_pending: false,
+            window_pending: false,
+            agentic_review_runner: None,
         }
     }
 
@@ -172,10 +179,12 @@ impl App {
         let worktree_browser = WorktreeBrowser;
         let agent_outputs = AgentOutputs;
         let checklist_panel = ChecklistPanel;
+        let agentic_review_panel = AgenticReviewPanel;
 
         loop {
             self.poll_diff_results();
             self.poll_pty_output();
+            self.poll_agentic_review();
 
             terminal.draw(|frame| {
                 let hud_h = hud_height(&self.state, frame.area().width);
@@ -192,12 +201,28 @@ impl App {
 
                 match self.state.active_view {
                     ActiveView::DiffExplorer => {
-                        // Determine if checklist panel should be shown
+                        // Determine if right-side panels should be shown
                         let show_checklist =
                             self.state.checklist.panel_open && !self.state.checklist.is_empty();
+                        let show_ai_review = self.state.agentic_review_panel_open
+                            && (!self.state.agentic_review_stream_output.is_empty()
+                                || self.state.agentic_review_running
+                                || self.state.agentic_review_composing
+                                || !self.state.agentic_review_text.text().is_empty());
 
-                        let main = if show_checklist {
-                            // Three-column layout: navigator | diff | checklist
+                        let main = if show_checklist && show_ai_review {
+                            // Four-column: navigator | diff | checklist | ai review
+                            Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage(15),
+                                    Constraint::Percentage(45),
+                                    Constraint::Percentage(20),
+                                    Constraint::Percentage(20),
+                                ])
+                                .split(outer[1])
+                        } else if show_checklist || show_ai_review {
+                            // Three-column: navigator | diff | panel
                             Layout::default()
                                 .direction(Direction::Horizontal)
                                 .constraints([
@@ -248,9 +273,14 @@ impl App {
                             diff_view.render(frame, diff_area, &self.state);
                         }
 
-                        // Render checklist panel if open
-                        if show_checklist {
+                        // Render right-side panels
+                        if show_checklist && show_ai_review {
                             checklist_panel.render(frame, main[2], &self.state);
+                            agentic_review_panel.render(frame, main[3], &self.state);
+                        } else if show_checklist {
+                            checklist_panel.render(frame, main[2], &self.state);
+                        } else if show_ai_review {
+                            agentic_review_panel.render(frame, main[2], &self.state);
                         }
                     }
                     ActiveView::WorktreeBrowser => {
@@ -297,7 +327,7 @@ impl App {
                     render_restore_confirm(frame, &self.state);
                 }
                 if self.state.settings.open {
-                    render_settings_modal(frame, &self.state);
+                    render_settings_modal(frame, &self.state, &self.config);
                 }
                 if self.state.global_search.active {
                     render_global_search_bar(frame, &self.state);
@@ -356,6 +386,10 @@ impl App {
                     jump_mark_pending: self.jump_mark_pending,
                     command_bar_active: self.state.command_bar.active,
                     file_picker_active: self.state.file_picker.active,
+                    agentic_review_modal_open: self.state.agentic_review_modal_open,
+                    agentic_review_panel_open: self.state.agentic_review_panel_open,
+                    agentic_review_composing: self.state.agentic_review_composing,
+                    window_pending: self.window_pending,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -368,7 +402,9 @@ impl App {
                             && mapped.is_none();
 
                         // Clear pending states after they've been consumed
-                        if ctx.bracket_pending.is_some() {
+                        if ctx.window_pending {
+                            self.window_pending = false;
+                        } else if ctx.bracket_pending.is_some() {
                             self.bracket_pending = None;
                         } else if ctx.mark_pending {
                             self.mark_pending = false;
@@ -602,6 +638,35 @@ impl App {
             self.pty_runner = None;
             // Agent may have changed files — refresh diff
             self.request_diff();
+        }
+    }
+
+    fn poll_agentic_review(&mut self) {
+        let Some(runner) = self.agentic_review_runner.as_mut() else {
+            return;
+        };
+
+        let mut events = Vec::new();
+        while let Some(event) = runner.try_recv() {
+            events.push(event);
+        }
+
+        for event in events {
+            use crate::agentic_review::AgenticReviewEvent;
+            match event {
+                AgenticReviewEvent::StreamToken(token) => {
+                    self.update(Action::AgenticReviewStreamToken(token));
+                }
+                AgenticReviewEvent::ChildProgress(done, total) => {
+                    self.update(Action::AgenticReviewChildProgress(done, total));
+                }
+                AgenticReviewEvent::Complete(annotations) => {
+                    self.update(Action::AgenticReviewComplete(annotations));
+                }
+                AgenticReviewEvent::Error(msg) => {
+                    self.update(Action::AgenticReviewError(msg));
+                }
+            }
         }
     }
 
@@ -862,7 +927,21 @@ impl App {
                 | Action::FilePickerUp
                 | Action::FilePickerDown
                 | Action::FilePickerConfirm
-                | Action::FilePickerCancel => {}
+                | Action::FilePickerCancel
+                | Action::OpenAgenticReview
+                | Action::AgenticReviewChar(_)
+                | Action::AgenticReviewBackspace
+                | Action::AgenticReviewNewline
+                | Action::AgenticReviewConfirm
+                | Action::ToggleAgenticReviewPanel
+                | Action::AgenticReviewStreamToken(_)
+                | Action::AgenticReviewChildProgress(_, _)
+                | Action::AgenticReviewComplete(_)
+                | Action::AgenticReviewError(_)
+                | Action::AgenticReviewPanelUp
+                | Action::AgenticReviewPanelDown
+                | Action::WindowPrefix
+                | Action::CycleFocus => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -1044,11 +1123,9 @@ impl App {
                 self.request_diff();
             }
 
-            Action::FocusNavigator => {
-                self.state.focus = FocusPanel::Navigator;
-            }
             Action::FocusDiffView => {
                 self.state.focus = FocusPanel::DiffView;
+                self.state.agentic_review_composing = false;
                 // Ensure cursor is within visible viewport
                 let vh = self.state.diff.viewport_height.max(1);
                 let scroll = self.state.diff.scroll_offset;
@@ -1057,6 +1134,110 @@ impl App {
                     self.state.diff.cursor_row = self.row_for_visual_offset(scroll);
                 }
                 self.check_viewport_review();
+            }
+            Action::CycleFocus => {
+                self.state.focus = match self.state.active_view {
+                    ActiveView::AgentOutputs => match self.state.focus {
+                        FocusPanel::AgentRunList => FocusPanel::AgentOutput,
+                        _ => FocusPanel::AgentRunList,
+                    },
+                    _ => {
+                        let review_open = self.state.agentic_review_panel_open;
+                        let checklist_open =
+                            self.state.checklist.panel_open && !self.state.checklist.is_empty();
+                        match self.state.focus {
+                            FocusPanel::Navigator => FocusPanel::DiffView,
+                            FocusPanel::DiffView => {
+                                if review_open {
+                                    FocusPanel::ReviewPanel
+                                } else if checklist_open {
+                                    FocusPanel::ChecklistPanel
+                                } else {
+                                    FocusPanel::Navigator
+                                }
+                            }
+                            FocusPanel::ReviewPanel => {
+                                if checklist_open {
+                                    FocusPanel::ChecklistPanel
+                                } else {
+                                    FocusPanel::Navigator
+                                }
+                            }
+                            FocusPanel::ChecklistPanel => FocusPanel::Navigator,
+                            _ => FocusPanel::Navigator,
+                        }
+                    }
+                };
+
+                self.sync_pty_focus();
+                self.state.agentic_review_composing = self.state.focus == FocusPanel::ReviewPanel;
+            }
+            Action::WindowPrefix => {
+                self.window_pending = true;
+            }
+            Action::FocusPaneLeft => {
+                let new_focus = match self.state.active_view {
+                    ActiveView::AgentOutputs => match self.state.focus {
+                        FocusPanel::AgentOutput => FocusPanel::AgentRunList,
+                        _ => self.state.focus, // already leftmost
+                    },
+                    _ => match self.state.focus {
+                        FocusPanel::Navigator => FocusPanel::Navigator,
+                        FocusPanel::DiffView => FocusPanel::Navigator,
+                        FocusPanel::ReviewPanel => FocusPanel::DiffView,
+                        FocusPanel::ChecklistPanel => {
+                            if self.state.agentic_review_panel_open {
+                                FocusPanel::ReviewPanel
+                            } else {
+                                FocusPanel::DiffView
+                            }
+                        }
+                        _ => self.state.focus,
+                    },
+                };
+                self.state.focus = new_focus;
+                self.sync_pty_focus();
+                self.state.agentic_review_composing = self.state.focus == FocusPanel::ReviewPanel;
+            }
+            Action::FocusPaneRight => {
+                let review_open = self.state.agentic_review_panel_open
+                    && (!self.state.agentic_review_stream_output.is_empty()
+                        || self.state.agentic_review_running
+                        || self.state.agentic_review_composing
+                        || !self.state.agentic_review_text.text().is_empty());
+                let checklist_open =
+                    self.state.checklist.panel_open && !self.state.checklist.is_empty();
+
+                let new_focus = match self.state.active_view {
+                    ActiveView::AgentOutputs => match self.state.focus {
+                        FocusPanel::AgentRunList => FocusPanel::AgentOutput,
+                        _ => self.state.focus, // already rightmost
+                    },
+                    _ => match self.state.focus {
+                        FocusPanel::Navigator => FocusPanel::DiffView,
+                        FocusPanel::DiffView => {
+                            if review_open {
+                                FocusPanel::ReviewPanel
+                            } else if checklist_open {
+                                FocusPanel::ChecklistPanel
+                            } else {
+                                FocusPanel::DiffView
+                            }
+                        }
+                        FocusPanel::ReviewPanel => {
+                            if checklist_open {
+                                FocusPanel::ChecklistPanel
+                            } else {
+                                FocusPanel::ReviewPanel
+                            }
+                        }
+                        FocusPanel::ChecklistPanel => FocusPanel::ChecklistPanel,
+                        _ => self.state.focus,
+                    },
+                };
+                self.state.focus = new_focus;
+                self.sync_pty_focus();
+                self.state.agentic_review_composing = self.state.focus == FocusPanel::ReviewPanel;
             }
             Action::StartSearch => {
                 self.state.navigator.start_search();
@@ -1834,8 +2015,11 @@ impl App {
             Action::SwitchToAgentOutputs => {
                 if self.state.active_view == ActiveView::AgentOutputs {
                     self.state.active_view = ActiveView::DiffExplorer;
+                    self.state.pty_focus = false;
+                    self.state.focus = FocusPanel::Navigator;
                 } else {
                     self.state.active_view = ActiveView::AgentOutputs;
+                    self.state.focus = FocusPanel::AgentRunList;
                 }
             }
             Action::AgentOutputsUp => {
@@ -1959,19 +2143,6 @@ impl App {
             }
 
             // PTY focus mode
-            Action::EnterPtyFocus => {
-                // Only enter focus if there's a running agent
-                if self.pty_runner.is_some() {
-                    if let Some(run) = self.state.agent_outputs.selected() {
-                        if matches!(run.status, AgentRunStatus::Running) {
-                            self.state.pty_focus = true;
-                        }
-                    }
-                }
-            }
-            Action::ExitPtyFocus => {
-                self.state.pty_focus = false;
-            }
             Action::PtyInput(key) => {
                 if let Some(runner) = self.pty_runner.as_mut() {
                     let bytes = key_event_to_bytes(&key);
@@ -1986,58 +2157,38 @@ impl App {
                 }
             }
             Action::TextPaste(text) => {
-                if self.state.comment_editor_open {
-                    // Insert each character into the comment editor
-                    for c in text.chars() {
-                        if c == '\n' {
-                            self.state.comment_editor_text.insert_char('\n');
-                        } else if !c.is_control() {
-                            self.state.comment_editor_text.insert_char(c);
-                        }
-                    }
-                } else if self.state.commit_dialog_open {
-                    for c in text.chars() {
-                        if c == '\n' {
-                            self.state.commit_message.insert_char('\n');
-                        } else if !c.is_control() {
-                            self.state.commit_message.insert_char(c);
-                        }
-                    }
-                } else if self.state.target_dialog_open {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.target_dialog_input.insert_char(c);
-                    }
-                } else if self.state.navigator.search_active {
+                // Multiline modals that accept newlines in pasted text
+                let allows_newlines = self.state.comment_editor_open
+                    || self.state.commit_dialog_open
+                    || self.state.agentic_review_composing;
+
+                // Navigator search uses search_push() instead of direct buffer access
+                if self.state.navigator.search_active {
                     for c in text.chars().filter(|c| !c.is_control()) {
                         self.state.navigator.search_push(c);
                     }
+                } else if let Some(buf) = self.active_text_buffer() {
+                    for c in text.chars() {
+                        if c == '\n' && allows_newlines {
+                            buf.insert_char('\n');
+                        } else if !c.is_control() {
+                            buf.insert_char(c);
+                        }
+                    }
+                }
+
+                // Post-paste hooks for inputs that need recomputation
+                if self.state.navigator.search_active {
                     self.sync_selection();
                 } else if self.state.diff.search_active {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.diff.search_query.insert_char(c);
-                    }
                     self.recompute_diff_search_matches();
                 } else if self.state.global_search.active {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.global_search.query.insert_char(c);
-                    }
                     self.recompute_global_search_matches();
                 } else if self.state.agent_selector.open {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.agent_selector.filter.insert_char(c);
-                    }
                     self.state.agent_selector.refilter();
-                } else if self.state.command_bar.active {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.command_bar.buffer.insert_char(c);
-                    }
                 } else if self.state.file_picker.active {
-                    for c in text.chars().filter(|c| !c.is_control()) {
-                        self.state.file_picker.query.insert_char(c);
-                    }
                     self.update_file_picker_filter();
                 }
-                // If no text input is active, ignore the paste
             }
             Action::PtyScrollUp => {
                 if let Some(runner) = self.pty_runner.as_mut() {
@@ -2149,6 +2300,19 @@ impl App {
                     ignore_whitespace: self.state.diff.options.ignore_whitespace,
                     context_lines: self.state.diff.display_context,
                     tree_mode: self.state.navigator.tree_mode,
+                    agentic_parent_provider: self
+                        .config
+                        .agentic_review
+                        .resolved_parent_provider()
+                        .to_string(),
+                    agentic_parent_model: self.config.agentic_review.parent_model.clone(),
+                    agentic_child_provider: self
+                        .config
+                        .agentic_review
+                        .resolved_child_provider()
+                        .to_string(),
+                    agentic_child_model: self.config.agentic_review.child_model.clone(),
+                    max_agent_turns: self.config.agentic_review.max_agent_turns,
                 });
             }
             Action::SettingsUp => {
@@ -2195,6 +2359,62 @@ impl App {
                     4 => {
                         self.state.navigator.toggle_tree_mode();
                     }
+                    5 => {
+                        // Prev parent provider
+                        let cur = self
+                            .config
+                            .agentic_review
+                            .resolved_parent_provider()
+                            .to_string();
+                        let new_provider = prev_agentic_provider(&cur);
+                        self.config.agentic_review.parent_provider = Some(new_provider.to_string());
+                        // Reset parent model to first available for new provider
+                        let models = agentic_models_for_provider(new_provider);
+                        if let Some(first) = models.first() {
+                            self.config.agentic_review.parent_model = first.to_string();
+                        }
+                    }
+                    6 => {
+                        // Prev parent model
+                        let provider = self
+                            .config
+                            .agentic_review
+                            .resolved_parent_provider()
+                            .to_string();
+                        self.config.agentic_review.parent_model =
+                            prev_agentic_model(&provider, &self.config.agentic_review.parent_model);
+                    }
+                    7 => {
+                        // Prev child provider
+                        let cur = self
+                            .config
+                            .agentic_review
+                            .resolved_child_provider()
+                            .to_string();
+                        let new_provider = prev_agentic_provider(&cur);
+                        self.config.agentic_review.child_provider = Some(new_provider.to_string());
+                        // Reset child model to first available for new provider
+                        let models = agentic_models_for_provider(new_provider);
+                        if let Some(first) = models.first() {
+                            self.config.agentic_review.child_model = first.to_string();
+                        }
+                    }
+                    8 => {
+                        // Prev child model
+                        let provider = self
+                            .config
+                            .agentic_review
+                            .resolved_child_provider()
+                            .to_string();
+                        self.config.agentic_review.child_model =
+                            prev_agentic_model(&provider, &self.config.agentic_review.child_model);
+                    }
+                    9 => {
+                        // Decrease max agent turns (min 1)
+                        if self.config.agentic_review.max_agent_turns > 1 {
+                            self.config.agentic_review.max_agent_turns -= 1;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -2231,6 +2451,62 @@ impl App {
                     }
                     4 => {
                         self.state.navigator.toggle_tree_mode();
+                    }
+                    5 => {
+                        // Next parent provider
+                        let cur = self
+                            .config
+                            .agentic_review
+                            .resolved_parent_provider()
+                            .to_string();
+                        let new_provider = next_agentic_provider(&cur);
+                        self.config.agentic_review.parent_provider = Some(new_provider.to_string());
+                        // Reset parent model to first available for new provider
+                        let models = agentic_models_for_provider(new_provider);
+                        if let Some(first) = models.first() {
+                            self.config.agentic_review.parent_model = first.to_string();
+                        }
+                    }
+                    6 => {
+                        // Next parent model
+                        let provider = self
+                            .config
+                            .agentic_review
+                            .resolved_parent_provider()
+                            .to_string();
+                        self.config.agentic_review.parent_model =
+                            next_agentic_model(&provider, &self.config.agentic_review.parent_model);
+                    }
+                    7 => {
+                        // Next child provider
+                        let cur = self
+                            .config
+                            .agentic_review
+                            .resolved_child_provider()
+                            .to_string();
+                        let new_provider = next_agentic_provider(&cur);
+                        self.config.agentic_review.child_provider = Some(new_provider.to_string());
+                        // Reset child model to first available for new provider
+                        let models = agentic_models_for_provider(new_provider);
+                        if let Some(first) = models.first() {
+                            self.config.agentic_review.child_model = first.to_string();
+                        }
+                    }
+                    8 => {
+                        // Next child model
+                        let provider = self
+                            .config
+                            .agentic_review
+                            .resolved_child_provider()
+                            .to_string();
+                        self.config.agentic_review.child_model =
+                            next_agentic_model(&provider, &self.config.agentic_review.child_model);
+                    }
+                    9 => {
+                        // Increase max agent turns (max 200)
+                        if self.config.agentic_review.max_agent_turns < 200 {
+                            self.config.agentic_review.max_agent_turns += 1;
+                        }
                     }
                     _ => {}
                 }
@@ -2391,6 +2667,19 @@ impl App {
                     ignore_whitespace: self.state.diff.options.ignore_whitespace,
                     context_lines: self.state.diff.display_context,
                     tree_mode: self.state.navigator.tree_mode,
+                    agentic_parent_provider: self
+                        .config
+                        .agentic_review
+                        .resolved_parent_provider()
+                        .to_string(),
+                    agentic_parent_model: self.config.agentic_review.parent_model.clone(),
+                    agentic_child_provider: self
+                        .config
+                        .agentic_review
+                        .resolved_child_provider()
+                        .to_string(),
+                    agentic_child_model: self.config.agentic_review.child_model.clone(),
+                    max_agent_turns: self.config.agentic_review.max_agent_turns,
                 });
                 if self.state.navigator.tree_mode {
                     self.sync_tree_selection();
@@ -2584,6 +2873,14 @@ impl App {
 
                 if let Ok(line_num) = input.parse::<u32>() {
                     self.update(Action::GoToLine(line_num));
+                } else if input == "review" {
+                    if !self.state.agentic_review_stream_output.is_empty()
+                        && !self.state.agentic_review_modal_open
+                    {
+                        self.update(Action::ToggleAgenticReviewPanel);
+                    } else {
+                        self.update(Action::OpenAgenticReview);
+                    }
                 } else if input == "help" || input == "settings" {
                     self.update(Action::OpenSettings);
                 } else if !input.is_empty() {
@@ -2636,11 +2933,165 @@ impl App {
             Action::FilePickerCancel => {
                 self.state.file_picker.close();
             }
+
+            // Agentic review
+            Action::OpenAgenticReview => {
+                // Check API key availability for both providers before opening
+                for (role, provider_str) in [
+                    (
+                        "parent",
+                        self.config.agentic_review.resolved_parent_provider(),
+                    ),
+                    (
+                        "child",
+                        self.config.agentic_review.resolved_child_provider(),
+                    ),
+                ] {
+                    match crate::ai_client::AiProvider::from_str(provider_str) {
+                        Ok(p) => {
+                            let key = crate::ai_client::resolve_api_key(&p, &self.config.api_keys);
+                            if key.is_none() {
+                                self.state.status_message = Some((
+                                    format!(
+                                        "Missing API key for {} ({} agent). Set {} or add to config.toml [api_keys].",
+                                        provider_str,
+                                        role,
+                                        p.env_var_name()
+                                    ),
+                                    true,
+                                ));
+                                self.status_clear_countdown = 120;
+                                return;
+                            }
+                        }
+                        Err(_) => {
+                            self.state.status_message = Some((
+                                format!(
+                                    "Unknown provider '{}' for {} agent in config.",
+                                    provider_str, role
+                                ),
+                                true,
+                            ));
+                            self.status_clear_countdown = 120;
+                            return;
+                        }
+                    }
+                }
+                self.state.agentic_review_panel_open = true;
+                self.state.agentic_review_composing = true;
+                self.state.focus = FocusPanel::ReviewPanel;
+                self.state.agentic_review_text = crate::state::TextBuffer::new();
+            }
+            Action::AgenticReviewChar(c) => {
+                self.state.agentic_review_text.insert_char(c);
+            }
+            Action::AgenticReviewBackspace => {
+                self.state.agentic_review_text.delete_back();
+            }
+            Action::AgenticReviewNewline => {
+                self.state.agentic_review_text.insert_char('\n');
+            }
+            Action::AgenticReviewConfirm => {
+                let text = self.state.agentic_review_text.text().to_string();
+                if text.trim().is_empty() {
+                    self.state.status_message = Some(("Review text is empty.".to_string(), true));
+                    self.status_clear_countdown = 60;
+                    return;
+                }
+                // Exit composing, start processing
+                self.state.agentic_review_composing = false;
+                self.state.agentic_review_running = true;
+                self.state.agentic_review_panel_open = true;
+                self.state.agentic_review_stream_output.clear();
+                self.state.agentic_review_child_done = 0;
+                self.state.agentic_review_child_total = 0;
+                self.state.agentic_review_scroll = 0;
+                self.state.agentic_review_auto_scroll = true;
+
+                let deltas = self.state.diff.deltas.clone();
+                let config = self.config.agentic_review.clone();
+                let api_keys = self.config.api_keys.clone();
+
+                self.agentic_review_runner =
+                    Some(crate::agentic_review::AgenticReviewRunner::spawn(
+                        text,
+                        deltas,
+                        config,
+                        api_keys,
+                        self.repo_path.clone(),
+                    ));
+            }
+            Action::ToggleAgenticReviewPanel => {
+                self.state.agentic_review_panel_open = !self.state.agentic_review_panel_open;
+            }
+            Action::AgenticReviewStreamToken(token) => {
+                self.state.agentic_review_stream_output.push_str(&token);
+            }
+            Action::AgenticReviewChildProgress(done, total) => {
+                self.state.agentic_review_child_done = done;
+                self.state.agentic_review_child_total = total;
+            }
+            Action::AgenticReviewComplete(annotations) => {
+                self.state.agentic_review_running = false;
+                self.agentic_review_runner = None;
+                let count = annotations.len();
+                for ann in annotations {
+                    self.state.annotations.add(ann);
+                }
+                session::save_session_data(
+                    &self.repo_path,
+                    &self.state.target_label,
+                    &self.state.annotations,
+                    if self.state.checklist.is_empty() {
+                        None
+                    } else {
+                        Some(&self.state.checklist)
+                    },
+                    &self.state.bookmarks,
+                );
+                self.state.status_message = Some((
+                    format!("Agentic review: {count} annotation(s) created."),
+                    false,
+                ));
+                self.status_clear_countdown = 120;
+            }
+            Action::AgenticReviewError(msg) => {
+                self.state.agentic_review_running = false;
+                self.agentic_review_runner = None;
+                self.state
+                    .agentic_review_stream_output
+                    .push_str(&format!("\n\nError: {msg}"));
+                self.state.status_message = Some((format!("Agentic review error: {msg}"), true));
+                self.status_clear_countdown = 120;
+            }
+            Action::AgenticReviewPanelUp => {
+                self.state.agentic_review_scroll =
+                    self.state.agentic_review_scroll.saturating_sub(1);
+                self.state.agentic_review_auto_scroll = false;
+            }
+            Action::AgenticReviewPanelDown => {
+                self.state.agentic_review_scroll += 1;
+                // Don't re-enable auto_scroll — user is manually scrolling
+            }
         }
     }
 
     /// Return a mutable reference to whichever TextBuffer is currently active,
     /// based on which dialog/search mode is open.
+    /// Sync pty_focus state with current focus panel.
+    /// PTY is active when focused on AgentOutput and the selected agent is running.
+    fn sync_pty_focus(&mut self) {
+        if self.state.focus == FocusPanel::AgentOutput && self.pty_runner.is_some() {
+            if let Some(run) = self.state.agent_outputs.selected() {
+                if matches!(run.status, AgentRunStatus::Running) {
+                    self.state.pty_focus = true;
+                    return;
+                }
+            }
+        }
+        self.state.pty_focus = false;
+    }
+
     fn active_text_buffer(&mut self) -> Option<&mut crate::state::TextBuffer> {
         if self.state.commit_dialog_open {
             Some(&mut self.state.commit_message)
@@ -2660,6 +3111,9 @@ impl App {
             Some(&mut self.state.command_bar.buffer)
         } else if self.state.file_picker.active {
             Some(&mut self.state.file_picker.query)
+        } else if self.state.agentic_review_composing && self.state.focus == FocusPanel::ReviewPanel
+        {
+            Some(&mut self.state.agentic_review_text)
         } else {
             None
         }

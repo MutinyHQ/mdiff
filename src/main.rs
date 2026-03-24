@@ -1,6 +1,8 @@
 mod action;
 #[allow(dead_code)]
 mod agent_runner;
+mod agentic_review;
+mod ai_client;
 mod app;
 mod async_diff;
 mod cli;
@@ -12,6 +14,7 @@ mod export;
 mod git;
 mod highlight;
 mod pty_runner;
+mod review_tools;
 mod session;
 mod state;
 mod theme;
