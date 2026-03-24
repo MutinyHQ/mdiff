@@ -12,12 +12,14 @@ use crate::components::agent_selector::render_agent_selector;
 use crate::components::annotation_menu::render_annotation_menu;
 use crate::components::bookmark_list::render_bookmark_list;
 use crate::components::checklist_panel::ChecklistPanel;
+use crate::components::command_bar::render_command_bar;
 use crate::components::comment_editor::render_comment_editor;
 use crate::components::commit_dialog::render_commit_dialog;
 use crate::components::context_bar::ContextBar;
 use crate::components::diff_view::{
     compute_split_visual_row_metrics, compute_unified_visual_row_metrics, DiffView,
 };
+use crate::components::file_picker::render_file_picker;
 use crate::components::global_search_bar::render_global_search_bar;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
@@ -43,6 +45,7 @@ use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
 use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::file_picker_state::FilePickerEntry;
 use crate::state::review_state::{compute_diff_hashes, FileReviewStatus};
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
 use crate::state::{AppState, ChecklistState, DiffOptions, DiffViewMode};
@@ -296,6 +299,12 @@ impl App {
                 if self.state.global_search.active {
                     render_global_search_bar(frame, &self.state);
                 }
+                if self.state.command_bar.active {
+                    render_command_bar(frame, &self.state);
+                }
+                if self.state.file_picker.active {
+                    render_file_picker(frame, &self.state);
+                }
                 which_key::render_which_key(frame, frame.area(), &self.state);
             })?;
 
@@ -342,6 +351,8 @@ impl App {
                     bracket_pending: self.bracket_pending,
                     mark_pending: self.mark_pending,
                     jump_mark_pending: self.jump_mark_pending,
+                    command_bar_active: self.state.command_bar.active,
+                    file_picker_active: self.state.file_picker.active,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -398,6 +409,8 @@ impl App {
                             || ctx.settings_open
                             || ctx.search_active
                             || ctx.diff_search_active
+                            || ctx.command_bar_active
+                            || ctx.file_picker_active
                         {
                             None
                         } else {
@@ -823,7 +836,19 @@ impl App {
                 | Action::SettingsUp
                 | Action::SettingsDown
                 | Action::SettingsLeft
-                | Action::SettingsRight => {}
+                | Action::SettingsRight
+                | Action::OpenCommandBar
+                | Action::CommandBarChar(_)
+                | Action::CommandBarBackspace
+                | Action::CommandBarConfirm
+                | Action::CommandBarCancel
+                | Action::OpenFilePicker
+                | Action::FilePickerChar(_)
+                | Action::FilePickerBackspace
+                | Action::FilePickerUp
+                | Action::FilePickerDown
+                | Action::FilePickerConfirm
+                | Action::FilePickerCancel => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -1968,6 +1993,15 @@ impl App {
                         self.state.agent_selector.filter.insert_char(c);
                     }
                     self.state.agent_selector.refilter();
+                } else if self.state.command_bar.active {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.command_bar.buffer.insert_char(c);
+                    }
+                } else if self.state.file_picker.active {
+                    for c in text.chars().filter(|c| !c.is_control()) {
+                        self.state.file_picker.query.insert_char(c);
+                    }
+                    self.update_file_picker_filter();
                 }
                 // If no text input is active, ignore the paste
             }
@@ -2242,6 +2276,8 @@ impl App {
                     self.recompute_diff_search_matches();
                 } else if self.state.agent_selector.open {
                     self.state.agent_selector.refilter();
+                } else if self.state.file_picker.active {
+                    self.update_file_picker_filter();
                 }
             }
 
@@ -2475,6 +2511,78 @@ impl App {
                     }
                 }
             }
+
+            // Command bar
+            Action::OpenCommandBar => {
+                self.state.command_bar.open();
+            }
+            Action::CommandBarChar(c) => {
+                self.state.command_bar.buffer.insert_char(c);
+            }
+            Action::CommandBarBackspace => {
+                self.state.command_bar.buffer.delete_back();
+            }
+            Action::CommandBarCancel => {
+                self.state.command_bar.close();
+            }
+            Action::CommandBarConfirm => {
+                let input = self.state.command_bar.buffer.text().trim().to_string();
+                self.state.command_bar.close();
+
+                if let Ok(line_num) = input.parse::<u32>() {
+                    self.update(Action::GoToLine(line_num));
+                } else if input == "help" || input == "settings" {
+                    self.update(Action::OpenSettings);
+                } else if !input.is_empty() {
+                    self.state.status_message = Some((format!("Unknown command: {input}"), true));
+                    self.status_clear_countdown = 60;
+                }
+            }
+            Action::GoToLine(target_line) => {
+                self.goto_line(target_line);
+            }
+
+            // File picker
+            Action::OpenFilePicker => {
+                let entries: Vec<FilePickerEntry> = self
+                    .state
+                    .diff
+                    .deltas
+                    .iter()
+                    .enumerate()
+                    .map(|(i, delta)| FilePickerEntry {
+                        delta_index: i,
+                        path: delta.path.to_string_lossy().to_string(),
+                        additions: delta.additions,
+                        deletions: delta.deletions,
+                    })
+                    .collect();
+                self.state.file_picker.open(entries);
+            }
+            Action::FilePickerChar(c) => {
+                self.state.file_picker.query.insert_char(c);
+                self.update_file_picker_filter();
+            }
+            Action::FilePickerBackspace => {
+                self.state.file_picker.query.delete_back();
+                self.update_file_picker_filter();
+            }
+            Action::FilePickerUp => {
+                self.state.file_picker.move_up();
+            }
+            Action::FilePickerDown => {
+                self.state.file_picker.move_down();
+            }
+            Action::FilePickerConfirm => {
+                if let Some(delta_idx) = self.state.file_picker.selected_delta_index() {
+                    self.state.file_picker.close();
+                    self.update(Action::SelectFile(delta_idx));
+                    self.state.focus = FocusPanel::DiffView;
+                }
+            }
+            Action::FilePickerCancel => {
+                self.state.file_picker.close();
+            }
         }
     }
 
@@ -2495,9 +2603,120 @@ impl App {
             Some(&mut self.state.navigator.search_query)
         } else if self.state.agent_selector.open {
             Some(&mut self.state.agent_selector.filter)
+        } else if self.state.command_bar.active {
+            Some(&mut self.state.command_bar.buffer)
+        } else if self.state.file_picker.active {
+            Some(&mut self.state.file_picker.query)
         } else {
             None
         }
+    }
+
+    fn goto_line(&mut self, target_line: u32) {
+        if target_line == 0 {
+            self.state.status_message = Some(("Line numbers start at 1".to_string(), true));
+            self.status_clear_countdown = 60;
+            return;
+        }
+
+        let delta = match self.state.diff.selected_delta() {
+            Some(d) => d.clone(),
+            None => {
+                self.state.status_message = Some(("No file selected".to_string(), true));
+                self.status_clear_countdown = 60;
+                return;
+            }
+        };
+
+        let display_map = build_display_map(
+            &delta,
+            self.state.diff.options.view_mode,
+            self.state.diff.display_context,
+            &self.state.diff.gap_expansions,
+        );
+
+        // Find the display row where new_lineno matches the target
+        let target_row = display_map
+            .iter()
+            .position(|row| row.new_lineno == Some(target_line));
+
+        if let Some(row_idx) = target_row {
+            self.state.diff.cursor_row = row_idx;
+            self.ensure_cursor_visible();
+            self.state.focus = FocusPanel::DiffView;
+        } else {
+            // Try to find the nearest line
+            let nearest = display_map
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, row)| row.new_lineno.map(|n| (idx, n)))
+                .min_by_key(|(_, n)| ((*n as i64) - (target_line as i64)).unsigned_abs());
+
+            if let Some((row_idx, actual_line)) = nearest {
+                self.state.diff.cursor_row = row_idx;
+                self.ensure_cursor_visible();
+                self.state.focus = FocusPanel::DiffView;
+                self.state.status_message = Some((
+                    format!("Line {target_line} not in diff, jumped to nearest line {actual_line}"),
+                    false,
+                ));
+                self.status_clear_countdown = 60;
+            } else {
+                self.state.status_message =
+                    Some((format!("Line {target_line} not found in diff"), true));
+                self.status_clear_countdown = 60;
+            }
+        }
+    }
+
+    fn update_file_picker_filter(&mut self) {
+        use nucleo::pattern::{CaseMatching, Normalization, Pattern};
+        use nucleo::Matcher;
+
+        let query = self.state.file_picker.query.text().to_string();
+
+        if query.is_empty() {
+            // Show all entries when query is empty
+            self.state.file_picker.filtered = self
+                .state
+                .file_picker
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(i, _)| crate::state::file_picker_state::FilteredEntry {
+                    entry_index: i,
+                    score: 0,
+                    match_indices: Vec::new(),
+                })
+                .collect();
+            self.state.file_picker.selected = 0;
+            return;
+        }
+
+        let mut matcher = Matcher::new(nucleo::Config::DEFAULT.match_paths());
+        let pattern = Pattern::parse(&query, CaseMatching::Ignore, Normalization::Smart);
+
+        let mut results: Vec<crate::state::file_picker_state::FilteredEntry> = Vec::new();
+        let mut buf = Vec::new();
+
+        for (i, entry) in self.state.file_picker.entries.iter().enumerate() {
+            let haystack = nucleo::Utf32String::from(entry.path.as_str());
+            if let Some(score) = pattern.score(haystack.slice(..), &mut matcher) {
+                buf.clear();
+                buf.resize(query.chars().count(), 0);
+                pattern.indices(haystack.slice(..), &mut matcher, &mut buf);
+                results.push(crate::state::file_picker_state::FilteredEntry {
+                    entry_index: i,
+                    score,
+                    match_indices: buf.clone(),
+                });
+            }
+        }
+
+        results.sort_by(|a, b| b.score.cmp(&a.score));
+
+        self.state.file_picker.filtered = results;
+        self.state.file_picker.selected = 0;
     }
 
     fn refresh_worktrees(&mut self) {
