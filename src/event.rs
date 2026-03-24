@@ -647,6 +647,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                     }
                 }
                 KeyCode::Char('h') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
+                KeyCode::Char('x') if ctx.tree_mode => Some(Action::TreeToggleCollapse),
                 KeyCode::Char('z') if ctx.tree_mode => {
                     // z prefix for fold commands; handled via z_pending state
                     None

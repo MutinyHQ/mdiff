@@ -277,8 +277,8 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 ];
                 if state.navigator.tree_mode {
                     entries.push(KeyEntry {
-                        key: "h",
-                        description: "Collapse dir",
+                        key: "x/h",
+                        description: "Collapse/expand dir",
                     });
                     entries.push(KeyEntry {
                         key: "zM",

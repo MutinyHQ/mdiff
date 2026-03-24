@@ -89,6 +89,21 @@ pub fn render_settings_modal(frame: &mut Frame, state: &AppState) {
         theme,
     );
 
+    // Row 4: File View Mode (Tree/Flat)
+    let tree_value = if state.navigator.tree_mode {
+        "< Tree >"
+    } else {
+        "< Flat >"
+    };
+    render_setting_row(
+        frame,
+        rows[4],
+        "File View",
+        tree_value,
+        selected == 4,
+        theme,
+    );
+
     // Hints
     let hints = Line::from(vec![
         Span::styled(
