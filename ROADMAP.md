@@ -1,7 +1,7 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-23
+> **Last updated**: 2026-03-24
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
 This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, **ftdv**, **keifu**, **dead-ringer**, **cmux**, **Muse/Manyana**, **oh-my-pi**, **Superset**, **Orchestrator**, and patterns from RLHF/human feedback research.
@@ -29,6 +29,18 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Status**: **Closed** — Issue #38 resolved.
 **Addresses**: GitHub Issue #38
 
+#### 6. Tree File Viewer Inconsistencies (Issue #64)
+**Status**: Spec written (029), Cursor agent launched (2026-03-24)
+**Addresses**: GitHub Issue #64
+**Rationale**: Owner-filed bug report. The tree view (PR #56) has 5 inconsistencies: `m` keybinding broken, directory collapse needs `x` key, tree/flat preference not persistent, mouse clicks select wrong file, gitignored files shown. These regressions make the tree view unreliable for the core navigation use case.
+**Scope**: Fix `m` key in tree mode, add `x` for collapse, persist tree_mode in settings, fix mouse click targeting, filter tree to only show files from diff.deltas.
+
+#### 7. File Preview on Hover in Tree View (Issue #65)
+**Status**: Spec written (030), Cursor agent launched (2026-03-24)
+**Addresses**: GitHub Issue #65
+**Rationale**: Owner-filed bug. Moving cursor over files in tree view doesn't update the diff pane preview — it shows the last selected file. In flat view this works correctly. This forces an extra Enter keystroke per file, doubling navigation cost when scanning large changesets.
+**Scope**: Sync `diff.selected_file` with the highlighted tree entry on cursor movement. Directory entries skip the sync.
+
 ---
 
 ### P1 — High Impact
@@ -52,6 +64,13 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: Reviewers frequently encounter unfamiliar code or unclear intent during review and must leave the TUI to ask an LLM. This destroys flow state. Inline Q&A with diff context assembly eliminates the context switch entirely. No other TUI diff viewer offers this — a clear differentiator. Filed by repo owner.
 **Scope**: `Ctrl+Q` trigger, question input bar at bottom of diff view, context assembly from visible hunks/selection, answer panel as right-side split, Q&A history with Ctrl+]/Ctrl+[, session persistence.
 **Competitive reference**: Cursor IDE inline chat, Aider terminal AI assistant. No TUI diff viewer competitor has this.
+
+#### Go-to-Line & Fuzzy File Picker (Issue #63)
+**Status**: Spec written (031), Cursor agent launched (2026-03-24)
+**Addresses**: GitHub Issue #63
+**Rationale**: Owner-filed UX improvement. Two standard power-user navigation shortcuts missing: `:<number>` to jump to a line in the diff view (vim convention), and `Ctrl+P` for fuzzy file search modal. Both are expected by vim/VS Code users and reduce navigation friction in large changesets. Partially overlaps with Command Palette spec (018) — the file picker IS the first phase.
+**Scope**: Vim-style command bar (`:` prefix, number -> go-to-line, `help` -> settings), fuzzy file picker modal with nucleo crate matching, real-time filtering, match highlights.
+**Competitive reference**: VS Code Ctrl+P, Sublime Text Cmd+P, vim `:<number>`, Fresh editor command palette.
 
 #### 7. Configurable Keybinding System
 **Rationale**: Power users expect to customize their keybindings. As the action set grows, conflicts become more likely.
@@ -259,6 +278,9 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
+| #65 | Bug | P0 | Open | **NEW** — Spec 030 written, Cursor agent launched (2026-03-24). File preview on hover broken in tree view. |
+| #64 | Bug | P0 | Open | **NEW** — Spec 029 written, Cursor agent launched (2026-03-24). Tree view has 5 inconsistencies. |
+| #63 | UX | P1 | Open | **NEW** — Spec 031 written, Cursor agent launched (2026-03-24). Go-to-line and fuzzy file picker. |
 | #53 | Feature | P1 | Open — PR #56 merged (2026-03-20) | **Implemented** — File Tree Navigator merged. Issue should be closed. |
 | #52 | Feature | P1 | Open | Spec 021 written, Cursor agent finished but no PR. Needs re-launch. |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
@@ -271,6 +293,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 ## Competitive Landscape
 
 ### Tools Tracked
+- **OpenDiffs** (Node.js CLI): NEW (2026-03-22). AI-powered structured code review of staged git diffs using Claude Code or Codex agents. Produces scored markdown reviews. Validates mdiff's problem space from an AI-first angle.
 - **critique** (TypeScript/Bun): TUI diff viewer with watch mode, glob filtering, word-level diff, tree-sitter syntax highlighting. v0.1.129 released 2026-03-17. 1,091 stars, 38 releases, rapid iteration. Key competitive features to track.
 - **tuicr** (Rust): Interactive code review TUI, very early stage. Uses Claude AI integration.
 - **acre** (Rust): Another TUI diff viewer, minimal features.
@@ -394,9 +417,27 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - Agent-RLVR (Scale Labs): Structured guidance improves agent performance 9.4% to 22.4%. Inspired Agent Guidance Export (spec 027).
 - Superset, Orchestrator: competing multi-agent tools tracked.
 
+### OpenDiffs & Agent Feedback Patterns (from 2026-03-24 research)
+- **OpenDiffs** (released March 22, 2026): CLI tool that reviews staged git diffs using Claude Code or Codex agents, producing scored markdown reviews organized by branch.
+- **Agent-RLVR** (Scale Labs): Structured guidance improves agent task completion 9.4% to 22.4%. Validates mdiff's Agent Guidance Export (spec 027).
+- **Rich Feedback RL**: Field converging from scalar reward RL toward critiques, comparisons, checklists, verifier signals.
+- **git-time-machine** (Rust/ratatui): New TUI tool for visual git reflog navigation with vim keybindings.
+- **GitHub trending March 2026**: Dominated by AI agent frameworks, no TUI/diff tools in top trending — mdiff occupies a niche with growing demand.
+
 ---
 
 ## Changelog
+
+### 2026-03-24
+- **NEW SPEC 029**: Tree View Inconsistencies (Issue #64) — 5 bug fixes for tree navigator
+- **NEW SPEC 030**: File Preview on Hover (Issue #65) — sync diff pane with tree cursor
+- **NEW SPEC 031**: Go-to-Line & Fuzzy File Picker (Issue #63) — vim command bar + Ctrl+P file search
+- **Promoted Issues #64, #65 to P0**: Owner-filed tree view regressions
+- **Promoted Issue #63 to P1**: Owner-filed UX improvement for standard navigation shortcuts
+- **Cursor agents launched**: specs 029, 030, 031
+- **PR Review**: PR #62 (Agent Attribution Labels), PR #61 (Agent Guidance Export, draft), PR #55 (Annotation Suggestions) reviewed
+- **Research**: OpenDiffs (AI-powered diff review), Agent-RLVR (structured guidance), git-time-machine (Rust/ratatui)
+- Added OpenDiffs to competitive landscape
 
 ### 2026-03-23
 - **ROADMAP.md recovered** from corruption (sandbox path reference replaced full content)
