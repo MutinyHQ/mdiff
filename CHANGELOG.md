@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/MutinyHQ/mdiff/compare/v0.1.19...v0.1.20) - 2026-03-24
+
+### Added
+
+- agentic review
+
+### Fixed
+
+- remove stale agentic_review_running field from test KeyContext
+- which key modal
+- resolve 5 tree view inconsistencies (issue #64)
+
+### Other
+
+- Merge branch 'main' into cursor/tree-view-consistency-8764
+- add 031-goto-line-and-file-picker for Issue #63
+- add 030-file-preview-on-hover for Issue #65
+- add 029-tree-view-inconsistencies for Issue #64
+
 ## [0.1.19](https://github.com/MutinyHQ/mdiff/compare/v0.1.18...v0.1.19) - 2026-03-23
 
 ### Added
