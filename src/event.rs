@@ -893,7 +893,6 @@ mod tests {
             command_bar_active: false,
             file_picker_active: false,
             agentic_review_modal_open: false,
-            agentic_review_running: false,
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
