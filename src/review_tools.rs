@@ -1,18 +1,226 @@
 //! Tools available to agentic review agents.
 //!
-//! Shared tools (parent + child): list_files, read_file, search
+//! Shared tools (parent + child): list_diff_files, read_diff, list_files,
+//! read_file, search
 //! Parent-only: annotate_file (spawns a child sub-agent)
 //! Child-only: create_annotation (produces line-level annotation)
 
+use crate::git::types::{DiffLineOrigin, FileDelta, FileStatus};
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 // ================================================================
-// Shared tools: list_files, read_file, search
+// Shared diff helpers
 // ================================================================
+
+pub const CHILD_INLINE_DIFF_MAX_BYTES: usize = 8 * 1024;
+
+fn status_label(status: &FileStatus) -> &'static str {
+    match status {
+        FileStatus::Added => "A",
+        FileStatus::Deleted => "D",
+        FileStatus::Modified => "M",
+        FileStatus::Renamed => "R",
+        FileStatus::Untracked => "?",
+    }
+}
+
+pub fn render_diff_text(deltas: &[FileDelta]) -> String {
+    let mut out = String::new();
+    for delta in deltas {
+        if delta.binary {
+            continue;
+        }
+
+        let old_path = delta
+            .old_path
+            .as_ref()
+            .unwrap_or(&delta.path)
+            .to_string_lossy();
+        let new_path = delta.path.to_string_lossy();
+        out.push_str(&format!("--- a/{old_path}\n+++ b/{new_path}\n"));
+        for hunk in &delta.hunks {
+            out.push_str(&hunk.header);
+            if !hunk.header.ends_with('\n') {
+                out.push('\n');
+            }
+            for line in &hunk.lines {
+                let prefix = match line.origin {
+                    DiffLineOrigin::Addition => "+",
+                    DiffLineOrigin::Deletion => "-",
+                    DiffLineOrigin::Context => " ",
+                };
+                out.push_str(&format!("{prefix}{}\n", line.content.trim_end()));
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+pub fn render_file_diff(delta: &FileDelta) -> String {
+    render_diff_text(std::slice::from_ref(delta))
+}
+
+pub fn diff_summary_line(delta: &FileDelta) -> String {
+    let path = delta.path.to_string_lossy();
+    let stats = format!("+{} -{}", delta.additions, delta.deletions);
+    let rename = delta
+        .old_path
+        .as_ref()
+        .map(|old| format!(" (from {})", old.to_string_lossy()))
+        .unwrap_or_default();
+    let binary = if delta.binary { " [binary]" } else { "" };
+
+    format!(
+        "- [{}] {}{} ({stats}){binary}",
+        status_label(&delta.status),
+        path,
+        rename
+    )
+}
+
+pub fn render_diff_summary(deltas: &[FileDelta]) -> String {
+    deltas
+        .iter()
+        .map(diff_summary_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn binary_diff_message(delta: &FileDelta) -> String {
+    let path = delta.path.to_string_lossy();
+    format!(
+        "Binary diff for {} [{}] (+{} -{}). Patch text is unavailable.",
+        path,
+        status_label(&delta.status),
+        delta.additions,
+        delta.deletions
+    )
+}
+
+fn find_delta<'a>(deltas: &'a [FileDelta], file_path: &str) -> Option<&'a FileDelta> {
+    deltas
+        .iter()
+        .find(|delta| delta.path.to_string_lossy() == file_path)
+}
+
+// ================================================================
+// Shared tools: list_diff_files, read_diff, list_files, read_file, search
+// ================================================================
+
+/// List files in the current diff with status and stats.
+#[derive(Debug, Clone)]
+pub struct ListDiffFilesTool {
+    pub deltas: Arc<Vec<FileDelta>>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ListDiffFilesArgs {}
+
+#[derive(Debug, thiserror::Error)]
+#[error("ListDiffFiles error: {0}")]
+pub struct ListDiffFilesError(String);
+
+impl Tool for ListDiffFilesTool {
+    const NAME: &'static str = "list_diff_files";
+    type Error = ListDiffFilesError;
+    type Args = ListDiffFilesArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "list_diff_files".to_string(),
+            description: "List files in the current diff with status, rename info, additions, deletions, and binary flag.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let files: Vec<serde_json::Value> = self
+            .deltas
+            .iter()
+            .map(|delta| {
+                json!({
+                    "path": delta.path.to_string_lossy().to_string(),
+                    "old_path": delta.old_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    "status": status_label(&delta.status),
+                    "additions": delta.additions,
+                    "deletions": delta.deletions,
+                    "binary": delta.binary,
+                })
+            })
+            .collect();
+
+        serde_json::to_string_pretty(&files)
+            .map_err(|e| ListDiffFilesError(format!("Failed to serialize diff files: {e}")))
+    }
+}
+
+/// Read a single file diff from the current diff.
+#[derive(Debug, Clone)]
+pub struct ReadDiffTool {
+    pub deltas: Arc<Vec<FileDelta>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReadDiffArgs {
+    /// File path relative to repo root from the current diff.
+    pub file_path: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("ReadDiff error: {0}")]
+pub struct ReadDiffError(String);
+
+impl Tool for ReadDiffTool {
+    const NAME: &'static str = "read_diff";
+    type Error = ReadDiffError;
+    type Args = ReadDiffArgs;
+    type Output = String;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "read_diff".to_string(),
+            description: "Read the full unified diff for one changed file from the current diff."
+                .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Exact file path from list_diff_files"
+                    }
+                },
+                "required": ["file_path"],
+                "additionalProperties": false
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let delta = find_delta(self.deltas.as_slice(), &args.file_path).ok_or_else(|| {
+            ReadDiffError(format!(
+                "File not found in current diff: {}",
+                args.file_path
+            ))
+        })?;
+
+        if delta.binary {
+            return Ok(binary_diff_message(delta));
+        }
+
+        Ok(render_file_diff(delta))
+    }
+}
 
 /// List files in the repository.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +248,7 @@ impl Tool for ListFilesTool {
         ToolDefinition {
             name: "list_files".to_string(),
             description: "List files and directories at a given path in the repository. Returns one entry per line.".to_string(),
-            parameters: serde_json::json!({
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "path": {
@@ -111,7 +319,7 @@ impl Tool for ReadFileTool {
             description:
                 "Read the contents of a file in the repository. Can read a specific line range."
                     .to_string(),
-            parameters: serde_json::json!({
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "path": {
@@ -185,7 +393,7 @@ impl Tool for SearchTool {
         ToolDefinition {
             name: "search".to_string(),
             description: "Search file contents in the repository using regex. Returns matching lines with file paths and line numbers.".to_string(),
-            parameters: serde_json::json!({
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "pattern": {
@@ -302,7 +510,7 @@ impl Tool for AnnotateFileTool {
         ToolDefinition {
             name: "annotate_file".to_string(),
             description: "Flag a concern on a specific file to spawn a sub-agent that will create a precise line-level annotation. Call this for each concern you identify during your review.".to_string(),
-            parameters: serde_json::json!({
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
@@ -379,7 +587,7 @@ impl Tool for CreateAnnotationTool {
         ToolDefinition {
             name: "create_annotation".to_string(),
             description: "Create a precise line-level annotation on the diff. Use new_line_start/end for additions or modified lines (+ prefix in diff). Use old_line_start/end for deletions (- prefix in diff). Set the unused range to null.".to_string(),
-            parameters: serde_json::json!({
+            parameters: json!({
                 "type": "object",
                 "properties": {
                     "file_path": {
@@ -426,5 +634,112 @@ impl Tool for CreateAnnotationTool {
             .map_err(|e| CreateAnnotationError(format!("Lock poisoned: {}", e)))?
             .push(args);
         Ok("Annotation created.".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::types::{DiffLine, Hunk};
+    use std::path::PathBuf;
+
+    fn sample_delta() -> FileDelta {
+        FileDelta {
+            path: PathBuf::from("src/lib.rs"),
+            old_path: None,
+            status: FileStatus::Modified,
+            hunks: vec![Hunk {
+                header: "@@ -1,2 +1,2 @@".to_string(),
+                lines: vec![
+                    DiffLine {
+                        origin: DiffLineOrigin::Context,
+                        old_lineno: Some(1),
+                        new_lineno: Some(1),
+                        content: "fn old() {".to_string(),
+                    },
+                    DiffLine {
+                        origin: DiffLineOrigin::Deletion,
+                        old_lineno: Some(2),
+                        new_lineno: None,
+                        content: "    old_call();".to_string(),
+                    },
+                    DiffLine {
+                        origin: DiffLineOrigin::Addition,
+                        old_lineno: None,
+                        new_lineno: Some(2),
+                        content: "    new_call();".to_string(),
+                    },
+                ],
+            }],
+            additions: 1,
+            deletions: 1,
+            binary: false,
+        }
+    }
+
+    #[test]
+    fn render_diff_summary_includes_rename_and_binary() {
+        let mut renamed = sample_delta();
+        renamed.status = FileStatus::Renamed;
+        renamed.old_path = Some(PathBuf::from("src/old.rs"));
+        renamed.path = PathBuf::from("src/new.rs");
+
+        let mut binary = sample_delta();
+        binary.path = PathBuf::from("assets/logo.png");
+        binary.status = FileStatus::Added;
+        binary.binary = true;
+        binary.hunks.clear();
+        binary.additions = 0;
+        binary.deletions = 0;
+
+        let summary = render_diff_summary(&[renamed, binary]);
+        assert!(summary.contains("[R] src/new.rs (from src/old.rs) (+1 -1)"));
+        assert!(summary.contains("[A] assets/logo.png (+0 -0) [binary]"));
+    }
+
+    #[tokio::test]
+    async fn read_diff_tool_returns_patch_for_changed_file() {
+        let tool = ReadDiffTool {
+            deltas: Arc::new(vec![sample_delta()]),
+        };
+
+        let output = tool
+            .call(ReadDiffArgs {
+                file_path: "src/lib.rs".to_string(),
+            })
+            .await
+            .expect("read diff should succeed");
+
+        assert!(output.contains("--- a/src/lib.rs"));
+        assert!(output.contains("+++ b/src/lib.rs"));
+        assert!(output.contains("+    new_call();"));
+    }
+
+    #[tokio::test]
+    async fn read_diff_tool_handles_binary_and_missing_files() {
+        let mut binary = sample_delta();
+        binary.path = PathBuf::from("assets/logo.png");
+        binary.binary = true;
+        binary.hunks.clear();
+
+        let tool = ReadDiffTool {
+            deltas: Arc::new(vec![binary]),
+        };
+
+        let output = tool
+            .call(ReadDiffArgs {
+                file_path: "assets/logo.png".to_string(),
+            })
+            .await
+            .expect("binary diff should return a message");
+        assert!(output.contains("Binary diff for assets/logo.png"));
+
+        let err = tool
+            .call(ReadDiffArgs {
+                file_path: "missing.rs".to_string(),
+            })
+            .await
+            .expect_err("missing file should error");
+        assert!(err.to_string().contains("File not found in current diff"));
     }
 }

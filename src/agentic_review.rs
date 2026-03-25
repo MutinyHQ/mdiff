@@ -10,10 +10,11 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::ai_client::{self, AiProvider};
 use crate::config::{AgenticReviewConfig, ApiKeysConfig};
-use crate::git::types::{DiffLineOrigin, FileDelta};
+use crate::git::types::FileDelta;
 use crate::review_tools::{
-    AnnotateFileArgs, AnnotateFileTool, CreateAnnotationArgs, CreateAnnotationTool, ListFilesTool,
-    ReadFileTool, SearchTool,
+    diff_summary_line, render_diff_summary, render_file_diff, AnnotateFileArgs, AnnotateFileTool,
+    CreateAnnotationArgs, CreateAnnotationTool, ListDiffFilesTool, ListFilesTool, ReadDiffTool,
+    ReadFileTool, SearchTool, CHILD_INLINE_DIFF_MAX_BYTES,
 };
 use crate::state::annotation_state::{
     Annotation, AnnotationCategory, AnnotationSeverity, LineAnchor,
@@ -75,38 +76,48 @@ impl AgenticReviewRunner {
 }
 
 // ================================================================
-// Helpers
+// Prompt helpers
 // ================================================================
 
-fn render_diff_text(deltas: &[FileDelta]) -> String {
-    let mut out = String::new();
-    for delta in deltas {
-        if delta.binary {
-            continue;
-        }
-        let path = delta.path.to_string_lossy();
-        out.push_str(&format!("--- a/{path}\n+++ b/{path}\n"));
-        for hunk in &delta.hunks {
-            out.push_str(&hunk.header);
-            if !hunk.header.ends_with('\n') {
-                out.push('\n');
-            }
-            for line in &hunk.lines {
-                let prefix = match line.origin {
-                    DiffLineOrigin::Addition => "+",
-                    DiffLineOrigin::Deletion => "-",
-                    DiffLineOrigin::Context => " ",
-                };
-                out.push_str(&format!("{prefix}{}\n", line.content.trim_end()));
-            }
-        }
-        out.push('\n');
-    }
-    out
+fn build_parent_user_prompt(review_text: &str, deltas: &[FileDelta]) -> String {
+    let summary = render_diff_summary(deltas);
+
+    format!(
+        "## Changed Files\n\nTotal changed files: {}\n{}\n\n## User's Review\n\n{}",
+        deltas.len(),
+        summary,
+        review_text
+    )
 }
 
-fn render_file_diff(delta: &FileDelta) -> String {
-    render_diff_text(std::slice::from_ref(delta))
+fn build_child_user_prompt(call: &AnnotateFileArgs, delta: Option<&FileDelta>) -> String {
+    let Some(delta) = delta else {
+        return format!(
+            "## Changed File\n\nPath: {}\n\n## Concern\n\n{}\n\nCategory: {}\nSeverity: {}\n\nThe file was referenced by the parent review, but its diff is unavailable in context. Use `list_diff_files` and `read_diff` before creating an annotation.",
+            call.file_path, call.concern, call.category, call.severity
+        );
+    };
+
+    let summary = diff_summary_line(delta);
+    if delta.binary {
+        return format!(
+            "## Changed File\n\n{}\n\n## Concern\n\n{}\n\nCategory: {}\nSeverity: {}\n\nThis is a binary diff. Use `read_diff` if you need the binary diff metadata, then rely on repository tools for surrounding context.",
+            summary, call.concern, call.category, call.severity
+        );
+    }
+
+    let file_diff = render_file_diff(delta);
+    if file_diff.len() <= CHILD_INLINE_DIFF_MAX_BYTES {
+        return format!(
+            "## Changed File\n\n{}\n\n## File Diff\n\n```diff\n{}```\n\n## Concern\n\n{}\n\nCategory: {}\nSeverity: {}",
+            summary, file_diff, call.concern, call.category, call.severity
+        );
+    }
+
+    format!(
+        "## Changed File\n\n{}\n\n## Concern\n\n{}\n\nCategory: {}\nSeverity: {}\n\nThe full diff for this file is intentionally not inlined because it exceeds the prompt budget. Call `read_diff` with this file path before creating an annotation.",
+        summary, call.concern, call.category, call.severity
+    )
 }
 
 fn parse_category(s: &str) -> AnnotationCategory {
@@ -143,10 +154,16 @@ macro_rules! maybe_base_url {
     };
 }
 
-/// Macro to add shared tools (list_files, read_file, search) to an agent builder.
+/// Macro to add shared tools to an agent builder.
 macro_rules! with_shared_tools {
-    ($builder:expr, $repo_path:expr) => {
+    ($builder:expr, $repo_path:expr, $deltas:expr) => {
         $builder
+            .tool(ListDiffFilesTool {
+                deltas: $deltas.clone(),
+            })
+            .tool(ReadDiffTool {
+                deltas: $deltas.clone(),
+            })
             .tool(ListFilesTool {
                 repo_path: $repo_path.clone(),
             })
@@ -211,6 +228,7 @@ async fn run_pipeline(
     event_tx: &mpsc::UnboundedSender<AgenticReviewEvent>,
     kill_rx: oneshot::Receiver<()>,
 ) -> Result<()> {
+    let deltas = Arc::new(deltas);
     let parent_provider = AiProvider::from_str(config.resolved_parent_provider())?;
     let parent_api_key =
         ai_client::resolve_api_key(&parent_provider, &api_keys).ok_or_else(|| {
@@ -226,9 +244,7 @@ async fn run_pipeline(
     let base_url_override = ai_client::resolve_base_url_override(&config);
     let max_turns = config.max_agent_turns;
 
-    let diff_text = render_diff_text(&deltas);
-    let parent_user =
-        format!("## Diff\n\n```diff\n{diff_text}```\n\n## User's Review\n\n{review_text}");
+    let parent_user = build_parent_user_prompt(&review_text, deltas.as_slice());
 
     // --- Phase 1: Parent agent streams review + tool calls ---
     let mut annotate_calls: Vec<AnnotateFileArgs> = Vec::new();
@@ -245,7 +261,8 @@ async fn run_pipeline(
                 client
                     .agent(&config.parent_model)
                     .preamble(PARENT_SYSTEM_PROMPT),
-                repo_path
+                repo_path,
+                deltas
             )
             .tool(AnnotateFileTool)
             .default_max_turns(max_turns)
@@ -271,7 +288,8 @@ async fn run_pipeline(
                 client
                     .agent(&config.parent_model)
                     .preamble(PARENT_SYSTEM_PROMPT),
-                repo_path
+                repo_path,
+                deltas
             )
             .tool(AnnotateFileTool)
             .default_max_turns(max_turns)
@@ -298,8 +316,9 @@ async fn run_pipeline(
     let total = annotate_calls.len();
     let _ = event_tx.send(AgenticReviewEvent::ChildProgress(0, total));
 
-    let delta_map: std::collections::HashMap<String, &FileDelta> = deltas
+    let delta_map: std::collections::HashMap<String, FileDelta> = deltas
         .iter()
+        .cloned()
         .map(|d| (d.path.to_string_lossy().to_string(), d))
         .collect();
 
@@ -314,53 +333,63 @@ async fn run_pipeline(
         let child_base_url = base_url_override.clone();
         let child_model_name = config.child_model.clone();
         let repo_path = repo_path.clone();
-        let file_diff = delta_map
-            .get(&call.file_path)
-            .map(|d| render_file_diff(d))
-            .unwrap_or_default();
+        let diff_deltas = deltas.clone();
+        let delta = delta_map.get(&call.file_path).cloned();
         let sink = Arc::new(Mutex::new(Vec::<CreateAnnotationArgs>::new()));
 
         let task_sink = sink.clone();
         join_set.spawn(async move {
             let _permit = sem.acquire().await;
 
-            let child_user = format!(
-                "## File Diff\n\n```diff\n{file_diff}```\n\n## Concern\n\n{}\n\nCategory: {}\nSeverity: {}",
-                call.concern, call.category, call.severity
-            );
+            let child_user = build_child_user_prompt(&call, delta.as_ref());
 
             // Build and run child agent based on provider
             let result: Result<String> = match child_provider {
                 AiProvider::Anthropic => {
-                    let builder = rig::providers::anthropic::Client::builder()
-                        .api_key(&child_api_key);
+                    let builder =
+                        rig::providers::anthropic::Client::builder().api_key(&child_api_key);
                     match maybe_base_url!(builder, child_base_url).build() {
                         Ok(client) => {
                             let agent = with_shared_tools!(
-                                client.agent(&child_model_name).preamble(CHILD_SYSTEM_PROMPT),
-                                repo_path
+                                client
+                                    .agent(&child_model_name)
+                                    .preamble(CHILD_SYSTEM_PROMPT),
+                                repo_path,
+                                diff_deltas
                             )
-                            .tool(CreateAnnotationTool { sink: task_sink.clone() })
+                            .tool(CreateAnnotationTool {
+                                sink: task_sink.clone(),
+                            })
                             .default_max_turns(max_turns)
                             .build();
-                            agent.prompt(&child_user).await.map_err(|e| anyhow::anyhow!("{}", e))
+                            agent
+                                .prompt(&child_user)
+                                .await
+                                .map_err(|e| anyhow::anyhow!("{}", e))
                         }
                         Err(e) => Err(anyhow::anyhow!("{}", e)),
                     }
                 }
                 AiProvider::OpenAI | AiProvider::Moonshot => {
-                    let builder = rig::providers::openai::Client::builder()
-                        .api_key(&child_api_key);
+                    let builder = rig::providers::openai::Client::builder().api_key(&child_api_key);
                     match maybe_base_url!(builder, child_base_url).build() {
                         Ok(client) => {
                             let agent = with_shared_tools!(
-                                client.agent(&child_model_name).preamble(CHILD_SYSTEM_PROMPT),
-                                repo_path
+                                client
+                                    .agent(&child_model_name)
+                                    .preamble(CHILD_SYSTEM_PROMPT),
+                                repo_path,
+                                diff_deltas
                             )
-                            .tool(CreateAnnotationTool { sink: task_sink.clone() })
+                            .tool(CreateAnnotationTool {
+                                sink: task_sink.clone(),
+                            })
                             .default_max_turns(max_turns)
                             .build();
-                            agent.prompt(&child_user).await.map_err(|e| anyhow::anyhow!("{}", e))
+                            agent
+                                .prompt(&child_user)
+                                .await
+                                .map_err(|e| anyhow::anyhow!("{}", e))
                         }
                         Err(e) => Err(anyhow::anyhow!("{}", e)),
                     }
@@ -443,24 +472,25 @@ async fn run_pipeline(
 // Prompts
 // ================================================================
 
-const PARENT_SYSTEM_PROMPT: &str = r#"You are a code review assistant. Read the diff and the user's feedback, then write a thorough, conversational review.
+const PARENT_SYSTEM_PROMPT: &str = r#"You are a code review assistant. Read the changed-file summary and the user's feedback, then write a thorough, conversational review.
 
 As you identify concerns, use the `annotate_file` tool to flag each one for detailed annotation by a sub-agent. Continue your review after each tool call.
 
-You also have access to `list_files`, `read_file`, and `search` tools to explore the repository for additional context when needed.
+The full diff is not preloaded in the prompt. Use `list_diff_files` to inspect the changed-file set and `read_diff` to fetch the exact patch for any file before making concrete claims. You also have access to `list_files`, `read_file`, and `search` tools to explore the repository for additional context when needed.
 
 Write naturally — your text output is what the user reads in the review panel. The tool calls create precise line-level annotations in the background.
 
 Guidelines:
 - Address each point in the user's feedback
+- Use the diff tools instead of assuming unseen patch details
 - Identify concrete concerns with specific file paths from the diff
 - Use annotate_file for each concern, with an appropriate category (Bug, Style, Performance, Security, Suggestion, Question, Nitpick) and severity (Critical, Major, Minor, Info)
 - If the user's feedback doesn't relate to specific code, explain why and return without annotations
 - Be concise but thorough"#;
 
-const CHILD_SYSTEM_PROMPT: &str = r#"You are a precise code annotation assistant. Given a file's diff and a specific concern, identify the exact line range(s) that the concern applies to and create an annotation.
+const CHILD_SYSTEM_PROMPT: &str = r#"You are a precise code annotation assistant. Given a changed file and a specific concern, identify the exact line range(s) that the concern applies to and create an annotation.
 
-You have access to `list_files`, `read_file`, and `search` tools to explore the repository for additional context.
+If the full file diff is not included inline, call `read_diff` for the file before creating an annotation. You also have access to `list_diff_files`, `list_files`, `read_file`, and `search` tools to explore the diff and repository for additional context.
 
 Once you've identified the exact lines, call `create_annotation` with:
 - file_path: the exact file path
@@ -470,4 +500,96 @@ Once you've identified the exact lines, call `create_annotation` with:
 - category and severity from the parent's suggestion
 - comment: an actionable, specific annotation
 
-The line numbers must come from the diff provided."#;
+The line numbers must come from the diff for that file."#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::types::{DiffLine, DiffLineOrigin, FileStatus, Hunk};
+
+    fn sample_delta() -> FileDelta {
+        FileDelta {
+            path: "src/lib.rs".into(),
+            old_path: None,
+            status: FileStatus::Modified,
+            hunks: vec![Hunk {
+                header: "@@ -1,2 +1,3 @@".to_string(),
+                lines: vec![
+                    DiffLine {
+                        origin: DiffLineOrigin::Context,
+                        old_lineno: Some(1),
+                        new_lineno: Some(1),
+                        content: "fn demo() {".to_string(),
+                    },
+                    DiffLine {
+                        origin: DiffLineOrigin::Deletion,
+                        old_lineno: Some(2),
+                        new_lineno: None,
+                        content: "    old();".to_string(),
+                    },
+                    DiffLine {
+                        origin: DiffLineOrigin::Addition,
+                        old_lineno: None,
+                        new_lineno: Some(2),
+                        content: "    new();".to_string(),
+                    },
+                    DiffLine {
+                        origin: DiffLineOrigin::Addition,
+                        old_lineno: None,
+                        new_lineno: Some(3),
+                        content: "    extra();".to_string(),
+                    },
+                ],
+            }],
+            additions: 2,
+            deletions: 1,
+            binary: false,
+        }
+    }
+
+    fn sample_call() -> AnnotateFileArgs {
+        AnnotateFileArgs {
+            file_path: "src/lib.rs".to_string(),
+            concern: "Potential regression".to_string(),
+            category: "Bug".to_string(),
+            severity: "Major".to_string(),
+        }
+    }
+
+    #[test]
+    fn parent_prompt_uses_summary_not_full_diff() {
+        let prompt = build_parent_user_prompt("Check error handling", &[sample_delta()]);
+        assert!(prompt.contains("## Changed Files"));
+        assert!(prompt.contains("Total changed files: 1"));
+        assert!(prompt.contains("[M] src/lib.rs (+2 -1)"));
+        assert!(!prompt.contains("```diff"));
+        assert!(!prompt.contains("--- a/src/lib.rs"));
+    }
+
+    #[test]
+    fn child_prompt_inlines_small_diffs() {
+        let prompt = build_child_user_prompt(&sample_call(), Some(&sample_delta()));
+        assert!(prompt.contains("## File Diff"));
+        assert!(prompt.contains("```diff"));
+        assert!(prompt.contains("+    new();"));
+    }
+
+    #[test]
+    fn child_prompt_omits_large_diffs() {
+        let mut delta = sample_delta();
+        delta.hunks[0].lines = (0..300)
+            .map(|idx| DiffLine {
+                origin: DiffLineOrigin::Addition,
+                old_lineno: None,
+                new_lineno: Some((idx + 1) as u32),
+                content: format!("    very_long_line_{idx}_{}", "x".repeat(40)),
+            })
+            .collect();
+        delta.additions = 300;
+        delta.deletions = 0;
+
+        let prompt = build_child_user_prompt(&sample_call(), Some(&delta));
+        assert!(!prompt.contains("## File Diff"));
+        assert!(prompt.contains("Call `read_diff`"));
+    }
+}

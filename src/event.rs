@@ -171,17 +171,8 @@ impl MouseContext<'_> {
 
 /// Map a key event to an action based on current app context.
 pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
-    // Priority 0: PTY focus mode — forward ALL keys except Ctrl+W to the PTY.
-    // Use Ctrl+W to switch away from the PTY panel (no Esc trap needed).
-    if ctx.pty_focus {
-        if key.code == KeyCode::Char('w') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            // Fall through to window prefix handling below
-        } else {
-            return Some(Action::PtyInput(key));
-        }
-    }
-
-    // Priority 0.2: Window prefix mode (Ctrl+W + next key)
+    // Priority 0: Window prefix mode (Ctrl+W + next key) must win even when PTY
+    // focus is active, otherwise the follow-up key gets swallowed by the PTY.
     if ctx.window_pending {
         // Ctrl+W + h/l navigates left/right through the horizontal pane layout:
         // Navigator ← → DiffView ← → ReviewPanel/ChecklistPanel
@@ -194,6 +185,16 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Esc => None, // Cancel prefix
             _ => None,
         };
+    }
+
+    // Priority 0.1: PTY focus mode — forward ALL keys except Ctrl+W to the PTY.
+    // Use Ctrl+W to switch away from the PTY panel (no Esc trap needed).
+    if ctx.pty_focus {
+        if key.code == KeyCode::Char('w') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            // Fall through to window prefix handling below
+        } else {
+            return Some(Action::PtyInput(key));
+        }
     }
 
     // Priority 0.5: Ctrl-C / Ctrl-D quit (not in PTY focus)
@@ -899,6 +900,41 @@ mod tests {
         }
     }
 
+    fn create_agent_output_pty_context() -> KeyContext {
+        KeyContext {
+            focus: FocusPanel::AgentOutput,
+            search_active: false,
+            diff_search_active: false,
+            global_search_active: false,
+            commit_dialog_open: false,
+            target_dialog_open: false,
+            comment_editor_open: false,
+            category_picker_open: false,
+            category_picker_phase: CategoryPickerPhase::SelectCategory,
+            agent_selector_open: false,
+            annotation_menu_open: false,
+            restore_confirm_open: false,
+            settings_open: false,
+            visual_mode_active: false,
+            active_view: ActiveView::AgentOutputs,
+            pty_focus: true,
+            checklist_panel_open: false,
+            bookmark_list_open: false,
+            which_key_visible: false,
+            tree_mode: false,
+            tree_z_pending: false,
+            bracket_pending: None,
+            mark_pending: false,
+            jump_mark_pending: false,
+            command_bar_active: false,
+            file_picker_active: false,
+            agentic_review_modal_open: false,
+            agentic_review_panel_open: false,
+            agentic_review_composing: false,
+            window_pending: false,
+        }
+    }
+
     #[test]
     fn test_global_search_n_key_inserts_character() {
         let ctx = create_global_search_context();
@@ -973,5 +1009,23 @@ mod tests {
                 other => panic!("Expected GlobalSearchChar('{}'), got {:?}", ch, other),
             }
         }
+    }
+
+    #[test]
+    fn test_window_prefix_takes_priority_over_pty_focus() {
+        let mut ctx = create_agent_output_pty_context();
+
+        let ctrl_w = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert!(matches!(
+            map_key_to_action(ctrl_w, &ctx),
+            Some(Action::WindowPrefix)
+        ));
+
+        ctx.window_pending = true;
+        let key_h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
+        assert!(matches!(
+            map_key_to_action(key_h, &ctx),
+            Some(Action::FocusPaneLeft)
+        ));
     }
 }

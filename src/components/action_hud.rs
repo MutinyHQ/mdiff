@@ -17,7 +17,7 @@ pub struct ActionHud;
 /// Compute the binding entries for the current state.
 fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
     if state.pty_focus {
-        &[("Esc", "exit chat")]
+        &[("^W", "window")]
     } else if state.active_view == ActiveView::AgentOutputs {
         &[
             ("j/k", "select"),
@@ -25,7 +25,7 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("y", "copy"),
             ("^A", "re-run"),
             ("^K", "kill"),
-            ("Esc", "back"),
+            ("o", "back"),
         ]
     } else if state.selection.active {
         &[
