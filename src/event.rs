@@ -647,6 +647,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                     KeyCode::Down | KeyCode::Char('j') => Some(Action::AgentOutputsDown),
                     KeyCode::Char('y') => Some(Action::AgentOutputsCopyPrompt),
                     KeyCode::Char('w') => Some(Action::AgentOutputsSwitchWorktree),
+                    KeyCode::Char('o') => Some(Action::SwitchToAgentOutputs),
                     _ => None,
                 };
             }
@@ -657,6 +658,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 return match key.code {
                     KeyCode::Up | KeyCode::Char('k') => Some(Action::PtyScrollUp),
                     KeyCode::Down | KeyCode::Char('j') => Some(Action::PtyScrollDown),
+                    KeyCode::Char('o') => Some(Action::SwitchToAgentOutputs),
                     _ => None,
                 };
             }

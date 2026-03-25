@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::state::app_state::ActiveView;
+use crate::state::app_state::{ActiveView, FocusPanel};
 use crate::state::AppState;
 use crate::theme::Theme;
 
@@ -19,13 +19,31 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
     if state.pty_focus {
         &[("^W", "window")]
     } else if state.active_view == ActiveView::AgentOutputs {
+        match state.focus {
+            FocusPanel::AgentOutput => &[("j/k", "scroll"), ("^W h", "list"), ("o", "back")],
+            _ => &[
+                ("j/k", "select"),
+                ("y", "copy"),
+                ("w", "worktree"),
+                ("^K", "kill"),
+                ("^W l", "output"),
+                ("o", "back"),
+            ],
+        }
+    } else if state.active_view == ActiveView::WorktreeBrowser {
         &[
-            ("j/k", "select"),
-            ("Enter", "chat"),
-            ("y", "copy"),
-            ("^A", "re-run"),
-            ("^K", "kill"),
-            ("o", "back"),
+            ("j/k", "nav"),
+            ("Enter", "open"),
+            ("r", "refresh"),
+            ("f", "freeze"),
+            ("Esc", "back"),
+        ]
+    } else if state.active_view == ActiveView::FeedbackSummary {
+        &[
+            ("j/k", "scroll"),
+            ("y", "json"),
+            ("p", "prompt"),
+            ("Esc/F", "back"),
         ]
     } else if state.selection.active {
         &[
@@ -34,9 +52,94 @@ fn bindings_for_state(state: &AppState) -> &[(&str, &str)] {
             ("d", "delete"),
             ("y", "yank"),
             ("v/Esc", "exit"),
-            ("]", "next"),
-            ("[", "prev"),
+            ("^]/^[", "next/prev"),
         ]
+    } else if state.focus == FocusPanel::Navigator {
+        if state.hud_expanded {
+            &[
+                ("^C/D", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("Enter", "diff"),
+                ("g/G", "top/bot"),
+                ("m", "reviewed"),
+                ("n", "next unrev"),
+                ("s", "stage"),
+                ("u", "unstage"),
+                ("r", "restore"),
+                ("c", "commit"),
+                ("t", "target"),
+                ("T", "tree"),
+                ("C", "checklist"),
+                ("F", "summary"),
+                ("R", "refresh"),
+                ("o", "outputs"),
+                ("^W", "window"),
+                ("^A", "agent"),
+                (":", "command"),
+                ("?", "hide"),
+            ]
+        } else {
+            &[
+                ("^C/D", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("Enter", "diff"),
+                ("o", "outputs"),
+                ("^W", "window"),
+                ("^A", "agent"),
+                (":", "command"),
+                ("?", "help"),
+            ]
+        }
+    } else if state.focus == FocusPanel::DiffView {
+        if state.hud_expanded {
+            &[
+                ("^C/D", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("Tab", "view"),
+                ("w", "ws"),
+                ("s", "stage"),
+                ("u", "unstage"),
+                ("r", "restore"),
+                ("c", "commit"),
+                ("v", "visual"),
+                ("i", "comment"),
+                ("a", "annotate"),
+                ("y", "yank"),
+                ("Space", "expand"),
+                ("p", "preview"),
+                ("g/G", "top/bot"),
+                ("b", "bookmark"),
+                ("B", "bookmarks"),
+                ("e", "editor"),
+                ("t", "target"),
+                ("C", "checklist"),
+                ("F", "summary"),
+                ("R", "refresh"),
+                ("o", "outputs"),
+                ("^W", "window"),
+                ("^A", "agent"),
+                (":", "command"),
+                ("?", "hide"),
+            ]
+        } else {
+            &[
+                ("^C/D", "quit"),
+                ("j/k", "nav"),
+                ("/", "search"),
+                ("v", "visual"),
+                ("i", "comment"),
+                ("y", "yank"),
+                ("Space", "expand"),
+                ("o", "outputs"),
+                ("^W", "window"),
+                ("^A", "agent"),
+                (":", "command"),
+                ("?", "help"),
+            ]
+        }
     } else if state.hud_expanded {
         &[
             ("^C/D", "quit"),
@@ -198,5 +301,189 @@ impl Component for ActionHud {
 
         let bar = Paragraph::new(lines).style(Style::default().bg(theme.surface));
         frame.render_widget(bar, area);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::action::Action;
+    use crate::event::{map_key_to_action, KeyContext};
+    use crate::state::app_state::FocusPanel;
+    use crate::state::{AppState, DiffOptions};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn make_state() -> AppState {
+        AppState::new(DiffOptions::new(false, false), Theme::from_name("one-dark"))
+    }
+
+    fn key_context(state: &AppState) -> KeyContext {
+        KeyContext {
+            focus: state.focus,
+            search_active: state.navigator.search_active,
+            diff_search_active: state.diff.search_active,
+            global_search_active: state.global_search.active,
+            commit_dialog_open: state.commit_dialog_open,
+            target_dialog_open: state.target_dialog_open,
+            comment_editor_open: state.comment_editor_open,
+            category_picker_open: state.category_picker_open,
+            category_picker_phase: state.category_picker_phase,
+            agent_selector_open: state.agent_selector.open,
+            annotation_menu_open: state.annotation_menu_open,
+            restore_confirm_open: state.restore_confirm_open,
+            settings_open: state.settings.open,
+            visual_mode_active: state.selection.active,
+            active_view: state.active_view,
+            pty_focus: state.pty_focus,
+            checklist_panel_open: state.checklist.panel_open,
+            bookmark_list_open: state.bookmarks.list_visible,
+            which_key_visible: state.which_key_visible,
+            tree_mode: state.navigator.tree_mode,
+            tree_z_pending: false,
+            bracket_pending: None,
+            mark_pending: false,
+            jump_mark_pending: false,
+            command_bar_active: state.command_bar.active,
+            file_picker_active: state.file_picker.active,
+            agentic_review_modal_open: state.agentic_review_modal_open,
+            agentic_review_panel_open: state.agentic_review_panel_open,
+            agentic_review_composing: state.agentic_review_composing,
+            window_pending: false,
+        }
+    }
+
+    fn action_for_key(state: &AppState, key: KeyEvent) -> Option<Action> {
+        map_key_to_action(key, &key_context(state))
+    }
+
+    fn parse_key(binding: &str) -> Option<(KeyModifiers, KeyCode)> {
+        match binding {
+            "Tab" => Some((KeyModifiers::NONE, KeyCode::Tab)),
+            "Enter" => Some((KeyModifiers::NONE, KeyCode::Enter)),
+            "Esc" => Some((KeyModifiers::NONE, KeyCode::Esc)),
+            "Space" => Some((KeyModifiers::NONE, KeyCode::Char(' '))),
+            _ => {
+                if let Some(rest) = binding.strip_prefix('^') {
+                    Some((
+                        KeyModifiers::CONTROL,
+                        KeyCode::Char(rest.chars().next()?.to_ascii_lowercase()),
+                    ))
+                } else {
+                    Some((KeyModifiers::NONE, KeyCode::Char(binding.chars().next()?)))
+                }
+            }
+        }
+    }
+
+    fn binding_exists(state: &AppState, binding: &str) -> bool {
+        if let Some(rest) = binding.strip_prefix("^W ") {
+            let ctrl_w = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+            if !matches!(action_for_key(state, ctrl_w), Some(Action::WindowPrefix)) {
+                return false;
+            }
+            let mut ctx = key_context(state);
+            ctx.window_pending = true;
+            let key = KeyEvent::new(
+                KeyCode::Char(rest.chars().next().unwrap()),
+                KeyModifiers::NONE,
+            );
+            return map_key_to_action(key, &ctx).is_some();
+        }
+
+        if binding.len() > 1 && binding.contains('/') {
+            return binding.split('/').any(|part| binding_exists(state, part));
+        }
+
+        let Some((modifiers, key)) = parse_key(binding) else {
+            return false;
+        };
+
+        action_for_key(state, KeyEvent::new(key, modifiers)).is_some()
+    }
+
+    fn assert_hud_bindings_exist(state: &AppState) {
+        for (binding, _) in bindings_for_state(state) {
+            assert!(
+                binding_exists(state, binding),
+                "HUD advertised missing binding: {binding}"
+            );
+        }
+    }
+
+    #[test]
+    fn navigator_compact_hud_bindings_exist() {
+        let mut state = make_state();
+        state.focus = FocusPanel::Navigator;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn navigator_expanded_hud_bindings_exist() {
+        let mut state = make_state();
+        state.focus = FocusPanel::Navigator;
+        state.hud_expanded = true;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn diff_view_compact_hud_bindings_exist() {
+        let mut state = make_state();
+        state.focus = FocusPanel::DiffView;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn diff_view_expanded_hud_bindings_exist() {
+        let mut state = make_state();
+        state.focus = FocusPanel::DiffView;
+        state.hud_expanded = true;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn selection_hud_bindings_exist() {
+        let mut state = make_state();
+        state.focus = FocusPanel::DiffView;
+        state.selection.active = true;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn agent_output_run_list_hud_bindings_exist() {
+        let mut state = make_state();
+        state.active_view = ActiveView::AgentOutputs;
+        state.focus = FocusPanel::AgentRunList;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn agent_output_detail_hud_bindings_exist() {
+        let mut state = make_state();
+        state.active_view = ActiveView::AgentOutputs;
+        state.focus = FocusPanel::AgentOutput;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn agent_output_pty_hud_bindings_exist() {
+        let mut state = make_state();
+        state.active_view = ActiveView::AgentOutputs;
+        state.focus = FocusPanel::AgentOutput;
+        state.pty_focus = true;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn worktree_browser_hud_bindings_exist() {
+        let mut state = make_state();
+        state.active_view = ActiveView::WorktreeBrowser;
+        assert_hud_bindings_exist(&state);
+    }
+
+    #[test]
+    fn feedback_summary_hud_bindings_exist() {
+        let mut state = make_state();
+        state.active_view = ActiveView::FeedbackSummary;
+        assert_hud_bindings_exist(&state);
     }
 }
