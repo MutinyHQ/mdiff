@@ -171,6 +171,8 @@ impl MouseContext<'_> {
 
 /// Map a key event to an action based on current app context.
 pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
+    let review_composing = ctx.focus == FocusPanel::ReviewPanel && ctx.agentic_review_composing;
+
     // Priority 0: Window prefix mode (Ctrl+W + next key) must win even when PTY
     // focus is active, otherwise the follow-up key gets swallowed by the PTY.
     if ctx.window_pending {
@@ -675,37 +677,41 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
     }
 
     // Priority 6: Diff explorer global bindings
-    match key.code {
-        KeyCode::Tab => return Some(Action::ToggleViewMode),
-        KeyCode::Char('w') if !ctx.visual_mode_active => return Some(Action::ToggleWhitespace),
+    if !review_composing {
+        match key.code {
+            KeyCode::Tab => return Some(Action::ToggleViewMode),
+            KeyCode::Char('w') if !ctx.visual_mode_active => return Some(Action::ToggleWhitespace),
 
-        KeyCode::Char('/') => {
-            return match ctx.focus {
-                FocusPanel::Navigator => Some(Action::StartSearch),
-                FocusPanel::DiffView => Some(Action::StartDiffSearch),
-                _ => None,
+            KeyCode::Char('/') => {
+                return match ctx.focus {
+                    FocusPanel::Navigator => Some(Action::StartSearch),
+                    FocusPanel::DiffView => Some(Action::StartDiffSearch),
+                    _ => None,
+                }
             }
-        }
-        KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
-        KeyCode::Char('u') if !ctx.visual_mode_active => return Some(Action::UnstageFile),
-        KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
-        KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
-        KeyCode::Char('o') if !ctx.visual_mode_active => return Some(Action::SwitchToAgentOutputs),
-        KeyCode::Char('F') => return Some(Action::ToggleFeedbackSummary),
-        KeyCode::Char('R') => return Some(Action::RefreshDiff),
-        KeyCode::Char('n') if !ctx.visual_mode_active => {
-            return match ctx.focus {
-                FocusPanel::DiffView => Some(Action::DiffSearchNext),
-                FocusPanel::Navigator => Some(Action::NextUnreviewed),
-                _ => None,
+            KeyCode::Char('s') if !ctx.visual_mode_active => return Some(Action::StageFile),
+            KeyCode::Char('u') if !ctx.visual_mode_active => return Some(Action::UnstageFile),
+            KeyCode::Char('r') if !ctx.visual_mode_active => return Some(Action::RestoreFile),
+            KeyCode::Char('c') if !ctx.visual_mode_active => return Some(Action::OpenCommitDialog),
+            KeyCode::Char('o') if !ctx.visual_mode_active => {
+                return Some(Action::SwitchToAgentOutputs)
             }
+            KeyCode::Char('F') => return Some(Action::ToggleFeedbackSummary),
+            KeyCode::Char('R') => return Some(Action::RefreshDiff),
+            KeyCode::Char('n') if !ctx.visual_mode_active => {
+                return match ctx.focus {
+                    FocusPanel::DiffView => Some(Action::DiffSearchNext),
+                    FocusPanel::Navigator => Some(Action::NextUnreviewed),
+                    _ => None,
+                }
+            }
+            KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
+            KeyCode::Char('T') if !ctx.visual_mode_active => return Some(Action::ToggleTreeView),
+            KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
+            KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
+            KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenCommandBar),
+            _ => {}
         }
-        KeyCode::Char('t') if !ctx.visual_mode_active => return Some(Action::OpenTargetDialog),
-        KeyCode::Char('T') if !ctx.visual_mode_active => return Some(Action::ToggleTreeView),
-        KeyCode::Char('C') if !ctx.visual_mode_active => return Some(Action::ToggleChecklist),
-        KeyCode::Char('?') => return Some(Action::ToggleWhichKey),
-        KeyCode::Char(':') if !ctx.visual_mode_active => return Some(Action::OpenCommandBar),
-        _ => {}
     }
 
     // Priority 7: Visual mode in DiffView
@@ -935,6 +941,41 @@ mod tests {
         }
     }
 
+    fn create_review_composing_context() -> KeyContext {
+        KeyContext {
+            focus: FocusPanel::ReviewPanel,
+            search_active: false,
+            diff_search_active: false,
+            global_search_active: false,
+            commit_dialog_open: false,
+            target_dialog_open: false,
+            comment_editor_open: false,
+            category_picker_open: false,
+            category_picker_phase: CategoryPickerPhase::SelectCategory,
+            agent_selector_open: false,
+            annotation_menu_open: false,
+            restore_confirm_open: false,
+            settings_open: false,
+            visual_mode_active: false,
+            active_view: ActiveView::DiffExplorer,
+            pty_focus: false,
+            checklist_panel_open: false,
+            bookmark_list_open: false,
+            which_key_visible: false,
+            tree_mode: false,
+            tree_z_pending: false,
+            bracket_pending: None,
+            mark_pending: false,
+            jump_mark_pending: false,
+            command_bar_active: false,
+            file_picker_active: false,
+            agentic_review_modal_open: false,
+            agentic_review_panel_open: true,
+            agentic_review_composing: true,
+            window_pending: false,
+        }
+    }
+
     #[test]
     fn test_global_search_n_key_inserts_character() {
         let ctx = create_global_search_context();
@@ -1027,5 +1068,17 @@ mod tests {
             map_key_to_action(key_h, &ctx),
             Some(Action::FocusPaneLeft)
         ));
+    }
+
+    #[test]
+    fn test_review_panel_text_input_overrides_global_bindings() {
+        let ctx = create_review_composing_context();
+        for c in ['s', 'u'] {
+            let key = KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+            assert!(matches!(
+                map_key_to_action(key, &ctx),
+                Some(Action::AgenticReviewChar(ch)) if ch == c
+            ));
+        }
     }
 }

@@ -3035,8 +3035,13 @@ impl App {
                 self.state.agentic_review_running = false;
                 self.agentic_review_runner = None;
                 let count = annotations.len();
+                let summary = self.build_agentic_review_summary(&annotations);
                 for ann in annotations {
                     self.state.annotations.add(ann);
+                }
+                self.state.agentic_review_stream_output.push_str(&summary);
+                if self.state.prompt_preview_visible {
+                    self.update_prompt_preview();
                 }
                 session::save_session_data(
                     &self.repo_path,
@@ -3789,6 +3794,37 @@ impl App {
         }
     }
 
+    fn format_annotation_line_ref(anchor: &LineAnchor) -> String {
+        match (anchor.old_range, anchor.new_range) {
+            (_, Some((s, e))) if s == e => format!("Line {s}"),
+            (_, Some((s, e))) => format!("Lines {s}-{e}"),
+            (Some((s, e)), None) if s == e => format!("Removed line {s} (old)"),
+            (Some((s, e)), None) => format!("Removed lines {s}-{e} (old)"),
+            (None, None) => "File-level".to_string(),
+        }
+    }
+
+    fn build_agentic_review_summary(&self, annotations: &[Annotation]) -> String {
+        let mut lines = vec![format!(
+            "\n\n--- review results ---\nCreated {} annotation(s)\n",
+            annotations.len()
+        )];
+
+        for ann in annotations {
+            lines.push(format!(
+                "- {} [{}|{}] {}: {}",
+                ann.anchor.file_path,
+                ann.category.label(),
+                ann.severity.label(),
+                Self::format_annotation_line_ref(&ann.anchor),
+                ann.comment
+            ));
+        }
+
+        lines.push(String::new());
+        lines.join("\n")
+    }
+
     /// Render a prompt covering all annotated files.
     ///
     /// Each comment is interleaved with its surrounding diff context so the
@@ -3868,29 +3904,17 @@ impl App {
                     }
                 }
 
-                if diff_lines.is_empty() {
-                    continue;
-                }
-
-                let mut section = format!("```diff\n{}\n```", diff_lines.join("\n"));
+                let mut section = if diff_lines.is_empty() {
+                    "_No precise diff line range was captured for this comment._".to_string()
+                } else {
+                    format!("```diff\n{}\n```", diff_lines.join("\n"))
+                };
                 for ann in group_anns {
-                    // Side-aware comment labels
-                    let line_ref = match (ann.anchor.old_range, ann.anchor.new_range) {
-                        (_, Some((s, e))) if s == e => format!("Line {s}"),
-                        (_, Some((s, e))) => format!("Lines {s}-{e}"),
-                        (Some((s, e)), None) if s == e => {
-                            format!("Removed line {s} (old)")
-                        }
-                        (Some((s, e)), None) => {
-                            format!("Removed lines {s}-{e} (old)")
-                        }
-                        (None, None) => "Line ?".to_string(),
-                    };
                     section.push_str(&format!(
                         "\n\n> **[{} | {}] ({}):** {}",
                         ann.category.label(),
                         ann.severity.label(),
-                        line_ref,
+                        Self::format_annotation_line_ref(&ann.anchor),
                         ann.comment
                     ));
                 }

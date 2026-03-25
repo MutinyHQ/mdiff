@@ -4,6 +4,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
@@ -143,6 +144,77 @@ fn parse_severity(s: &str) -> AnnotationSeverity {
     }
 }
 
+fn format_activity_block(header: &str, body: impl AsRef<str>) -> String {
+    format!("\n\n--- {header} ---\n{}\n\n", body.as_ref())
+}
+
+fn string_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
+    args.get(key).and_then(Value::as_str)
+}
+
+fn usize_arg(args: &Value, key: &str) -> Option<usize> {
+    args.get(key)
+        .and_then(Value::as_u64)
+        .and_then(|n| usize::try_from(n).ok())
+}
+
+fn format_line_range(args: &Value) -> Option<String> {
+    let start = usize_arg(args, "start_line");
+    let end = usize_arg(args, "end_line");
+    match (start, end) {
+        (Some(start), Some(end)) => Some(format!(":{start}-{end}")),
+        (Some(start), None) => Some(format!(":{start}-")),
+        (None, Some(end)) => Some(format!(":1-{end}")),
+        (None, None) => None,
+    }
+}
+
+fn format_parent_tool_call_message(tool_name: &str, args: &Value) -> String {
+    match tool_name {
+        "annotate_file" => {
+            if let Ok(args) = serde_json::from_value::<AnnotateFileArgs>(args.clone()) {
+                format_activity_block(
+                    "sub-agent requested",
+                    format!(
+                        "{} [{}|{}]\n{}",
+                        args.file_path, args.category, args.severity, args.concern
+                    ),
+                )
+            } else {
+                format_activity_block("sub-agent requested", "Preparing annotation worker")
+            }
+        }
+        "list_diff_files" => format_activity_block("tool", "Inspecting changed files"),
+        "read_diff" => format_activity_block(
+            "tool",
+            format!(
+                "Reading diff for {}",
+                string_arg(args, "file_path").unwrap_or("<unknown file>")
+            ),
+        ),
+        "list_files" => format_activity_block(
+            "tool",
+            format!(
+                "Listing repository files in {}",
+                string_arg(args, "path").unwrap_or(".")
+            ),
+        ),
+        "read_file" => {
+            let path = string_arg(args, "path").unwrap_or("<unknown file>");
+            let range = format_line_range(args).unwrap_or_default();
+            format_activity_block("tool", format!("Reading {path}{range}"))
+        }
+        "search" => {
+            let pattern = string_arg(args, "pattern").unwrap_or("<pattern>");
+            let glob = string_arg(args, "glob")
+                .map(|glob| format!(" in {glob}"))
+                .unwrap_or_default();
+            format_activity_block("tool", format!("Searching for `{pattern}`{glob}"))
+        }
+        other => format_activity_block("tool", format!("Calling `{other}`")),
+    }
+}
+
 /// Conditionally apply base_url to a rig client builder.
 macro_rules! maybe_base_url {
     ($builder:expr, $base_url:expr) => {
@@ -191,14 +263,17 @@ fn process_parent_stream_item<R: Clone + std::fmt::Debug>(
                 tool_call,
                 internal_call_id: _,
             } => {
+                let _ = event_tx.send(AgenticReviewEvent::StreamToken(
+                    format_parent_tool_call_message(
+                        &tool_call.function.name,
+                        &tool_call.function.arguments,
+                    ),
+                ));
+
                 if tool_call.function.name == "annotate_file" {
                     if let Ok(args) =
                         serde_json::from_value::<AnnotateFileArgs>(tool_call.function.arguments)
                     {
-                        let _ = event_tx.send(AgenticReviewEvent::StreamToken(format!(
-                            "\n\n> **{}** [{}|{}]: {}\n\n",
-                            args.file_path, args.category, args.severity, args.concern
-                        )));
                         annotate_calls.push(args);
                     }
                 }
@@ -314,6 +389,10 @@ async fn run_pipeline(
 
     // --- Phase 2: Child agents ---
     let total = annotate_calls.len();
+    let _ = event_tx.send(AgenticReviewEvent::StreamToken(format_activity_block(
+        "sub-agents",
+        format!("Dispatching {total} annotation worker(s)"),
+    )));
     let _ = event_tx.send(AgenticReviewEvent::ChildProgress(0, total));
 
     let delta_map: std::collections::HashMap<String, FileDelta> = deltas
@@ -336,10 +415,15 @@ async fn run_pipeline(
         let diff_deltas = deltas.clone();
         let delta = delta_map.get(&call.file_path).cloned();
         let sink = Arc::new(Mutex::new(Vec::<CreateAnnotationArgs>::new()));
+        let child_event_tx = event_tx.clone();
 
         let task_sink = sink.clone();
         join_set.spawn(async move {
             let _permit = sem.acquire().await;
+            let _ = child_event_tx.send(AgenticReviewEvent::StreamToken(format_activity_block(
+                "sub-agent running",
+                format!("{} [{}|{}]", call.file_path, call.category, call.severity),
+            )));
 
             let child_user = build_child_user_prompt(&call, delta.as_ref());
 
@@ -445,18 +529,22 @@ async fn run_pipeline(
                         annotations.push(ann);
                     }
                 }
+                let _ = event_tx.send(AgenticReviewEvent::StreamToken(format_activity_block(
+                    "sub-agent complete",
+                    format!("Finished {}", call.file_path),
+                )));
                 let _ = event_tx.send(AgenticReviewEvent::ChildProgress(done, total));
             }
             Ok((call, Err(e), _sink)) => {
                 let _ = event_tx.send(AgenticReviewEvent::StreamToken(format!(
-                    "\n> Sub-agent error for {}: {}\n",
+                    "\n\n--- sub-agent error ---\n{}: {}\n\n",
                     call.file_path, e
                 )));
                 let _ = event_tx.send(AgenticReviewEvent::ChildProgress(done, total));
             }
             Err(e) => {
                 let _ = event_tx.send(AgenticReviewEvent::StreamToken(format!(
-                    "\n> Sub-agent join error: {}\n",
+                    "\n\n--- sub-agent join error ---\n{}\n\n",
                     e
                 )));
                 let _ = event_tx.send(AgenticReviewEvent::ChildProgress(done, total));
@@ -474,7 +562,7 @@ async fn run_pipeline(
 
 const PARENT_SYSTEM_PROMPT: &str = r#"You are a code review assistant. Read the changed-file summary and the user's feedback, then write a thorough, conversational review.
 
-As you identify concerns, use the `annotate_file` tool to flag each one for detailed annotation by a sub-agent. Continue your review after each tool call.
+For every actionable finding, you must call the `annotate_file` tool. That tool dispatches a sub-agent which converts your finding into a precise annotation on the diff. Continue your review after each tool call.
 
 The full diff is not preloaded in the prompt. Use `list_diff_files` to inspect the changed-file set and `read_diff` to fetch the exact patch for any file before making concrete claims. You also have access to `list_files`, `read_file`, and `search` tools to explore the repository for additional context when needed.
 
@@ -484,8 +572,11 @@ Guidelines:
 - Address each point in the user's feedback
 - Use the diff tools instead of assuming unseen patch details
 - Identify concrete concerns with specific file paths from the diff
-- Use annotate_file for each concern, with an appropriate category (Bug, Style, Performance, Security, Suggestion, Question, Nitpick) and severity (Critical, Major, Minor, Info)
+- For every concrete finding, inspect the relevant diff first and then call `annotate_file`
+- Do not leave actionable findings only in prose; if a finding should be preserved as feedback, it must go through `annotate_file`
+- Use `annotate_file` for each concern, with an appropriate category (Bug, Style, Performance, Security, Suggestion, Question, Nitpick) and severity (Critical, Major, Minor, Info)
 - If the user's feedback doesn't relate to specific code, explain why and return without annotations
+- The sub-agent only anchors the concern to exact diff lines; you are responsible for identifying the concern itself
 - Be concise but thorough"#;
 
 const CHILD_SYSTEM_PROMPT: &str = r#"You are a precise code annotation assistant. Given a changed file and a specific concern, identify the exact line range(s) that the concern applies to and create an annotation.
@@ -500,7 +591,7 @@ Once you've identified the exact lines, call `create_annotation` with:
 - category and severity from the parent's suggestion
 - comment: an actionable, specific annotation
 
-The line numbers must come from the diff for that file."#;
+The parent agent has already identified the concern. Your job is to anchor that concern to the correct diff lines and create the annotation. The line numbers must come from the diff for that file."#;
 
 #[cfg(test)]
 mod tests {
@@ -591,5 +682,28 @@ mod tests {
         let prompt = build_child_user_prompt(&sample_call(), Some(&delta));
         assert!(!prompt.contains("## File Diff"));
         assert!(prompt.contains("Call `read_diff`"));
+    }
+
+    #[test]
+    fn parent_tool_messages_are_separated_and_descriptive() {
+        let msg = format_parent_tool_call_message(
+            "read_file",
+            &serde_json::json!({
+                "path": "src/lib.rs",
+                "start_line": 10,
+                "end_line": 20
+            }),
+        );
+        assert!(msg.starts_with("\n\n--- tool ---\n"));
+        assert!(msg.contains("Reading src/lib.rs:10-20"));
+
+        let search_msg = format_parent_tool_call_message(
+            "search",
+            &serde_json::json!({
+                "pattern": "foo",
+                "glob": "*.rs"
+            }),
+        );
+        assert!(search_msg.contains("Searching for `foo` in *.rs"));
     }
 }
