@@ -348,6 +348,8 @@ mod tests {
             agentic_review_modal_open: state.agentic_review_modal_open,
             agentic_review_panel_open: state.agentic_review_panel_open,
             agentic_review_composing: state.agentic_review_composing,
+            auto_review_panel_open: state.auto_review.panel_open
+                && state.auto_review.has_findings(),
             window_pending: false,
         }
     }

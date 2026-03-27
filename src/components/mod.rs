@@ -3,6 +3,7 @@ pub mod agent_outputs;
 pub mod agent_selector;
 pub mod agentic_review_panel;
 pub mod annotation_menu;
+pub mod auto_review_panel;
 pub mod bookmark_list;
 pub mod category_picker;
 pub mod checklist_panel;

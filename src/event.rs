@@ -119,6 +119,7 @@ pub struct KeyContext {
     pub agentic_review_modal_open: bool,
     pub agentic_review_panel_open: bool,
     pub agentic_review_composing: bool,
+    pub auto_review_panel_open: bool,
     pub window_pending: bool,
 }
 
@@ -541,7 +542,25 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         return Some(Action::ToggleWhichKey);
     }
 
-    // Priority 3.8: Agentic review panel scroll (when panel is visible)
+    // Priority 3.8: Auto-review findings panel (when panel is visible and focused)
+    if ctx.auto_review_panel_open
+        && ctx.focus == FocusPanel::ReviewPanel
+        && !ctx.agentic_review_composing
+    {
+        return match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::AutoReviewNext),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::AutoReviewPrev),
+            KeyCode::Enter => Some(Action::AutoReviewJumpToCode),
+            KeyCode::Char('a') => Some(Action::AutoReviewAccept),
+            KeyCode::Char('x') => Some(Action::AutoReviewDismiss),
+            KeyCode::Char('e') => Some(Action::AutoReviewEdit),
+            KeyCode::Char('f') => Some(Action::AutoReviewFilterCycle),
+            KeyCode::Esc => Some(Action::AutoReviewClose),
+            _ => None,
+        };
+    }
+
+    // Priority 3.85: Agentic review panel scroll (when panel is visible)
     if ctx.agentic_review_panel_open && !ctx.agentic_review_modal_open {
         match key.code {
             KeyCode::Char('{') => return Some(Action::AgenticReviewPanelUp),
@@ -904,6 +923,7 @@ mod tests {
             agentic_review_modal_open: false,
             agentic_review_panel_open: false,
             agentic_review_composing: false,
+            auto_review_panel_open: false,
             window_pending: false,
         }
     }
@@ -939,6 +959,7 @@ mod tests {
             agentic_review_modal_open: false,
             agentic_review_panel_open: false,
             agentic_review_composing: false,
+            auto_review_panel_open: false,
             window_pending: false,
         }
     }
@@ -974,6 +995,7 @@ mod tests {
             agentic_review_modal_open: false,
             agentic_review_panel_open: true,
             agentic_review_composing: true,
+            auto_review_panel_open: false,
             window_pending: false,
         }
     }

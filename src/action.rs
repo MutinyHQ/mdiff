@@ -277,4 +277,14 @@ pub enum Action {
     AgenticReviewError(String),
     AgenticReviewPanelUp,
     AgenticReviewPanelDown,
+
+    // Auto-review findings panel
+    AutoReviewNext,
+    AutoReviewPrev,
+    AutoReviewAccept,
+    AutoReviewDismiss,
+    AutoReviewEdit,
+    AutoReviewJumpToCode,
+    AutoReviewFilterCycle,
+    AutoReviewClose,
 }

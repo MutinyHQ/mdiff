@@ -11,6 +11,7 @@ use crate::components::agent_outputs::AgentOutputs;
 use crate::components::agent_selector::render_agent_selector;
 use crate::components::agentic_review_panel::AgenticReviewPanel;
 use crate::components::annotation_menu::render_annotation_menu;
+use crate::components::auto_review_panel::AutoReviewPanel;
 use crate::components::bookmark_list::render_bookmark_list;
 use crate::components::checklist_panel::ChecklistPanel;
 use crate::components::command_bar::render_command_bar;
@@ -48,6 +49,7 @@ use crate::session;
 use crate::state::agent_state::{AgentRun, AgentRunStatus};
 use crate::state::annotation_state::{Annotation, LineAnchor};
 use crate::state::app_state::{ActiveView, FocusPanel};
+use crate::state::auto_review_state::FindingStatus;
 use crate::state::file_picker_state::FilePickerEntry;
 use crate::state::review_state::{compute_diff_hashes, FileReviewStatus};
 use crate::state::settings_state::SETTINGS_ROW_COUNT;
@@ -89,6 +91,7 @@ pub struct App {
     jump_mark_pending: bool,
     window_pending: bool,
     agentic_review_runner: Option<crate::agentic_review::AgenticReviewRunner>,
+    auto_review_editing_index: Option<usize>,
 }
 
 impl App {
@@ -161,6 +164,7 @@ impl App {
             jump_mark_pending: false,
             window_pending: false,
             agentic_review_runner: None,
+            auto_review_editing_index: None,
         }
     }
 
@@ -180,6 +184,7 @@ impl App {
         let agent_outputs = AgentOutputs;
         let checklist_panel = ChecklistPanel;
         let agentic_review_panel = AgenticReviewPanel;
+        let auto_review_panel = AutoReviewPanel;
 
         loop {
             self.poll_diff_results();
@@ -209,37 +214,52 @@ impl App {
                                 || self.state.agentic_review_running
                                 || self.state.agentic_review_composing
                                 || !self.state.agentic_review_text.text().is_empty());
+                        let show_auto_review = self.state.auto_review.panel_open
+                            && self.state.auto_review.has_findings();
 
-                        let main = if show_checklist && show_ai_review {
-                            // Four-column: navigator | diff | checklist | ai review
-                            Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints([
+                        let right_panel_count = [show_checklist, show_ai_review, show_auto_review]
+                            .iter()
+                            .filter(|&&b| b)
+                            .count();
+
+                        let main = match right_panel_count {
+                            0 => {
+                                // Two-column layout: navigator | diff
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints([
+                                        Constraint::Percentage(20),
+                                        Constraint::Percentage(80),
+                                    ])
+                                    .split(outer[1])
+                            }
+                            1 => {
+                                // Three-column: navigator | diff | panel
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints([
+                                        Constraint::Percentage(20),
+                                        Constraint::Percentage(55),
+                                        Constraint::Percentage(25),
+                                    ])
+                                    .split(outer[1])
+                            }
+                            _ => {
+                                // N-column layout for multiple panels
+                                let pct = 20u16 / right_panel_count as u16;
+                                let diff_pct = 100u16 - 15 - (pct * right_panel_count as u16);
+                                let mut c = vec![
                                     Constraint::Percentage(15),
-                                    Constraint::Percentage(45),
-                                    Constraint::Percentage(20),
-                                    Constraint::Percentage(20),
-                                ])
-                                .split(outer[1])
-                        } else if show_checklist || show_ai_review {
-                            // Three-column: navigator | diff | panel
-                            Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints([
-                                    Constraint::Percentage(20),
-                                    Constraint::Percentage(60),
-                                    Constraint::Percentage(20),
-                                ])
-                                .split(outer[1])
-                        } else {
-                            // Two-column layout: navigator | diff
-                            Layout::default()
-                                .direction(Direction::Horizontal)
-                                .constraints([
-                                    Constraint::Percentage(20),
-                                    Constraint::Percentage(80),
-                                ])
-                                .split(outer[1])
+                                    Constraint::Percentage(diff_pct),
+                                ];
+                                for _ in 0..right_panel_count {
+                                    c.push(Constraint::Percentage(pct));
+                                }
+                                Layout::default()
+                                    .direction(Direction::Horizontal)
+                                    .constraints(c)
+                                    .split(outer[1])
+                            }
                         };
 
                         self.nav_area.set(main[0]);
@@ -274,13 +294,17 @@ impl App {
                         }
 
                         // Render right-side panels
-                        if show_checklist && show_ai_review {
-                            checklist_panel.render(frame, main[2], &self.state);
-                            agentic_review_panel.render(frame, main[3], &self.state);
-                        } else if show_checklist {
-                            checklist_panel.render(frame, main[2], &self.state);
-                        } else if show_ai_review {
-                            agentic_review_panel.render(frame, main[2], &self.state);
+                        let mut panel_idx = 2;
+                        if show_checklist && panel_idx < main.len() {
+                            checklist_panel.render(frame, main[panel_idx], &self.state);
+                            panel_idx += 1;
+                        }
+                        if show_ai_review && panel_idx < main.len() {
+                            agentic_review_panel.render(frame, main[panel_idx], &self.state);
+                            panel_idx += 1;
+                        }
+                        if show_auto_review && panel_idx < main.len() {
+                            auto_review_panel.render(frame, main[panel_idx], &self.state);
                         }
                     }
                     ActiveView::WorktreeBrowser => {
@@ -389,6 +413,8 @@ impl App {
                     agentic_review_modal_open: self.state.agentic_review_modal_open,
                     agentic_review_panel_open: self.state.agentic_review_panel_open,
                     agentic_review_composing: self.state.agentic_review_composing,
+                    auto_review_panel_open: self.state.auto_review.panel_open
+                        && self.state.auto_review.has_findings(),
                     window_pending: self.window_pending,
                 };
                 let action = match event {
@@ -940,6 +966,14 @@ impl App {
                 | Action::AgenticReviewError(_)
                 | Action::AgenticReviewPanelUp
                 | Action::AgenticReviewPanelDown
+                | Action::AutoReviewNext
+                | Action::AutoReviewPrev
+                | Action::AutoReviewAccept
+                | Action::AutoReviewDismiss
+                | Action::AutoReviewEdit
+                | Action::AutoReviewJumpToCode
+                | Action::AutoReviewFilterCycle
+                | Action::AutoReviewClose
                 | Action::WindowPrefix
                 | Action::CycleFocus => {}
                 _ => {
@@ -1609,11 +1643,37 @@ impl App {
                 self.state.comment_editor_open = false;
                 self.state.comment_editor_text.clear();
                 self.state.editing_annotation = None;
+                self.auto_review_editing_index = None;
             }
             Action::ConfirmComment => {
                 use crate::state::annotation_state::{AnnotationCategory, AnnotationSeverity};
                 if !self.state.comment_editor_text.text().trim().is_empty() {
-                    if let Some(editing) = self.state.editing_annotation.take() {
+                    if let Some(ar_idx) = self.auto_review_editing_index.take() {
+                        // Editing an auto-review finding before accepting
+                        let comment_text = self.state.comment_editor_text.text().to_string();
+                        if let Some(finding) = self.state.auto_review.findings.get_mut(ar_idx) {
+                            finding.comment = comment_text;
+                            finding.status = FindingStatus::Accepted;
+                            let annotation = finding.to_annotation();
+                            self.state.annotations.add(annotation);
+                            self.set_status(
+                                "Finding edited and accepted as annotation".to_string(),
+                                false,
+                            );
+                            session::save_session_data(
+                                &self.repo_path,
+                                &self.state.target_label,
+                                &self.state.annotations,
+                                if self.state.checklist.is_empty() {
+                                    None
+                                } else {
+                                    Some(&self.state.checklist)
+                                },
+                                &self.state.bookmarks,
+                            );
+                        }
+                        self.state.editing_annotation = None;
+                    } else if let Some(editing) = self.state.editing_annotation.take() {
                         // Editing an existing annotation from the annotation menu
                         let comment_text = self.state.comment_editor_text.text().to_string();
                         self.state.annotations.update_comment(
@@ -3036,9 +3096,15 @@ impl App {
                 self.agentic_review_runner = None;
                 let count = annotations.len();
                 let summary = self.build_agentic_review_summary(&annotations);
-                for ann in annotations {
-                    self.state.annotations.add(ann);
+
+                // Populate auto-review findings for interactive triage
+                // (do NOT add to AnnotationState yet — user triages first)
+                if !annotations.is_empty() {
+                    self.state.auto_review.populate(&annotations);
+                    self.state.focus = FocusPanel::ReviewPanel;
+                    self.state.agentic_review_composing = false;
                 }
+
                 self.state.agentic_review_stream_output.push_str(&summary);
                 if self.state.prompt_preview_visible {
                     self.update_prompt_preview();
@@ -3055,7 +3121,7 @@ impl App {
                     &self.state.bookmarks,
                 );
                 self.state.status_message = Some((
-                    format!("Agentic review: {count} annotation(s) created."),
+                    format!("Agentic review: {count} finding(s) ready for triage."),
                     false,
                 ));
                 self.status_clear_countdown = 120;
@@ -3077,6 +3143,93 @@ impl App {
             Action::AgenticReviewPanelDown => {
                 self.state.agentic_review_scroll += 1;
                 // Don't re-enable auto_scroll — user is manually scrolling
+            }
+
+            // Auto-review findings panel
+            Action::AutoReviewNext => {
+                self.state.auto_review.select_next();
+            }
+            Action::AutoReviewPrev => {
+                self.state.auto_review.select_prev();
+            }
+            Action::AutoReviewAccept => {
+                let ar = &mut self.state.auto_review;
+                if let Some(finding) = ar.findings.get_mut(ar.selected) {
+                    if finding.status != FindingStatus::Accepted {
+                        finding.status = FindingStatus::Accepted;
+                        let annotation = finding.to_annotation();
+                        self.state.annotations.add(annotation);
+                        self.set_status("Finding accepted as annotation".to_string(), false);
+                        session::save_session_data(
+                            &self.repo_path,
+                            &self.state.target_label,
+                            &self.state.annotations,
+                            if self.state.checklist.is_empty() {
+                                None
+                            } else {
+                                Some(&self.state.checklist)
+                            },
+                            &self.state.bookmarks,
+                        );
+                    }
+                }
+            }
+            Action::AutoReviewDismiss => {
+                let ar = &mut self.state.auto_review;
+                if let Some(finding) = ar.findings.get_mut(ar.selected) {
+                    finding.status = FindingStatus::Dismissed;
+                    self.set_status("Finding dismissed".to_string(), false);
+                }
+            }
+            Action::AutoReviewEdit => {
+                let ar = &self.state.auto_review;
+                if let Some(finding) = ar.findings.get(ar.selected) {
+                    self.state.editing_annotation =
+                        Some(crate::state::app_state::EditingAnnotation {
+                            file_path: finding.file_path.clone(),
+                            old_range: finding.old_range,
+                            new_range: finding.new_range,
+                            old_comment: String::new(),
+                        });
+                    self.state.comment_editor_open = true;
+                    self.state.comment_editor_text.set(&finding.comment);
+                    self.auto_review_editing_index = Some(ar.selected);
+                }
+            }
+            Action::AutoReviewJumpToCode => {
+                let ar = &self.state.auto_review;
+                if let Some(finding) = ar.findings.get(ar.selected) {
+                    let file_path = finding.file_path.clone();
+                    let target_line = finding.sort_line();
+
+                    if let Some(idx) = self
+                        .state
+                        .diff
+                        .deltas
+                        .iter()
+                        .position(|d| d.path.to_string_lossy() == file_path)
+                    {
+                        self.state.navigator.selected = idx;
+                        self.state.diff.selected_file = Some(idx);
+                        self.request_diff();
+                        self.state.agentic_review_composing = false;
+                        if target_line > 0 {
+                            self.goto_line(target_line);
+                        } else {
+                            self.state.focus = FocusPanel::DiffView;
+                        }
+                    }
+                }
+            }
+            Action::AutoReviewFilterCycle => {
+                self.state.auto_review.filter = self.state.auto_review.filter.cycle();
+                let label = self.state.auto_review.filter.label();
+                self.set_status(format!("Filter: {label}"), false);
+            }
+            Action::AutoReviewClose => {
+                self.state.auto_review.panel_open = false;
+                self.state.focus = FocusPanel::DiffView;
+                self.state.agentic_review_composing = false;
             }
         }
     }

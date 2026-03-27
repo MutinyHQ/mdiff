@@ -138,7 +138,13 @@ fn get_context_title(state: &AppState) -> &'static str {
                 }
             }
             FocusPanel::DiffView => "Diff View",
-            FocusPanel::ReviewPanel => "Review Panel",
+            FocusPanel::ReviewPanel => {
+                if state.auto_review.panel_open && state.auto_review.has_findings() {
+                    "Auto Review"
+                } else {
+                    "Review Panel"
+                }
+            }
             FocusPanel::ChecklistPanel => "Checklist",
             _ => "Diff Explorer",
         },
@@ -502,24 +508,63 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Quit",
                 },
             ],
-            FocusPanel::ReviewPanel => vec![
-                KeyEntry {
-                    key: "type",
-                    description: "Compose review",
-                },
-                KeyEntry {
-                    key: "Enter",
-                    description: "Submit review",
-                },
-                KeyEntry {
-                    key: "S-Enter",
-                    description: "Newline",
-                },
-                KeyEntry {
-                    key: "^W w",
-                    description: "Switch pane",
-                },
-            ],
+            FocusPanel::ReviewPanel => {
+                if state.auto_review.panel_open && state.auto_review.has_findings() {
+                    vec![
+                        KeyEntry {
+                            key: "j/k",
+                            description: "Navigate findings",
+                        },
+                        KeyEntry {
+                            key: "Enter",
+                            description: "Jump to code",
+                        },
+                        KeyEntry {
+                            key: "a",
+                            description: "Accept finding",
+                        },
+                        KeyEntry {
+                            key: "x",
+                            description: "Dismiss finding",
+                        },
+                        KeyEntry {
+                            key: "e",
+                            description: "Edit & accept",
+                        },
+                        KeyEntry {
+                            key: "f",
+                            description: "Cycle filter",
+                        },
+                        KeyEntry {
+                            key: "Esc",
+                            description: "Close panel",
+                        },
+                        KeyEntry {
+                            key: "^W w",
+                            description: "Switch pane",
+                        },
+                    ]
+                } else {
+                    vec![
+                        KeyEntry {
+                            key: "type",
+                            description: "Compose review",
+                        },
+                        KeyEntry {
+                            key: "Enter",
+                            description: "Submit review",
+                        },
+                        KeyEntry {
+                            key: "S-Enter",
+                            description: "Newline",
+                        },
+                        KeyEntry {
+                            key: "^W w",
+                            description: "Switch pane",
+                        },
+                    ]
+                }
+            }
             FocusPanel::ChecklistPanel => vec![
                 KeyEntry {
                     key: "j/k",
