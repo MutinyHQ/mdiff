@@ -12,6 +12,7 @@ pub mod search_state;
 pub mod selection_state;
 pub mod settings_state;
 pub mod text_buffer;
+pub mod timeline_state;
 pub mod worktree_state;
 
 pub use agent_state::{AgentOutputsState, AgentSelectorState};
@@ -27,4 +28,5 @@ pub use review_state::ReviewState;
 pub use search_state::GlobalSearchState;
 pub use selection_state::SelectionState;
 pub use text_buffer::TextBuffer;
+pub use timeline_state::TimelineState;
 pub use worktree_state::WorktreeState;
