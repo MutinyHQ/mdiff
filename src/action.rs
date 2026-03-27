@@ -277,4 +277,7 @@ pub enum Action {
     AgenticReviewError(String),
     AgenticReviewPanelUp,
     AgenticReviewPanelDown,
+
+    // Minimap
+    ToggleMinimap,
 }

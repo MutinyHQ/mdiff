@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
 };
 
+use crate::components::minimap::render_minimap;
 use crate::display_map::{
     build_display_map, filter_hunk_lines, DisplayRowInfo, ExpandDirection, FilteredItem,
 };
@@ -249,6 +250,19 @@ fn render_split(
     let inner = outer_block.inner(area);
     frame.render_widget(outer_block, area);
 
+    let minimap_visible = state.minimap.visible;
+    let minimap_width = state.minimap.width;
+
+    let (diff_area, minimap_area) = if minimap_visible && inner.width > minimap_width + 20 {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(20), Constraint::Length(minimap_width)])
+            .split(inner);
+        (layout[0], Some(layout[1]))
+    } else {
+        (inner, None)
+    };
+
     // 3-column layout: left content | center gutter | right content
     // Center gutter: "NNNNN NNNNN " = 5 + 1 + 5 + 1 = 12 chars
     let gutter_width_chars: u16 = 12;
@@ -259,12 +273,11 @@ fn render_split(
             Constraint::Length(gutter_width_chars),
             Constraint::Min(10),
         ])
-        .split(inner);
+        .split(diff_area);
 
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
 
-    // Build display map for selection/annotation checking
     let display_map = build_display_map(
         delta,
         DiffViewMode::Split,
@@ -275,7 +288,7 @@ fn render_split(
     let (left_lines, center_lines, right_lines) = build_split_lines(
         delta,
         state.diff.scroll_offset,
-        inner.height as usize,
+        diff_area.height as usize,
         old_hl,
         new_hl,
         state,
@@ -292,6 +305,10 @@ fn render_split(
     frame.render_widget(left_para, cols[0]);
     frame.render_widget(center_para, cols[1]);
     frame.render_widget(right_para, cols[2]);
+
+    if let Some(minimap_rect) = minimap_area {
+        render_minimap(frame, minimap_rect, state, &display_map);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -356,10 +373,22 @@ fn render_unified(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let minimap_visible = state.minimap.visible;
+    let minimap_width = state.minimap.width;
+
+    let (diff_area, minimap_area) = if minimap_visible && inner.width > minimap_width + 20 {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(20), Constraint::Length(minimap_width)])
+            .split(inner);
+        (layout[0], Some(layout[1]))
+    } else {
+        (inner, None)
+    };
+
     let old_hl = &state.diff.old_highlights;
     let new_hl = &state.diff.new_highlights;
 
-    // Build display map for selection/annotation checking
     let display_map = build_display_map(
         delta,
         DiffViewMode::Unified,
@@ -370,7 +399,7 @@ fn render_unified(
     let lines = build_unified_lines_core(delta, old_hl, new_hl, state, &display_map, theme);
     // Unified gutter: old_lineno(5) + space(1) + new_lineno(5) + marker(1) + prefix(1) = 13
     let config = WrapConfig {
-        width: inner.width,
+        width: diff_area.width,
         gutter_width: 5 + 1 + 5 + 1 + 1,
         wrap_enabled: true,
         theme,
@@ -379,10 +408,14 @@ fn render_unified(
         lines,
         &config,
         state.diff.scroll_offset,
-        inner.height as usize,
+        diff_area.height as usize,
     );
     let paragraph = Paragraph::new(wrapped);
-    frame.render_widget(paragraph, inner);
+    frame.render_widget(paragraph, diff_area);
+
+    if let Some(minimap_rect) = minimap_area {
+        render_minimap(frame, minimap_rect, state, &display_map);
+    }
 }
 
 fn build_split_lines_core<'a>(

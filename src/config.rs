@@ -99,6 +99,27 @@ fn default_mouse_enabled() -> bool {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct MinimapConfig {
+    #[serde(default)]
+    pub visible: Option<bool>,
+    #[serde(default = "default_minimap_width")]
+    pub width: u16,
+}
+
+impl Default for MinimapConfig {
+    fn default() -> Self {
+        Self {
+            visible: None,
+            width: 3,
+        }
+    }
+}
+
+fn default_minimap_width() -> u16 {
+    3
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ChecklistItemConfig {
     pub label: String,
     pub key: String, // Single character as string for TOML compatibility
@@ -128,6 +149,8 @@ pub struct MdiffConfig {
     pub api_keys: Option<ApiKeysConfig>,
     /// Agentic review configuration
     pub agentic_review: AgenticReviewConfig,
+    /// Minimap configuration
+    pub minimap: MinimapConfig,
 }
 
 impl Default for MdiffConfig {
@@ -151,6 +174,7 @@ impl Default for MdiffConfig {
             tree_mode: None,
             api_keys: None,
             agentic_review: AgenticReviewConfig::default(),
+            minimap: MinimapConfig::default(),
         }
     }
 }
@@ -254,6 +278,8 @@ struct ConfigFile {
     api_keys: Option<ApiKeysConfig>,
     #[serde(default)]
     agentic_review: Option<AgenticReviewConfig>,
+    #[serde(default)]
+    minimap: Option<MinimapConfig>,
 }
 
 fn config_path() -> PathBuf {
@@ -321,6 +347,7 @@ pub fn load_config() -> MdiffConfig {
         tree_mode: file.tree_mode,
         api_keys: file.api_keys,
         agentic_review: file.agentic_review.unwrap_or_default(),
+        minimap: file.minimap.unwrap_or_default(),
     }
 }
 

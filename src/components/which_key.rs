@@ -442,6 +442,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                     description: "Bookmark list",
                 },
                 KeyEntry {
+                    key: "M",
+                    description: "Toggle minimap",
+                },
+                KeyEntry {
                     key: "m+a-z",
                     description: "Named bookmark",
                 },

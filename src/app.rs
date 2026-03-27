@@ -116,6 +116,10 @@ impl App {
         if config.tree_mode == Some(true) {
             state.navigator.tree_mode = true;
         }
+        if let Some(visible) = config.minimap.visible {
+            state.minimap.visible = visible;
+        }
+        state.minimap.width = config.minimap.width;
 
         // Load session annotations, checklist, and bookmark state
         let (annotations, saved_checklist, bookmarks) =
@@ -2852,6 +2856,11 @@ impl App {
                         }
                     }
                 }
+            }
+
+            // Minimap
+            Action::ToggleMinimap => {
+                self.state.minimap.toggle();
             }
 
             // Command bar

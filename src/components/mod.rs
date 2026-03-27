@@ -14,6 +14,7 @@ pub mod diff_view;
 pub mod feedback_summary;
 pub mod file_picker;
 pub mod global_search_bar;
+pub mod minimap;
 pub mod navigator;
 pub mod prompt_preview;
 pub mod restore_confirm;

@@ -774,6 +774,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('i') => Some(Action::OpenCommentEditor),
             KeyCode::Char('b') => Some(Action::ToggleBookmark),
             KeyCode::Char('B') => Some(Action::ToggleBookmarkList),
+            KeyCode::Char('M') => Some(Action::ToggleMinimap),
             KeyCode::Char('p') => Some(Action::TogglePromptPreview),
             KeyCode::Char('y') => Some(Action::CopyPromptToClipboard),
             KeyCode::Char('a') => Some(Action::OpenAnnotationMenu),
