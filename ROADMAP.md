@@ -1,10 +1,10 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-24
+> **Last updated**: 2026-03-27
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
-This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, **ftdv**, **keifu**, **dead-ringer**, **cmux**, **Muse/Manyana**, **oh-my-pi**, **Superset**, **Orchestrator**, and patterns from RLHF/human feedback research.
+This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, **ftdv**, **keifu**, **dead-ringer**, **cmux**, **Muse/Manyana**, **oh-my-pi**, **Superset**, **Orchestrator**, **vibetracer**, **OpenClaw**, and patterns from RLHF/human feedback research.
 
 ---
 
@@ -131,6 +131,25 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: mdiff exports annotations as JSON/markdown for humans, but agents need differently structured feedback. Agent-RLVR research shows structured guidance improves agent success 2-3x. New export formats: Agent Instruction prompt, CLAUDE.md patch, and Git trailers.
 **Scope**: Three new export formats in Ctrl+E dialog. Annotation-to-guidance mapping. Format picker UI.
 
+#### Automated Review Surface (Issue #71)
+**Status**: Spec written (032), Cursor agent launched (2026-03-27)
+**Addresses**: GitHub Issue #71
+**Rationale**: After #70 landed agentic review mode on main, AI-generated findings stream as raw text into a side panel with no structured navigation. Users need to triage AI findings at keyboard speed — accept good ones as annotations, dismiss false positives, edit imprecise suggestions. This is the missing link between AI-generated analysis and mdiff's structured annotation system. Directly requested by repo owner in Issue #71.
+**Scope**: AutoReviewState with ReviewFinding entries, auto-review panel component, accept/dismiss/edit/jump-to-code actions, filter cycling, finding count summary. Builds on existing AgenticReviewComplete action.
+**Competitive reference**: Claude Code Review severity-ranked findings, Cursor's accept/reject implicit feedback pattern.
+
+#### Diff Timeline Scrubber (NEW)
+**Status**: Spec written (033), Cursor agent launched (2026-03-27)
+**Rationale**: Coding agents produce multiple commits per session — iterating on code, fixing errors, adding tests. The final diff flattens all iterations, making it impossible to understand the agent's reasoning process. vibetracer (Rust, released March 2026) validates this pattern with timeline-based diff replay. mdiff's existing attribution system maps hunks to commits; the timeline scrubber extends this by allowing users to isolate individual commits and see the diff at each step.
+**Scope**: TimelineState, horizontal timeline bar component, commit scrubbing with < and > keys, single-commit diff computation (parent..commit), combined diff caching, navigator file list filtering per commit.
+**Competitive reference**: vibetracer (Rust crate for AI edit timeline replay), git-time-machine (TUI reflog navigation).
+
+#### Inline Diff Minimap (Promoted from P2)
+**Status**: Spec written (034), Cursor agent launched (2026-03-27)
+**Rationale**: When reviewing large files (500+ lines) modified by coding agents, reviewers lose orientation. VS Code's minimap is one of its most-used navigation features. No TUI diff viewer currently offers this. Promoted from P2 based on growing file sizes in agent output and validation from competitive landscape (patchcast, VS Code).
+**Scope**: 3-column vertical minimap on right edge of diff view, color-coded by change type (green/red/yellow), current viewport indicator, density calculation from display map, M key toggle.
+**Competitive reference**: VS Code minimap, patchcast visual diff approach.
+
 ---
 
 ### P2 — Nice to Have
@@ -158,7 +177,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Rationale**: Color-code regions by change density for quick visual scanning.
 
 #### Inline Diff Minimap
-**Status**: NEW (2026-03-17)
+**Status**: **Promoted to P1** (2026-03-27)
 **Rationale**: Vertical minimap on the right edge of the diff view showing change density across the file. Color-coded bar indicating add/delete regions for quick visual orientation. Inspired by VS Code's minimap and patchcast's visual diff approach. Helps reviewers understand where changes are concentrated without scrolling.
 **Scope**: Render a narrow column (2-3 chars wide) on the right edge of the diff view. Map each row to a proportional section of the file. Color green for additions, red for deletions, dim for context. Highlight current viewport position.
 
@@ -278,9 +297,11 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 
 | Issue | Category | Priority | Status | Action |
 |-------|----------|----------|--------|--------|
-| #65 | Bug | P0 | Open | **NEW** — Spec 030 written, Cursor agent launched (2026-03-24). File preview on hover broken in tree view. |
-| #64 | Bug | P0 | Open | **NEW** — Spec 029 written, Cursor agent launched (2026-03-24). Tree view has 5 inconsistencies. |
-| #63 | UX | P1 | Open | **NEW** — Spec 031 written, Cursor agent launched (2026-03-24). Go-to-line and fuzzy file picker. |
+| #71 | Feature | P1 | Open | **NEW** — Spec 032 written, Cursor agent launched (2026-03-27). Automated review surface for AI findings. |
+| #70 | Feature | P1 | Open — Implemented on main | Agentic review mode landed. Foundation for #71. |
+| #65 | Bug | P0 | Open | Spec 030 written, Cursor agent finished (2026-03-24). PR #67 open. File preview on hover broken in tree view. |
+| #64 | Bug | P0 | Open | Spec 029 written, Cursor agent finished (2026-03-24). PR #72 open. Tree view has 5 inconsistencies. |
+| #63 | UX | P1 | Open | Spec 031 written, Cursor agent finished (2026-03-24). PR #69 open. Go-to-line and fuzzy file picker. |
 | #53 | Feature | P1 | Open — PR #56 merged (2026-03-20) | **Implemented** — File Tree Navigator merged. Issue should be closed. |
 | #52 | Feature | P1 | Open | Spec 021 written, Cursor agent finished but no PR. Needs re-launch. |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
@@ -327,6 +348,8 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 - **fzf**: Gold standard for fuzzy search UX in terminals.
 - **jjui**: TUI for jujutsu (jj), panel-based keyboard-driven paradigm.
 - **gstack** (CLI): Garry Tan's open-source Claude Code toolkit with dedicated `/review` mode for production risk assessment and code review.
+- **vibetracer** (Rust): TUI tool for tracing and replaying AI coding assistant edits with timeline-based diff viewer. Cross-agent tracing for Claude Code, Cursor, Codex CLI. Exports to git-compatible formats. Direct overlap with mdiff's focus on agent diff review.
+- **OpenClaw TUI**: Terminal AI agent with slash commands and shortcuts. Compared alongside Claude Code and OpenCode as competing terminal-based AI developer tools.
 
 ### Key Market Gap
 No tool combines all three: (1) TUI-native diff review, (2) structured human feedback collection, (3) direct integration with coding agents. mdiff is uniquely positioned here.
@@ -423,6 +446,14 @@ A commenter on the Deff HN thread explicitly requested a TUI diff tool with the 
 - **Rich Feedback RL**: Field converging from scalar reward RL toward critiques, comparisons, checklists, verifier signals.
 - **git-time-machine** (Rust/ratatui): New TUI tool for visual git reflog navigation with vim keybindings.
 - **GitHub trending March 2026**: Dominated by AI agent frameworks, no TUI/diff tools in top trending — mdiff occupies a niche with growing demand.
+
+### Implicit Feedback & Timeline Patterns (from 2026-03-27 research)
+- **Cursor real-time RL**: Uses implicit user actions (accept/reject/edit) from production coding sessions as reward signals, shipping improved models every 5 hours. Low-friction feedback capture more valuable than elaborate forms. Validates mdiff's quick-reaction scoring approach.
+- **Scale AI Online Rubrics**: Dynamically generated evaluation criteria from pairwise comparisons outperform static rubrics by 8%. Model for evolving annotation schemas.
+- **vibetracer (Rust)**: Timeline-based scrubbing through AI agent edit history. Cross-agent tracing. Validates the Diff Timeline Scrubber feature.
+- **Reddit r/opencodeCLI**: Terminal-only developer explicitly requesting TUI side-by-side diff viewer for reviewing agent output. Rejects Cursor and Neovim. Direct validation of mdiff's value proposition.
+- **HN "slowing the fuck down" (1074 points)**: Growing concern about AI codebases being incomprehensible. Developer review tooling is essential infrastructure, not optional.
+- **Claude Code Review adaptive depth**: Scales review intensity with PR size — lightweight for <50 lines, deeper multi-agent for 1000+. Pattern for adaptive review guidance in mdiff.
 
 ---
 

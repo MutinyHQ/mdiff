@@ -1,5 +1,61 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-27 (Run #14)
+
+### Research Findings
+- **vibetracer v0.5.0** (Rust, MIT): New TUI tool that records AI coding assistant edits as diffs and lets users scrub through a timeline to inspect and surgically restore changes. Cross-agent tracing (Claude Code, Cursor, Codex CLI). Directly overlapping with mdiff's focus — inspired the Diff Timeline Scrubber feature.
+- **Reddit r/opencodeCLI** (2026-03-26): Developer explicitly wants terminal-native side-by-side diff viewer for reviewing/editing agent code, rejects Cursor and Neovim. Strong validation for mdiff's value proposition.
+- **Cursor real-time RL** (blog post): Cursor uses implicit user actions (accept/reject/edit) as reward signals, shipping improved models every 5 hours. Low-friction feedback capture is more valuable than elaborate annotation forms — validates mdiff's quick-reaction scoring approach.
+- **Scale AI Online Rubrics**: Dynamically evolving evaluation criteria outperform static rubrics by up to 8%. Relevant for future custom review rubric evolution.
+- **Claude Code Review**: Severity-ranked inline diff annotations with summary comments from multi-agent review. Adaptive review depth based on PR size. Reference architecture for the Automated Review Surface.
+- **HN discussion "slowing the fuck down"** (1074 points, 473 comments): Growing concern about AI codebases being incomprehensible to humans. Validates structured review tools.
+- **OpenClaw TUI**: Terminal AI agent with slash commands, compared alongside Claude Code and OpenCode as competing terminal-based AI developer tools.
+
+### Open Issues Review
+| Issue | Category | Priority | Assessment |
+|-------|----------|----------|------------|
+| #71 (Automated review) | Feature | P1 | **SELECTED** for implementation. Spec 032 written, Cursor agent launched. |
+| #70 (Agentic review mode) | Feature | P1 | Already implemented on main. Foundation for #71. |
+| #64 (Tree file viewer) | Bug | P0 | PR #72 from previous cycle agent. Under review. |
+| #52 (Ask a Question) | Feature | P1 | Spec 021 exists. Deferred to next cycle in favor of #71. |
+| #25 (Diff line calculations) | Bug | P0 | Fix merged (PR #50) but issue still open. Should be closed. |
+
+### Ideas Evaluated
+| Idea | Source | Priority | Action |
+|------|--------|----------|--------|
+| Automated Review Surface | Issue #71 | P1 | **SPEC 032** written, Cursor agent launched |
+| Diff Timeline Scrubber | vibetracer research | P1 | **SPEC 033** written, Cursor agent launched |
+| Inline Diff Minimap | Promoted from P2 | P1 | **SPEC 034** written, Cursor agent launched |
+| Implicit Feedback Signals | Cursor RL research | Deferred | Requires deeper design work |
+| Dynamic Review Rubrics | Scale AI research | P3 candidate | Extends Custom Review Rubric concept |
+| Adaptive Review Depth | Claude Code Review | Deferred | Overlaps with Diff Rendering Quality Indicators |
+
+### Specs Written
+1. `.github/specs/032-automated-review-surface.md` — Navigable AI findings panel with accept/dismiss/edit (Issue #71)
+2. `.github/specs/033-diff-timeline-scrubber.md` — Commit timeline scrubber with per-commit diff isolation
+3. `.github/specs/034-inline-diff-minimap.md` — Vertical minimap on right edge of diff view
+
+### PRs & Agents
+**Open PRs reviewed:** PR #75 (release), PR #72 (tree view +142/-6), PR #69 (go-to-line +736/-5), PR #67 (file preview +35/-16), PR #62 (attribution +747/-21), PR #61 (guidance export, draft), PR #55 (suggestions +910/-76)
+
+**Cursor agents launched:** bc-6072366f (Automated Review Surface), bc-b42db32f (Diff Timeline Scrubber), bc-22d8e88a (Inline Diff Minimap)
+
+### PR Review Notes
+- PR #55 (Suggestions): **Issue found** — app_state.rs has duplicate import blocks that will cause compilation errors.
+- PR #72 (Tree View): Solid implementation matching spec 029.
+- PR #69 (Go-to-Line/Picker): Comprehensive, follows existing patterns well.
+- PR #67 (File Preview): Minimal and correct fix.
+- PR #62 (Attribution): Well-structured with proper git commit analysis.
+
+### Competitive Landscape Updates
+- Added **vibetracer** (Rust, timeline-based AI edit replay)
+- Added **OpenClaw TUI** (terminal AI agent)
+
+### Visual Mockups Generated
+- Automated Review Surface: https://www.town.com/content/image/sd70e07fhaa5jdqytsgebr20x183pt36
+- Diff Timeline Scrubber: https://www.town.com/content/image/sd7f3texkwzkeb78f1tqg4ydd583pcqh
+- Inline Diff Minimap: https://www.town.com/content/image/sd7bym80nkgjvmhmvf1md5yg2183qkvh
+
 ## 2026-03-23 (Run #12)
 
 ### Research Findings
