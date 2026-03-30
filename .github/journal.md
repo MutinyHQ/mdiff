@@ -1,5 +1,76 @@
 # mdiff Ideation Agent Journal
 
+## 2026-03-30 (Run #15)
+
+### Research Findings
+- **Claude Code hit #1 on HN** (2026-03-28): Blog post summarizing CLI-based AI coding workflows (hooks, auto-fix, cloud sessions). Not a diff/review tool but shows continued dominance of terminal-first AI coding workflows.
+- **Clay (claude-relay)**: Node-based browser UI adding multi-session workspace management for Claude Code. Adjacent developer workflow tooling, not directly competitive.
+- **No new TUI diff/review tools** found in the last 48 hours. The niche remains underserved — mdiff's competitive position is stable.
+- **Scale Labs ToolComp**: Process supervision benchmark with human-verified prompts and intermediate-step labels. Validates structured feedback schemas that go beyond final approve/reject — relevant to mdiff's annotation categories and severity system.
+- **Scale Labs MCP-Atlas**: Claims-based rubric giving partial credit per satisfied factual claim, plus diagnostics for tool discovery/parameterization/error recovery. Actionable pattern for granular, checklist-oriented review rubrics.
+- **EACL 2026 Findings**: Paper argues inadequate or entangled annotations produce misleadingly optimistic evaluations — supports the need for high-quality, disentangled label definitions in mdiff's feedback export.
+
+### Open Issues Review
+| Issue | Category | Priority | Assessment |
+|-------|----------|----------|------------|
+| #25 (Diff line calculations) | Bug | P0 | **SELECTED** for implementation (second pass). Two user complaints since PR #50 fix — bottom lines still clipped. New spec 035 written with boundary padding lines. |
+| #52 (Ask a Question) | Feature | P1 | **SELECTED** for re-launch. Spec 021 exists but no PR was ever opened. Cursor agent launched this cycle. |
+| #71 (Automated review) | Feature | P1 | PR #79 open (draft, +873/-63). Implementation looks comprehensive — auto_review_state.rs with finding triage, accept/dismiss/edit actions. |
+| #70 (Agentic review mode) | Feature | P1 | Already implemented on main. Foundation for #71. |
+| #64 (Tree file viewer) | Bug | P0 | PR from previous cycle agent exists. Under review. |
+
+### Ideas Evaluated
+
+| Idea | Source | Priority | Action |
+|------|--------|----------|--------|
+| Diff Scroll Boundary Padding | Issue #25 (user) | P0 | **SPEC 035** written, Cursor agent launched |
+| Ask a Question (re-launch) | Issue #52 (owner) | P1 | Existing spec 021, Cursor agent launched |
+| Diff Statistics Dashboard (re-launch) | Roadmap P1 | P1 | Existing spec 019, Cursor agent launched |
+| Claims-Based Review Rubric | MCP-Atlas research | P3 candidate | Interesting but lower priority than user-reported bugs |
+| Process Supervision Annotations | ToolComp research | Deferred | Overlaps with existing annotation categories system |
+
+### Specs Written
+1. `.github/specs/035-fix-diff-scroll-boundary-padding.md` — Second-pass fix for scroll clipping + visual boundary padding lines (Issue #25)
+
+### PRs & Agents
+**Open PRs reviewed (7 total):**
+- PR #79 (Automated Review Surface, draft, +873/-63) — Comprehensive auto_review_state.rs with FindingStatus enum, finding filter cycling, accept/dismiss/edit/jump-to-code actions.
+- PR #78 (Inline Diff Minimap, draft, +373/-9) — Clean minimap_state.rs, density rendering with block characters, config support.
+- PR #77 (Diff Timeline Scrubber, draft, +698/-133) — Timeline bar component, commit scrubbing with keys, cached combined diff.
+- PR #75 (Release v0.1.23) — Changelog/version bump, ready for merge.
+- PR #62 (Agent Attribution Labels, +747/-21) — Attribution state, git commit analysis, gutter markers.
+- PR #61 (Agent Guidance Export, draft, +792/-6) — 5 export formats with format picker UI.
+- PR #55 (Annotation Code Suggestions, +910/-76) — Suggestion editor with dual-pane layout.
+
+**Cursor agents launched this cycle:**
+- bc-070ef633: Fix Diff Scroll & Boundary Padding (spec 035, Issue #25)
+- bc-ca9a1281: Ask a Question inline Q&A (spec 021, Issue #52)
+- bc-c1960145: Diff Statistics Dashboard (spec 019)
+
+**Previous agents (from Run #14):**
+- bc-6072366f: Automated Review Surface — FINISHED, PR #79 opened (draft)
+- bc-22d8e88a: Inline Diff Minimap — FINISHED, PR #78 opened (draft)
+- bc-b42db32f: Diff Timeline Scrubber — FINISHED, PR #77 opened (draft)
+
+### PR Review Notes
+- PR #79 (Auto Review): Well-structured. AutoReviewPanel component implements Component trait correctly.
+- PR #78 (Minimap): Clean implementation. MinimapState is minimal. render_minimap uses density calculation with Unicode block characters.
+- PR #77 (Timeline): Solid architecture. TimelineState with commit list and selected_index.
+- PR #62 (Attribution): Complete implementation with git/attribution.rs for commit analysis.
+- PR #61 (Guidance Export): Comprehensive with 5 format variants.
+- PR #55 (Suggestions): Full suggestion editor with SuggestionState.
+
+### Competitive Landscape Updates
+- No new direct competitors discovered this cycle.
+- Claude Code continues to dominate terminal AI coding workflow mindshare (HN #1).
+- Growing ecosystem of browser UI wrappers around terminal agents validates mdiff's TUI approach for power users.
+
+### Visual Documentation
+Generated TUI mockup images for 3 features:
+- [Diff Timeline Scrubber mockup](https://www.town.com/content/image/sd7ejc4k46wx86706ag9wbxr8s83x5j2)
+- [Inline Diff Minimap mockup](https://www.town.com/content/image/sd74t80qme7gj8dnmrmjnj91xn83w36c)
+- [Automated Review Surface mockup](https://www.town.com/content/image/sd7ez954sb9f5q9mzwn8rj60rs83w07c)
+
 ## 2026-03-27 (Run #14)
 
 ### Research Findings
