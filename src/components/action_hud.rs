@@ -349,6 +349,8 @@ mod tests {
             agentic_review_panel_open: state.agentic_review_panel_open,
             agentic_review_composing: state.agentic_review_composing,
             window_pending: false,
+            qa_input_open: state.qa.input_open,
+            qa_answer_visible: state.qa.answer_visible,
         }
     }
 

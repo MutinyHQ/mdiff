@@ -3,7 +3,7 @@ use crate::theme::Theme;
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
     CommandBarState, DiffOptions, DiffState, FilePickerState, GlobalSearchState, NavigatorState,
-    ReviewState, SelectionState, TextBuffer, WorktreeState,
+    QAState, ReviewState, SelectionState, TextBuffer, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -168,6 +168,9 @@ pub struct AppState {
     pub agentic_review_child_total: usize,
     pub agentic_review_scroll: usize,
     pub agentic_review_auto_scroll: bool,
+
+    // Inline Q&A
+    pub qa: QAState,
 }
 
 impl AppState {
@@ -224,6 +227,7 @@ impl AppState {
             agentic_review_child_total: 0,
             agentic_review_scroll: 0,
             agentic_review_auto_scroll: true,
+            qa: QAState::default(),
         }
     }
 }

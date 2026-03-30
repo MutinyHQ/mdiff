@@ -120,6 +120,8 @@ pub struct KeyContext {
     pub agentic_review_panel_open: bool,
     pub agentic_review_composing: bool,
     pub window_pending: bool,
+    pub qa_input_open: bool,
+    pub qa_answer_visible: bool,
 }
 
 /// Context for mouse event mapping.
@@ -363,6 +365,46 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 2.22: Q&A input mode (question input is open)
+    if ctx.qa_input_open {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char('a') => Some(Action::TextCursorHome),
+                KeyCode::Char('e') => Some(Action::TextCursorEnd),
+                KeyCode::Char('w') => Some(Action::TextDeleteWord),
+                _ => None,
+            };
+        }
+        return match key.code {
+            KeyCode::Esc => Some(Action::CancelQuestion),
+            KeyCode::Enter => Some(Action::SubmitQuestion),
+            KeyCode::Backspace => Some(Action::QuestionBackspace),
+            KeyCode::Left => Some(Action::TextCursorLeft),
+            KeyCode::Right => Some(Action::TextCursorRight),
+            KeyCode::Home => Some(Action::TextCursorHome),
+            KeyCode::End => Some(Action::TextCursorEnd),
+            KeyCode::Char(c) => Some(Action::QuestionChar(c)),
+            _ => None,
+        };
+    }
+
+    // Priority 2.23: Q&A answer panel (answer is visible)
+    if ctx.qa_answer_visible {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            return match key.code {
+                KeyCode::Char(']') => Some(Action::QAHistoryNext),
+                KeyCode::Char('[') => Some(Action::QAHistoryPrev),
+                _ => None,
+            };
+        }
+        return match key.code {
+            KeyCode::Esc => Some(Action::DismissAnswer),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::QAAnswerScrollUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::QAAnswerScrollDown),
+            _ => None,
+        };
+    }
+
     // Priority 2.25: File picker mode
     if ctx.file_picker_active {
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -569,6 +611,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenAgenticReview)
+        }
+        KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::OpenQuestionInput)
         }
         _ => {}
     }
@@ -905,6 +950,8 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            qa_input_open: false,
+            qa_answer_visible: false,
         }
     }
 
@@ -940,6 +987,8 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            qa_input_open: false,
+            qa_answer_visible: false,
         }
     }
 
@@ -975,6 +1024,8 @@ mod tests {
             agentic_review_panel_open: true,
             agentic_review_composing: true,
             window_pending: false,
+            qa_input_open: false,
+            qa_answer_visible: false,
         }
     }
 

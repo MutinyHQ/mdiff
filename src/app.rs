@@ -24,6 +24,8 @@ use crate::components::file_picker::render_file_picker;
 use crate::components::global_search_bar::render_global_search_bar;
 use crate::components::navigator::Navigator;
 use crate::components::prompt_preview::render_prompt_preview;
+use crate::components::qa_answer::QAAnswerPanel;
+use crate::components::qa_input::render_qa_input;
 use crate::components::restore_confirm::render_restore_confirm;
 use crate::components::settings_modal::render_settings_modal;
 use crate::components::target_dialog::render_target_dialog;
@@ -89,6 +91,7 @@ pub struct App {
     jump_mark_pending: bool,
     window_pending: bool,
     agentic_review_runner: Option<crate::agentic_review::AgenticReviewRunner>,
+    qa_runner: Option<crate::qa_runner::QARunner>,
 }
 
 impl App {
@@ -117,11 +120,12 @@ impl App {
             state.navigator.tree_mode = true;
         }
 
-        // Load session annotations, checklist, and bookmark state
-        let (annotations, saved_checklist, bookmarks) =
+        // Load session annotations, checklist, bookmark, and Q&A state
+        let (annotations, saved_checklist, bookmarks, qa_history) =
             session::load_session_data(&repo_path, &state.target_label);
         state.annotations = annotations;
         state.bookmarks = bookmarks;
+        state.qa.history = qa_history;
 
         // Load checklist configuration or use saved state
         if let Some(saved) = saved_checklist {
@@ -161,6 +165,7 @@ impl App {
             jump_mark_pending: false,
             window_pending: false,
             agentic_review_runner: None,
+            qa_runner: None,
         }
     }
 
@@ -180,11 +185,13 @@ impl App {
         let agent_outputs = AgentOutputs;
         let checklist_panel = ChecklistPanel;
         let agentic_review_panel = AgenticReviewPanel;
+        let qa_answer_panel = QAAnswerPanel;
 
         loop {
             self.poll_diff_results();
             self.poll_pty_output();
             self.poll_agentic_review();
+            self.poll_qa_events();
 
             terminal.draw(|frame| {
                 let hud_h = hud_height(&self.state, frame.area().width);
@@ -209,10 +216,25 @@ impl App {
                                 || self.state.agentic_review_running
                                 || self.state.agentic_review_composing
                                 || !self.state.agentic_review_text.text().is_empty());
+                        let show_qa_answer = self.state.qa.answer_visible;
 
-                        let main = if show_checklist && show_ai_review {
-                            // Four-column: navigator | diff | checklist | ai review
-                            Layout::default()
+                        let right_panel_count = [show_checklist, show_ai_review, show_qa_answer]
+                            .iter()
+                            .filter(|&&v| v)
+                            .count();
+
+                        let main = match right_panel_count {
+                            3 => Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints([
+                                    Constraint::Percentage(12),
+                                    Constraint::Percentage(36),
+                                    Constraint::Percentage(18),
+                                    Constraint::Percentage(18),
+                                    Constraint::Percentage(16),
+                                ])
+                                .split(outer[1]),
+                            2 => Layout::default()
                                 .direction(Direction::Horizontal)
                                 .constraints([
                                     Constraint::Percentage(15),
@@ -220,26 +242,22 @@ impl App {
                                     Constraint::Percentage(20),
                                     Constraint::Percentage(20),
                                 ])
-                                .split(outer[1])
-                        } else if show_checklist || show_ai_review {
-                            // Three-column: navigator | diff | panel
-                            Layout::default()
+                                .split(outer[1]),
+                            1 => Layout::default()
                                 .direction(Direction::Horizontal)
                                 .constraints([
                                     Constraint::Percentage(20),
                                     Constraint::Percentage(60),
                                     Constraint::Percentage(20),
                                 ])
-                                .split(outer[1])
-                        } else {
-                            // Two-column layout: navigator | diff
-                            Layout::default()
+                                .split(outer[1]),
+                            _ => Layout::default()
                                 .direction(Direction::Horizontal)
                                 .constraints([
                                     Constraint::Percentage(20),
                                     Constraint::Percentage(80),
                                 ])
-                                .split(outer[1])
+                                .split(outer[1]),
                         };
 
                         self.nav_area.set(main[0]);
@@ -274,13 +292,17 @@ impl App {
                         }
 
                         // Render right-side panels
-                        if show_checklist && show_ai_review {
-                            checklist_panel.render(frame, main[2], &self.state);
-                            agentic_review_panel.render(frame, main[3], &self.state);
-                        } else if show_checklist {
-                            checklist_panel.render(frame, main[2], &self.state);
-                        } else if show_ai_review {
-                            agentic_review_panel.render(frame, main[2], &self.state);
+                        let mut panel_idx = 2;
+                        if show_checklist && panel_idx < main.len() {
+                            checklist_panel.render(frame, main[panel_idx], &self.state);
+                            panel_idx += 1;
+                        }
+                        if show_ai_review && panel_idx < main.len() {
+                            agentic_review_panel.render(frame, main[panel_idx], &self.state);
+                            panel_idx += 1;
+                        }
+                        if show_qa_answer && panel_idx < main.len() {
+                            qa_answer_panel.render(frame, main[panel_idx], &self.state);
                         }
                     }
                     ActiveView::WorktreeBrowser => {
@@ -338,6 +360,9 @@ impl App {
                 if self.state.file_picker.active {
                     render_file_picker(frame, &self.state);
                 }
+                if self.state.qa.input_open {
+                    render_qa_input(frame, &self.state);
+                }
                 which_key::render_which_key(frame, frame.area(), &self.state);
             })?;
 
@@ -390,6 +415,8 @@ impl App {
                     agentic_review_panel_open: self.state.agentic_review_panel_open,
                     agentic_review_composing: self.state.agentic_review_composing,
                     window_pending: self.window_pending,
+                    qa_input_open: self.state.qa.input_open,
+                    qa_answer_visible: self.state.qa.answer_visible,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -547,6 +574,7 @@ impl App {
                 Some(&self.state.checklist)
             },
             &self.state.bookmarks,
+            &self.state.qa.history,
         );
 
         Ok(())
@@ -941,7 +969,20 @@ impl App {
                 | Action::AgenticReviewPanelUp
                 | Action::AgenticReviewPanelDown
                 | Action::WindowPrefix
-                | Action::CycleFocus => {}
+                | Action::CycleFocus
+                | Action::OpenQuestionInput
+                | Action::QuestionChar(_)
+                | Action::QuestionBackspace
+                | Action::SubmitQuestion
+                | Action::CancelQuestion
+                | Action::DismissAnswer
+                | Action::QAHistoryNext
+                | Action::QAHistoryPrev
+                | Action::QAAnswerScrollUp
+                | Action::QAAnswerScrollDown
+                | Action::QAAnswerAppend(_)
+                | Action::QAAnswerComplete
+                | Action::QAAnswerError(_) => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -1996,6 +2037,7 @@ impl App {
                                 Some(&self.state.checklist)
                             },
                             &self.state.bookmarks,
+                            &self.state.qa.history,
                         );
 
                         // Persist last-used model for this agent
@@ -3053,6 +3095,7 @@ impl App {
                         Some(&self.state.checklist)
                     },
                     &self.state.bookmarks,
+                    &self.state.qa.history,
                 );
                 self.state.status_message = Some((
                     format!("Agentic review: {count} annotation(s) created."),
@@ -3078,6 +3121,187 @@ impl App {
                 self.state.agentic_review_scroll += 1;
                 // Don't re-enable auto_scroll — user is manually scrolling
             }
+
+            // Inline Q&A
+            Action::OpenQuestionInput => {
+                if !self.state.qa.answer_streaming {
+                    self.state.qa.open_input();
+                }
+            }
+            Action::QuestionChar(c) => {
+                self.state.qa.input_buffer.insert_char(c);
+            }
+            Action::QuestionBackspace => {
+                self.state.qa.input_buffer.delete_back();
+            }
+            Action::CancelQuestion => {
+                self.state.qa.close_input();
+            }
+            Action::SubmitQuestion => {
+                let question = self.state.qa.input_buffer.text().trim().to_string();
+                if question.is_empty() {
+                    return;
+                }
+
+                let file_path = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(|d| d.path.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                // Check API key availability
+                let provider_str = self.config.agentic_review.resolved_parent_provider();
+                match crate::ai_client::AiProvider::from_str(provider_str) {
+                    Ok(p) => {
+                        let key = crate::ai_client::resolve_api_key(&p, &self.config.api_keys);
+                        if key.is_none() {
+                            self.state.qa.show_error(format!(
+                                "No API key configured for {}. Set {} or add to config.toml [api_keys].",
+                                provider_str,
+                                p.env_var_name()
+                            ));
+                            return;
+                        }
+                    }
+                    Err(_) => {
+                        self.state.qa.show_error(format!(
+                            "Unknown provider: {provider_str}. Configure an [agentic_review] section in config.toml."
+                        ));
+                        return;
+                    }
+                }
+
+                let full_diff = self
+                    .state
+                    .diff
+                    .selected_delta()
+                    .map(crate::review_tools::render_file_diff)
+                    .unwrap_or_default();
+
+                let file_language = self.state.diff.selected_delta().and_then(|d| {
+                    let path = d.path.to_string_lossy();
+                    path.rsplit('.').next().map(|ext| ext.to_lowercase())
+                });
+
+                let selected_lines = if self.state.selection.active {
+                    self.state
+                        .diff
+                        .selected_delta()
+                        .map(|delta| self.extract_selected_lines(delta))
+                        .unwrap_or_default()
+                } else {
+                    None
+                };
+
+                let context = crate::state::qa_state::QuestionContext {
+                    file_path: file_path.clone(),
+                    file_language,
+                    visible_hunks: Vec::new(),
+                    selected_lines,
+                    full_diff,
+                    question: question.clone(),
+                };
+
+                self.state.qa.show_answer(&question, &file_path);
+
+                let config = self.config.agentic_review.clone();
+                let api_keys = self.config.api_keys.clone();
+                self.qa_runner = Some(crate::qa_runner::QARunner::spawn(context, config, api_keys));
+            }
+            Action::DismissAnswer => {
+                self.state.qa.dismiss_answer();
+                self.qa_runner = None;
+            }
+            Action::QAHistoryNext => {
+                self.state.qa.history_next();
+            }
+            Action::QAHistoryPrev => {
+                self.state.qa.history_prev();
+            }
+            Action::QAAnswerScrollUp => {
+                self.state.qa.answer_scroll = self.state.qa.answer_scroll.saturating_sub(1);
+            }
+            Action::QAAnswerScrollDown => {
+                self.state.qa.answer_scroll += 1;
+            }
+            Action::QAAnswerAppend(text) => {
+                self.state.qa.append_answer(&text);
+            }
+            Action::QAAnswerComplete => {
+                self.state.qa.complete_answer();
+            }
+            Action::QAAnswerError(msg) => {
+                self.state.qa.show_error(msg);
+            }
+        }
+    }
+
+    fn poll_qa_events(&mut self) {
+        let Some(runner) = self.qa_runner.as_mut() else {
+            return;
+        };
+
+        let mut events = Vec::new();
+        while let Some(event) = runner.try_recv() {
+            events.push(event);
+        }
+
+        for event in events {
+            use crate::qa_runner::QAEvent;
+            match event {
+                QAEvent::Token(token) => {
+                    self.update(Action::QAAnswerAppend(token));
+                }
+                QAEvent::Complete => {
+                    self.update(Action::QAAnswerComplete);
+                    self.qa_runner = None;
+                    return;
+                }
+                QAEvent::Error(msg) => {
+                    self.update(Action::QAAnswerError(msg));
+                    self.qa_runner = None;
+                    return;
+                }
+            }
+        }
+    }
+
+    fn extract_selected_lines(&self, delta: &FileDelta) -> Option<String> {
+        let sel = &self.state.selection;
+        if !sel.active {
+            return None;
+        }
+
+        let display_map = build_display_map(
+            delta,
+            self.state.diff.options.view_mode,
+            self.state.diff.display_context,
+            &self.state.diff.gap_expansions,
+        );
+
+        let (start, end) = sel.range();
+
+        let mut lines = Vec::new();
+        for row_idx in start..=end {
+            if let Some(row) = display_map.get(row_idx) {
+                if row.is_header || row.is_collapsed_indicator {
+                    continue;
+                }
+                if let (Some(hunk_idx), Some(line_idx)) = (Some(row.hunk_index), row.line_index) {
+                    if let Some(hunk) = delta.hunks.get(hunk_idx) {
+                        if let Some(line) = hunk.lines.get(line_idx) {
+                            lines.push(line.content.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        if lines.is_empty() {
+            None
+        } else {
+            Some(lines.join("\n"))
         }
     }
 
@@ -3119,6 +3343,8 @@ impl App {
         } else if self.state.agentic_review_composing && self.state.focus == FocusPanel::ReviewPanel
         {
             Some(&mut self.state.agentic_review_text)
+        } else if self.state.qa.input_open {
+            Some(&mut self.state.qa.input_buffer)
         } else {
             None
         }
@@ -3393,17 +3619,19 @@ impl App {
                 Some(&self.state.checklist)
             },
             &self.state.bookmarks,
+            &self.state.qa.history,
         );
 
         // Update target
         self.target = target;
         self.state.target_label = label.clone();
 
-        // Load annotations, checklist, and bookmark state for the new target
-        let (annotations, saved_checklist, bookmarks) =
+        // Load annotations, checklist, bookmark, and Q&A state for the new target
+        let (annotations, saved_checklist, bookmarks, qa_history) =
             session::load_session_data(&self.repo_path, &label);
         self.state.annotations = annotations;
         self.state.bookmarks = bookmarks;
+        self.state.qa.history = qa_history;
 
         // Reset checklist to saved state or fresh config
         if let Some(saved) = saved_checklist {

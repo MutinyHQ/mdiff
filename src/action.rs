@@ -277,4 +277,19 @@ pub enum Action {
     AgenticReviewError(String),
     AgenticReviewPanelUp,
     AgenticReviewPanelDown,
+
+    // Inline Q&A
+    OpenQuestionInput,
+    QuestionChar(char),
+    QuestionBackspace,
+    SubmitQuestion,
+    CancelQuestion,
+    DismissAnswer,
+    QAHistoryNext,
+    QAHistoryPrev,
+    QAAnswerScrollUp,
+    QAAnswerScrollDown,
+    QAAnswerAppend(String),
+    QAAnswerComplete,
+    QAAnswerError(String),
 }

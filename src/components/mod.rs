@@ -16,6 +16,8 @@ pub mod file_picker;
 pub mod global_search_bar;
 pub mod navigator;
 pub mod prompt_preview;
+pub mod qa_answer;
+pub mod qa_input;
 pub mod restore_confirm;
 pub mod settings_modal;
 pub mod target_dialog;

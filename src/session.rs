@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::annotation_state::Annotation;
 use crate::state::bookmark_state::Bookmark;
+use crate::state::qa_state::QAPair;
 use crate::state::{AnnotationState, BookmarkState, ChecklistState};
 
 #[derive(Serialize, Deserialize)]
@@ -19,6 +20,8 @@ struct SessionFile {
     scores: Vec<ScoreEntry>,
     #[serde(default)]
     bookmarks: Vec<BookmarkEntry>,
+    #[serde(default)]
+    qa_history: Vec<QAPair>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -108,29 +111,35 @@ fn ensure_gitignore(repo_path: &Path) {
     }
 }
 
-/// Load annotations, checklist, and bookmark state from the session file.
+/// Load annotations, checklist, bookmark, and Q&A state from the session file.
 pub fn load_session_data(
     repo_path: &Path,
     target_label: &str,
-) -> (AnnotationState, Option<ChecklistState>, BookmarkState) {
+) -> (
+    AnnotationState,
+    Option<ChecklistState>,
+    BookmarkState,
+    Vec<QAPair>,
+) {
     let path = session_file(repo_path, target_label);
     let mut annotations_state = AnnotationState::default();
 
     let Ok(contents) = fs::read_to_string(&path) else {
-        return (annotations_state, None, BookmarkState::new());
+        return (annotations_state, None, BookmarkState::new(), Vec::new());
     };
 
     let Ok(session) = serde_json::from_str::<SessionFile>(&contents) else {
-        return (annotations_state, None, BookmarkState::new());
+        return (annotations_state, None, BookmarkState::new(), Vec::new());
     };
 
     if !(session.version == 1
         || session.version == 2
         || session.version == 3
-        || session.version == 4)
+        || session.version == 4
+        || session.version == 5)
         || session.target_label != target_label
     {
-        return (annotations_state, None, BookmarkState::new());
+        return (annotations_state, None, BookmarkState::new(), Vec::new());
     }
 
     for entry in session.annotations {
@@ -203,16 +212,22 @@ pub fn load_session_data(
         ));
     }
 
-    (annotations_state, checklist_state, bookmark_state)
+    (
+        annotations_state,
+        checklist_state,
+        bookmark_state,
+        session.qa_history,
+    )
 }
 
-/// Save annotations, checklist, and bookmark state to the session file.
+/// Save annotations, checklist, bookmark, and Q&A state to the session file.
 pub fn save_session_data(
     repo_path: &Path,
     target_label: &str,
     annotations: &AnnotationState,
     checklist: Option<&ChecklistState>,
     bookmarks: &BookmarkState,
+    qa_history: &[QAPair],
 ) {
     let dir = session_dir(repo_path);
     if fs::create_dir_all(&dir).is_err() {
@@ -276,14 +291,16 @@ pub fn save_session_data(
         })
         .collect();
 
-    let has_extra = checklist_data.is_some() || !bookmark_entries.is_empty();
+    let has_extra =
+        checklist_data.is_some() || !bookmark_entries.is_empty() || !qa_history.is_empty();
     let session = SessionFile {
-        version: if has_extra { 4 } else { 2 },
+        version: if has_extra { 5 } else { 2 },
         target_label: target_label.to_string(),
         annotations: entries,
         checklist: checklist_data,
         scores: score_entries,
         bookmarks: bookmark_entries,
+        qa_history: qa_history.to_vec(),
     };
 
     if let Ok(json) = serde_json::to_string_pretty(&session) {

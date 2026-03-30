@@ -14,6 +14,7 @@ mod export;
 mod git;
 mod highlight;
 mod pty_runner;
+mod qa_runner;
 mod review_tools;
 mod session;
 mod state;

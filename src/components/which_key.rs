@@ -362,6 +362,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                         description: "File picker",
                     },
                     KeyEntry {
+                        key: "Ctrl+Q",
+                        description: "Ask a question",
+                    },
+                    KeyEntry {
                         key: "?",
                         description: "This help",
                     },
@@ -488,6 +492,10 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                 KeyEntry {
                     key: "Ctrl+P",
                     description: "File picker",
+                },
+                KeyEntry {
+                    key: "Ctrl+Q",
+                    description: "Ask a question",
                 },
                 KeyEntry {
                     key: "Ctrl+E",
