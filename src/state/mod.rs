@@ -11,6 +11,7 @@ pub mod review_state;
 pub mod search_state;
 pub mod selection_state;
 pub mod settings_state;
+pub mod stats_state;
 pub mod text_buffer;
 pub mod worktree_state;
 
@@ -26,5 +27,6 @@ pub use navigator_state::NavigatorState;
 pub use review_state::ReviewState;
 pub use search_state::GlobalSearchState;
 pub use selection_state::SelectionState;
+pub use stats_state::StatsState;
 pub use text_buffer::TextBuffer;
 pub use worktree_state::WorktreeState;

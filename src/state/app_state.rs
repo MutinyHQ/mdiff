@@ -3,7 +3,7 @@ use crate::theme::Theme;
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
     CommandBarState, DiffOptions, DiffState, FilePickerState, GlobalSearchState, NavigatorState,
-    ReviewState, SelectionState, TextBuffer, WorktreeState,
+    ReviewState, SelectionState, StatsState, TextBuffer, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -157,6 +157,9 @@ pub struct AppState {
     // File picker (Ctrl+P)
     pub file_picker: FilePickerState,
 
+    // Stats dashboard
+    pub stats: StatsState,
+
     // Agentic review
     pub agentic_review_modal_open: bool, // kept for KeyContext compat, always false now
     pub agentic_review_composing: bool,
@@ -214,6 +217,7 @@ impl AppState {
             bookmarks: BookmarkState::new(),
             command_bar: CommandBarState::new(),
             file_picker: FilePickerState::new(),
+            stats: StatsState::default(),
             agentic_review_modal_open: false,
             agentic_review_composing: false,
             agentic_review_text: TextBuffer::new(),

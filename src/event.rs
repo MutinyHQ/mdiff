@@ -120,6 +120,7 @@ pub struct KeyContext {
     pub agentic_review_panel_open: bool,
     pub agentic_review_composing: bool,
     pub window_pending: bool,
+    pub stats_dashboard_open: bool,
 }
 
 /// Context for mouse event mapping.
@@ -414,6 +415,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         };
     }
 
+    // Priority 2.37: Stats dashboard overlay
+    if ctx.stats_dashboard_open {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('S') => Some(Action::ToggleStatsDashboard),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::StatsDashboardUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::StatsDashboardDown),
+            KeyCode::Enter => Some(Action::StatsDashboardSelect),
+            KeyCode::Char('s') => Some(Action::StatsDashboardSort),
+            _ => None,
+        };
+    }
+
     // Priority 2.4: Checklist panel navigation
     if ctx.checklist_panel_open {
         return match key.code {
@@ -699,6 +712,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 return Some(Action::SwitchToAgentOutputs)
             }
             KeyCode::Char('F') => return Some(Action::ToggleFeedbackSummary),
+            KeyCode::Char('S') if !ctx.visual_mode_active => {
+                return Some(Action::ToggleStatsDashboard)
+            }
             KeyCode::Char('R') => return Some(Action::RefreshDiff),
             KeyCode::Char('n') if !ctx.visual_mode_active => {
                 return match ctx.focus {
@@ -905,6 +921,7 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            stats_dashboard_open: false,
         }
     }
 
@@ -940,6 +957,7 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            stats_dashboard_open: false,
         }
     }
 
@@ -975,6 +993,7 @@ mod tests {
             agentic_review_panel_open: true,
             agentic_review_composing: true,
             window_pending: false,
+            stats_dashboard_open: false,
         }
     }
 
