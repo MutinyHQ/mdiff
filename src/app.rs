@@ -726,16 +726,16 @@ impl App {
 
         let metrics = match self.state.diff.options.view_mode {
             DiffViewMode::Split => {
-                let halves = Layout::default()
+                let gutter_width_chars: u16 = 12;
+                let cols = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .constraints([
+                        Constraint::Min(10),
+                        Constraint::Length(gutter_width_chars),
+                        Constraint::Min(10),
+                    ])
                     .split(inner);
-                compute_split_visual_row_metrics(
-                    delta,
-                    &self.state,
-                    halves[0].width,
-                    halves[1].width,
-                )
+                compute_split_visual_row_metrics(delta, &self.state, cols[0].width, cols[2].width)
             }
             DiffViewMode::Unified => {
                 compute_unified_visual_row_metrics(delta, &self.state, inner.width)
@@ -3079,6 +3079,8 @@ impl App {
                 // Don't re-enable auto_scroll — user is manually scrolling
             }
         }
+
+        self.clamp_scroll();
     }
 
     /// Return a mutable reference to whichever TextBuffer is currently active,

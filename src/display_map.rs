@@ -211,6 +211,44 @@ pub struct DisplayRowInfo {
     pub hidden_count: usize,
     /// Expand direction for collapsed indicators.
     pub expand_direction: Option<ExpandDirection>,
+    /// Whether this is a boundary start marker row.
+    pub is_boundary_start: bool,
+    /// Whether this is a boundary end marker row.
+    pub is_boundary_end: bool,
+}
+
+fn boundary_start_row() -> DisplayRowInfo {
+    DisplayRowInfo {
+        hunk_index: 0,
+        line_index: None,
+        old_lineno: None,
+        new_lineno: None,
+        origin: None,
+        is_header: false,
+        is_collapsed_indicator: false,
+        gap_id: None,
+        hidden_count: 0,
+        expand_direction: None,
+        is_boundary_start: true,
+        is_boundary_end: false,
+    }
+}
+
+fn boundary_end_row(last_hunk_idx: usize) -> DisplayRowInfo {
+    DisplayRowInfo {
+        hunk_index: last_hunk_idx,
+        line_index: None,
+        old_lineno: None,
+        new_lineno: None,
+        origin: None,
+        is_header: false,
+        is_collapsed_indicator: false,
+        gap_id: None,
+        hidden_count: 0,
+        expand_direction: None,
+        is_boundary_start: false,
+        is_boundary_end: true,
+    }
 }
 
 /// Build a display map for the split view.
@@ -221,6 +259,8 @@ pub fn build_split_display_map(
 ) -> Vec<DisplayRowInfo> {
     let mut rows = Vec::new();
     let mut gap_id_offset = 0;
+
+    rows.push(boundary_start_row());
 
     for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         // Hunk header row
@@ -235,6 +275,8 @@ pub fn build_split_display_map(
             gap_id: None,
             hidden_count: 0,
             expand_direction: None,
+            is_boundary_start: false,
+            is_boundary_end: false,
         });
 
         let (items, next_offset) =
@@ -260,6 +302,8 @@ pub fn build_split_display_map(
                         gap_id: Some(*gap_id),
                         hidden_count: *hidden_count,
                         expand_direction: Some(*direction),
+                        is_boundary_start: false,
+                        is_boundary_end: false,
                     });
                     i += 1;
                 }
@@ -279,6 +323,8 @@ pub fn build_split_display_map(
                             gap_id: None,
                             hidden_count: 0,
                             expand_direction: None,
+                            is_boundary_start: false,
+                            is_boundary_end: false,
                         });
                         i += 1;
                     }
@@ -372,6 +418,8 @@ pub fn build_split_display_map(
                                 gap_id: None,
                                 hidden_count: 0,
                                 expand_direction: None,
+                                is_boundary_start: false,
+                                is_boundary_end: false,
                             });
                         }
                     }
@@ -387,6 +435,8 @@ pub fn build_split_display_map(
                             gap_id: None,
                             hidden_count: 0,
                             expand_direction: None,
+                            is_boundary_start: false,
+                            is_boundary_end: false,
                         });
                         i += 1;
                     }
@@ -394,6 +444,9 @@ pub fn build_split_display_map(
             }
         }
     }
+
+    let last_hunk = delta.hunks.len().saturating_sub(1);
+    rows.push(boundary_end_row(last_hunk));
 
     rows
 }
@@ -406,6 +459,8 @@ pub fn build_unified_display_map(
 ) -> Vec<DisplayRowInfo> {
     let mut rows = Vec::new();
     let mut gap_id_offset = 0;
+
+    rows.push(boundary_start_row());
 
     for (hunk_idx, hunk) in delta.hunks.iter().enumerate() {
         // Hunk header row
@@ -420,6 +475,8 @@ pub fn build_unified_display_map(
             gap_id: None,
             hidden_count: 0,
             expand_direction: None,
+            is_boundary_start: false,
+            is_boundary_end: false,
         });
 
         let (items, next_offset) =
@@ -444,6 +501,8 @@ pub fn build_unified_display_map(
                         gap_id: Some(*gap_id),
                         hidden_count: *hidden_count,
                         expand_direction: Some(*direction),
+                        is_boundary_start: false,
+                        is_boundary_end: false,
                     });
                 }
                 FilteredItem::Line {
@@ -461,11 +520,16 @@ pub fn build_unified_display_map(
                         gap_id: None,
                         hidden_count: 0,
                         expand_direction: None,
+                        is_boundary_start: false,
+                        is_boundary_end: false,
                     });
                 }
             }
         }
     }
+
+    let last_hunk = delta.hunks.len().saturating_sub(1);
+    rows.push(boundary_end_row(last_hunk));
 
     rows
 }
