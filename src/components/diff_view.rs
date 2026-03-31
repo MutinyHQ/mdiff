@@ -97,6 +97,23 @@ fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String
             let after: String = q.chars().skip(ci).collect();
             format!("{base} /{}\u{2588}{}{match_info} ", before, after)
         }
+    } else if state.timeline.active && state.timeline.selected_index.is_some() {
+        let tl = &state.timeline;
+        let status = tl.status_text();
+        if let Some(idx) = tl.selected_index {
+            if let Some(c) = tl.commits.get(idx) {
+                let summary_trunc = if c.summary.len() > 50 {
+                    format!("{}…", &c.summary[..49])
+                } else {
+                    c.summary.clone()
+                };
+                format!("{base} {status} {summary_trunc} ")
+            } else {
+                format!("{base} {status} ")
+            }
+        } else {
+            format!("{base} {status} ")
+        }
     } else {
         format!("{base} ")
     }

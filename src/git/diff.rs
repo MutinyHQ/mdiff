@@ -7,6 +7,39 @@ use crate::state::diff_state::DiffOptions as AppDiffOptions;
 pub struct DiffEngine;
 
 impl DiffEngine {
+    /// Compute the diff for a single commit (parent..commit).
+    pub fn compute_commit_diff(
+        repo: &Repository,
+        commit_oid: &str,
+        options: &AppDiffOptions,
+    ) -> Result<Vec<FileDelta>> {
+        let obj = repo
+            .revparse_single(commit_oid)
+            .with_context(|| format!("Could not resolve: {commit_oid}"))?;
+        let commit = obj
+            .peel_to_commit()
+            .with_context(|| format!("{commit_oid} does not point to a commit"))?;
+
+        let commit_tree = commit.tree()?;
+        let parent_tree = if commit.parent_count() > 0 {
+            Some(commit.parent(0)?.tree()?)
+        } else {
+            None
+        };
+
+        let mut diff_opts = DiffOptions::new();
+        diff_opts.ignore_whitespace(options.ignore_whitespace);
+        diff_opts.context_lines(999_999);
+
+        let diff = repo.diff_tree_to_tree(
+            parent_tree.as_ref(),
+            Some(&commit_tree),
+            Some(&mut diff_opts),
+        )?;
+
+        Self::parse_diff(&diff)
+    }
+
     pub fn compute_diff(
         repo: &Repository,
         target: &ComparisonTarget,

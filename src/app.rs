@@ -27,6 +27,7 @@ use crate::components::prompt_preview::render_prompt_preview;
 use crate::components::restore_confirm::render_restore_confirm;
 use crate::components::settings_modal::render_settings_modal;
 use crate::components::target_dialog::render_target_dialog;
+use crate::components::timeline_bar::render_timeline_bar;
 use crate::components::which_key;
 use crate::components::worktree_browser::WorktreeBrowser;
 use crate::components::Component;
@@ -246,7 +247,24 @@ impl App {
                         self.last_navigator_rect = main[0];
                         navigator.render(frame, main[0], &self.state);
 
-                        let diff_area = main[1];
+                        let diff_area_full = main[1];
+
+                        let timeline_h: u16 = if self.state.timeline.active
+                            && !self.state.timeline.commits.is_empty()
+                        {
+                            1
+                        } else {
+                            0
+                        };
+                        let (diff_area, timeline_area) = if timeline_h > 0 {
+                            let split = Layout::default()
+                                .direction(Direction::Vertical)
+                                .constraints([Constraint::Min(3), Constraint::Length(timeline_h)])
+                                .split(diff_area_full);
+                            (split[0], Some(split[1]))
+                        } else {
+                            (diff_area_full, None)
+                        };
 
                         if self.state.prompt_preview_visible {
                             let vsplit = Layout::default()
@@ -271,6 +289,10 @@ impl App {
                             self.last_diff_view_rect = diff_area;
                             self.update_diff_visual_metrics(diff_area);
                             diff_view.render(frame, diff_area, &self.state);
+                        }
+
+                        if let Some(tl_area) = timeline_area {
+                            render_timeline_bar(frame, tl_area, &self.state);
                         }
 
                         // Render right-side panels
@@ -390,6 +412,7 @@ impl App {
                     agentic_review_panel_open: self.state.agentic_review_panel_open,
                     agentic_review_composing: self.state.agentic_review_composing,
                     window_pending: self.window_pending,
+                    timeline_active: self.state.timeline.active,
                 };
                 let action = match event {
                     Event::Key(key) => {
@@ -941,7 +964,11 @@ impl App {
                 | Action::AgenticReviewPanelUp
                 | Action::AgenticReviewPanelDown
                 | Action::WindowPrefix
-                | Action::CycleFocus => {}
+                | Action::CycleFocus
+                | Action::ToggleTimeline
+                | Action::TimelineNext
+                | Action::TimelinePrev
+                | Action::TimelineSelectAll => {}
                 _ => {
                     self.state.hud_expanded = false;
                     self.hud_collapse_countdown = 0;
@@ -3078,6 +3105,44 @@ impl App {
                 self.state.agentic_review_scroll += 1;
                 // Don't re-enable auto_scroll — user is manually scrolling
             }
+
+            // Timeline scrubber actions
+            Action::ToggleTimeline => {
+                if self.state.timeline.active {
+                    // Deactivate: restore combined diff if we were filtering
+                    if self.state.timeline.selected_index.is_some() {
+                        self.restore_combined_diff();
+                    }
+                    self.state.timeline.active = false;
+                    self.state.timeline.selected_index = None;
+                } else {
+                    self.activate_timeline();
+                }
+            }
+            Action::TimelineNext => {
+                if self.state.timeline.active {
+                    let prev = self.state.timeline.selected_index;
+                    self.state.timeline.select_next();
+                    if self.state.timeline.selected_index != prev {
+                        self.apply_timeline_selection();
+                    }
+                }
+            }
+            Action::TimelinePrev => {
+                if self.state.timeline.active {
+                    let prev = self.state.timeline.selected_index;
+                    self.state.timeline.select_prev();
+                    if self.state.timeline.selected_index != prev {
+                        self.apply_timeline_selection();
+                    }
+                }
+            }
+            Action::TimelineSelectAll => {
+                if self.state.timeline.active && self.state.timeline.selected_index.is_some() {
+                    self.state.timeline.select_all();
+                    self.restore_combined_diff();
+                }
+            }
         }
 
         self.clamp_scroll();
@@ -3097,6 +3162,95 @@ impl App {
             }
         }
         self.state.pty_focus = false;
+    }
+
+    fn activate_timeline(&mut self) {
+        let commits = crate::git::RepoCache::open(&self.repo_path)
+            .ok()
+            .and_then(|repo| {
+                crate::git::attribution::collect_timeline_commits(repo.repo(), &self.target).ok()
+            })
+            .unwrap_or_default();
+        if commits.is_empty() {
+            self.set_status_for_ticks("No commits found for timeline".into(), true, 60);
+            return;
+        }
+        self.state.timeline.cached_combined_deltas = self.state.diff.deltas.clone();
+        self.state.timeline.commits = commits;
+        self.state.timeline.selected_index = None;
+        self.state.timeline.active = true;
+        self.set_status_for_ticks(
+            format!(
+                "Timeline: {} commits (use </> to navigate, 0 for all)",
+                self.state.timeline.commits.len()
+            ),
+            false,
+            80,
+        );
+    }
+
+    fn apply_timeline_selection(&mut self) {
+        match self.state.timeline.selected_index {
+            None => {
+                self.restore_combined_diff();
+            }
+            Some(idx) => {
+                if let Some(commit) = self.state.timeline.commits.get(idx) {
+                    let oid = commit.oid.clone();
+                    match crate::git::RepoCache::open(&self.repo_path) {
+                        Ok(repo) => {
+                            match crate::git::DiffEngine::compute_commit_diff(
+                                repo.repo(),
+                                &oid,
+                                &self.state.diff.options,
+                            ) {
+                                Ok(deltas) => {
+                                    self.state.navigator.update_from_deltas(&deltas);
+                                    self.state.diff.deltas = deltas;
+                                    self.state.diff.selected_file =
+                                        if self.state.diff.deltas.is_empty() {
+                                            None
+                                        } else {
+                                            Some(0)
+                                        };
+                                    self.state.diff.scroll_offset = 0;
+                                    self.state.diff.cursor_row = 0;
+                                    self.update_highlights();
+                                }
+                                Err(e) => {
+                                    self.set_status_for_ticks(
+                                        format!("Failed to compute commit diff: {e}"),
+                                        true,
+                                        80,
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.set_status_for_ticks(
+                                format!("Failed to open repo: {e}"),
+                                true,
+                                80,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn restore_combined_diff(&mut self) {
+        let deltas = self.state.timeline.cached_combined_deltas.clone();
+        self.state.navigator.update_from_deltas(&deltas);
+        self.state.diff.deltas = deltas;
+        self.state.diff.selected_file = if self.state.diff.deltas.is_empty() {
+            None
+        } else {
+            Some(0)
+        };
+        self.state.diff.scroll_offset = 0;
+        self.state.diff.cursor_row = 0;
+        self.update_highlights();
     }
 
     fn active_text_buffer(&mut self) -> Option<&mut crate::state::TextBuffer> {

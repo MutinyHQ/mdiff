@@ -366,142 +366,177 @@ fn get_context_entries(state: &AppState) -> Vec<KeyEntry> {
                         description: "This help",
                     },
                     KeyEntry {
+                        key: "Ctrl+T",
+                        description: if state.timeline.active {
+                            "Hide timeline"
+                        } else {
+                            "Timeline"
+                        },
+                    },
+                    KeyEntry {
                         key: "Ctrl+C/D",
                         description: "Quit",
                     },
                 ]);
                 entries
             }
-            FocusPanel::DiffView => vec![
-                KeyEntry {
-                    key: "j/k",
-                    description: "Scroll",
-                },
-                KeyEntry {
-                    key: "g/G",
-                    description: "Top/bottom",
-                },
-                KeyEntry {
-                    key: "^W h/l",
-                    description: "Switch pane",
-                },
-                KeyEntry {
-                    key: "PgUp/Dn",
-                    description: "Page scroll",
-                },
-                KeyEntry {
-                    key: "Space",
-                    description: "Expand context",
-                },
-                KeyEntry {
-                    key: "e",
-                    description: "Open in $EDITOR",
-                },
-                KeyEntry {
-                    key: "/",
-                    description: "Search in diff",
-                },
-                KeyEntry {
-                    key: "n/N",
-                    description: "Next/prev match",
-                },
-                KeyEntry {
-                    key: "v",
-                    description: "Visual select",
-                },
-                KeyEntry {
-                    key: "i",
-                    description: "Add annotation",
-                },
-                KeyEntry {
-                    key: "a",
-                    description: "Annotation menu",
-                },
-                KeyEntry {
-                    key: "]",
-                    description: "Next hunk",
-                },
-                KeyEntry {
-                    key: "[",
-                    description: "Prev hunk",
-                },
-                KeyEntry {
-                    key: "]b",
-                    description: "Next bookmark",
-                },
-                KeyEntry {
-                    key: "[b",
-                    description: "Prev bookmark",
-                },
-                KeyEntry {
-                    key: "b",
-                    description: "Toggle bookmark",
-                },
-                KeyEntry {
-                    key: "B",
-                    description: "Bookmark list",
-                },
-                KeyEntry {
-                    key: "m+a-z",
-                    description: "Named bookmark",
-                },
-                KeyEntry {
-                    key: "'+a-z",
-                    description: "Jump to mark",
-                },
-                KeyEntry {
-                    key: "p",
-                    description: "Prompt preview",
-                },
-                KeyEntry {
-                    key: "y",
-                    description: "Copy prompt",
-                },
-                KeyEntry {
-                    key: "1-5",
-                    description: "Quick score",
-                },
-                KeyEntry {
-                    key: "0",
-                    description: "Remove score",
-                },
-                KeyEntry {
-                    key: "s",
-                    description: "Stage file",
-                },
-                KeyEntry {
-                    key: "u",
-                    description: "Unstage file",
-                },
-                KeyEntry {
-                    key: "w",
-                    description: "Toggle whitespace",
-                },
-                KeyEntry {
-                    key: "Tab",
-                    description: "Split/unified",
-                },
-                KeyEntry {
-                    key: ":",
-                    description: "Command bar",
-                },
-                KeyEntry {
-                    key: "Ctrl+P",
-                    description: "File picker",
-                },
-                KeyEntry {
-                    key: "Ctrl+E",
-                    description: "Export feedback",
-                },
-                KeyEntry {
-                    key: "?",
-                    description: "This help",
-                },
-                KeyEntry {
-                    key: "Ctrl+C/D",
-                    description: "Quit",
-                },
-            ],
+            FocusPanel::DiffView => {
+                let mut entries = vec![
+                    KeyEntry {
+                        key: "j/k",
+                        description: "Scroll",
+                    },
+                    KeyEntry {
+                        key: "g/G",
+                        description: "Top/bottom",
+                    },
+                    KeyEntry {
+                        key: "^W h/l",
+                        description: "Switch pane",
+                    },
+                    KeyEntry {
+                        key: "PgUp/Dn",
+                        description: "Page scroll",
+                    },
+                    KeyEntry {
+                        key: "Space",
+                        description: "Expand context",
+                    },
+                    KeyEntry {
+                        key: "e",
+                        description: "Open in $EDITOR",
+                    },
+                    KeyEntry {
+                        key: "/",
+                        description: "Search in diff",
+                    },
+                    KeyEntry {
+                        key: "n/N",
+                        description: "Next/prev match",
+                    },
+                    KeyEntry {
+                        key: "v",
+                        description: "Visual select",
+                    },
+                    KeyEntry {
+                        key: "i",
+                        description: "Add annotation",
+                    },
+                    KeyEntry {
+                        key: "a",
+                        description: "Annotation menu",
+                    },
+                    KeyEntry {
+                        key: "]",
+                        description: "Next hunk",
+                    },
+                    KeyEntry {
+                        key: "[",
+                        description: "Prev hunk",
+                    },
+                    KeyEntry {
+                        key: "]b",
+                        description: "Next bookmark",
+                    },
+                    KeyEntry {
+                        key: "[b",
+                        description: "Prev bookmark",
+                    },
+                    KeyEntry {
+                        key: "b",
+                        description: "Toggle bookmark",
+                    },
+                    KeyEntry {
+                        key: "B",
+                        description: "Bookmark list",
+                    },
+                    KeyEntry {
+                        key: "m+a-z",
+                        description: "Named bookmark",
+                    },
+                    KeyEntry {
+                        key: "'+a-z",
+                        description: "Jump to mark",
+                    },
+                    KeyEntry {
+                        key: "p",
+                        description: "Prompt preview",
+                    },
+                    KeyEntry {
+                        key: "y",
+                        description: "Copy prompt",
+                    },
+                    KeyEntry {
+                        key: "1-5",
+                        description: "Quick score",
+                    },
+                    KeyEntry {
+                        key: "0",
+                        description: "Remove score",
+                    },
+                    KeyEntry {
+                        key: "s",
+                        description: "Stage file",
+                    },
+                    KeyEntry {
+                        key: "u",
+                        description: "Unstage file",
+                    },
+                    KeyEntry {
+                        key: "w",
+                        description: "Toggle whitespace",
+                    },
+                    KeyEntry {
+                        key: "Tab",
+                        description: "Split/unified",
+                    },
+                    KeyEntry {
+                        key: ":",
+                        description: "Command bar",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+P",
+                        description: "File picker",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+E",
+                        description: "Export feedback",
+                    },
+                    KeyEntry {
+                        key: "?",
+                        description: "This help",
+                    },
+                    KeyEntry {
+                        key: "Ctrl+C/D",
+                        description: "Quit",
+                    },
+                ];
+                if state.timeline.active {
+                    entries.extend_from_slice(&[
+                        KeyEntry {
+                            key: "< / ,",
+                            description: "Prev commit",
+                        },
+                        KeyEntry {
+                            key: "> / .",
+                            description: "Next commit",
+                        },
+                        KeyEntry {
+                            key: "0",
+                            description: "All commits",
+                        },
+                    ]);
+                }
+                entries.push(KeyEntry {
+                    key: "Ctrl+T",
+                    description: if state.timeline.active {
+                        "Hide timeline"
+                    } else {
+                        "Timeline"
+                    },
+                });
+                entries
+            }
             FocusPanel::ReviewPanel => vec![
                 KeyEntry {
                     key: "type",
