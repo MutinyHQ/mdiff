@@ -97,6 +97,23 @@ fn format_title(delta: &FileDelta, view_label: &str, state: &AppState) -> String
             let after: String = q.chars().skip(ci).collect();
             format!("{base} /{}\u{2588}{}{match_info} ", before, after)
         }
+    } else if state.timeline.active && state.timeline.selected_index.is_some() {
+        let tl = &state.timeline;
+        let status = tl.status_text();
+        if let Some(idx) = tl.selected_index {
+            if let Some(c) = tl.commits.get(idx) {
+                let summary_trunc = if c.summary.len() > 50 {
+                    format!("{}…", &c.summary[..49])
+                } else {
+                    c.summary.clone()
+                };
+                format!("{base} {status} {summary_trunc} ")
+            } else {
+                format!("{base} {status} ")
+            }
+        } else {
+            format!("{base} {status} ")
+        }
     } else {
         format!("{base} ")
     }
@@ -401,6 +418,33 @@ fn build_split_lines_core<'a>(
     let gutter_width = 5;
     let mut gap_id_offset = 0;
 
+    let filename = delta.path.to_string_lossy();
+
+    // Boundary start row
+    if display_map
+        .get(display_row)
+        .is_some_and(|r| r.is_boundary_start)
+    {
+        let hl = row_highlight(state, display_row);
+        let boundary_text =
+            format!("\u{2500}\u{2500}\u{2500} diff start: {filename} \u{2500}\u{2500}\u{2500}");
+        let mut style = Style::default()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::DIM);
+        if let Some(bg) = hl.content_bg {
+            style = style.bg(bg);
+        }
+        left.push(Line::from(Span::styled(boundary_text, style)));
+        let empty_gutter = format!("{:>gutter_width$} {:>gutter_width$} ", "", "");
+        let mut gutter_style = Style::default().fg(theme.text_muted);
+        if let Some(bg) = hl.gutter_bg {
+            gutter_style = gutter_style.bg(bg);
+        }
+        center.push(Line::from(Span::styled(empty_gutter, gutter_style)));
+        right.push(Line::from(Span::styled("", style)));
+        display_row += 1;
+    }
+
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
         let ann_marker = display_map
@@ -673,6 +717,30 @@ fn build_split_lines_core<'a>(
         }
     }
 
+    // Boundary end row
+    if display_map
+        .get(display_row)
+        .is_some_and(|r| r.is_boundary_end)
+    {
+        let hl = row_highlight(state, display_row);
+        let boundary_text =
+            format!("\u{2500}\u{2500}\u{2500} diff end: {filename} \u{2500}\u{2500}\u{2500}");
+        let mut style = Style::default()
+            .fg(theme.text_muted)
+            .add_modifier(Modifier::DIM);
+        if let Some(bg) = hl.content_bg {
+            style = style.bg(bg);
+        }
+        left.push(Line::from(Span::styled(boundary_text, style)));
+        let empty_gutter = format!("{:>gutter_width$} {:>gutter_width$} ", "", "");
+        let mut gutter_style = Style::default().fg(theme.text_muted);
+        if let Some(bg) = hl.gutter_bg {
+            gutter_style = gutter_style.bg(bg);
+        }
+        center.push(Line::from(Span::styled(empty_gutter, gutter_style)));
+        right.push(Line::from(Span::styled("", style)));
+    }
+
     (left, center, right)
 }
 
@@ -688,6 +756,23 @@ fn build_unified_lines_core<'a>(
     let mut lines: Vec<Line> = Vec::new();
     let mut display_row: usize = 0;
     let mut gap_id_offset = 0;
+
+    let filename = delta.path.to_string_lossy();
+
+    // Boundary start row
+    if display_map
+        .get(display_row)
+        .is_some_and(|r| r.is_boundary_start)
+    {
+        let hl = row_highlight(state, display_row);
+        lines.push(make_boundary_line_unified(
+            gutter_width,
+            &format!("\u{2500}\u{2500}\u{2500} diff start: {filename} \u{2500}\u{2500}\u{2500}"),
+            hl,
+            theme,
+        ));
+        display_row += 1;
+    }
 
     for hunk in &delta.hunks {
         let hl = row_highlight(state, display_row);
@@ -810,6 +895,20 @@ fn build_unified_lines_core<'a>(
                 }
             }
         }
+    }
+
+    // Boundary end row
+    if display_map
+        .get(display_row)
+        .is_some_and(|r| r.is_boundary_end)
+    {
+        let hl = row_highlight(state, display_row);
+        lines.push(make_boundary_line_unified(
+            gutter_width,
+            &format!("\u{2500}\u{2500}\u{2500} diff end: {filename} \u{2500}\u{2500}\u{2500}"),
+            hl,
+            theme,
+        ));
     }
 
     lines
@@ -1086,6 +1185,33 @@ fn make_unified_highlighted<'a>(
     all_spans.push(prefix_span);
     all_spans.extend(content_spans);
     Line::from(all_spans)
+}
+
+/// Build a boundary marker line for unified view (dim/muted style, no line numbers).
+fn make_boundary_line_unified<'a>(
+    gutter_width: usize,
+    text: &str,
+    hl: RowHighlight,
+    theme: &Theme,
+) -> Line<'a> {
+    let gutter_text = format!("{:>gutter_width$} {:>gutter_width$} ", "", "");
+    let mut gutter_style = Style::default().fg(theme.text_muted);
+    if let Some(fg) = hl.gutter_fg {
+        gutter_style = gutter_style.fg(fg);
+    }
+    if let Some(bg) = hl.gutter_bg {
+        gutter_style = gutter_style.bg(bg);
+    }
+    let mut content_style = Style::default()
+        .fg(theme.text_muted)
+        .add_modifier(Modifier::DIM);
+    if let Some(bg) = hl.content_bg {
+        content_style = content_style.bg(bg);
+    }
+    Line::from(vec![
+        Span::styled(gutter_text, gutter_style),
+        Span::styled(text.to_string(), content_style),
+    ])
 }
 
 /// Build a collapsed indicator line for unified view.
@@ -1538,9 +1664,10 @@ mod tests {
 
         let metrics = compute_split_visual_row_metrics(&delta, &state, 12, 12);
 
-        assert_eq!(metrics.row_offsets.len(), 2);
-        assert_eq!(metrics.row_heights.len(), 2);
-        assert!(metrics.row_heights[1] > 1, "paired row should wrap");
+        // boundary_start + hunk_header + content_line + boundary_end = 4
+        assert_eq!(metrics.row_offsets.len(), 4);
+        assert_eq!(metrics.row_heights.len(), 4);
+        assert!(metrics.row_heights[2] > 1, "paired row should wrap");
         assert_eq!(
             metrics.total_rows,
             metrics.row_heights.iter().sum::<usize>()
@@ -1563,9 +1690,10 @@ mod tests {
 
         let metrics = compute_unified_visual_row_metrics(&delta, &state, 16);
 
-        assert_eq!(metrics.row_offsets.len(), 2);
-        assert_eq!(metrics.row_heights.len(), 2);
-        assert!(metrics.row_heights[1] > 1, "content row should wrap");
+        // boundary_start + hunk_header + content_line + boundary_end = 4
+        assert_eq!(metrics.row_offsets.len(), 4);
+        assert_eq!(metrics.row_heights.len(), 4);
+        assert!(metrics.row_heights[2] > 1, "content row should wrap");
         assert_eq!(
             metrics.total_rows,
             metrics.row_heights.iter().sum::<usize>()

@@ -3,7 +3,7 @@ use crate::theme::Theme;
 use super::{
     AgentOutputsState, AgentSelectorState, AnnotationState, BookmarkState, ChecklistState,
     CommandBarState, DiffOptions, DiffState, FilePickerState, GlobalSearchState, NavigatorState,
-    ReviewState, SelectionState, StatsState, TextBuffer, WorktreeState,
+    ReviewState, SelectionState, StatsState, TextBuffer, TimelineState, WorktreeState,
 };
 
 use super::annotation_state::{AnnotationCategory, AnnotationSeverity};
@@ -160,6 +160,9 @@ pub struct AppState {
     // Stats dashboard
     pub stats: StatsState,
 
+    // Timeline scrubber
+    pub timeline: TimelineState,
+
     // Agentic review
     pub agentic_review_modal_open: bool, // kept for KeyContext compat, always false now
     pub agentic_review_composing: bool,
@@ -218,6 +221,7 @@ impl AppState {
             command_bar: CommandBarState::new(),
             file_picker: FilePickerState::new(),
             stats: StatsState::default(),
+            timeline: TimelineState::default(),
             agentic_review_modal_open: false,
             agentic_review_composing: false,
             agentic_review_text: TextBuffer::new(),

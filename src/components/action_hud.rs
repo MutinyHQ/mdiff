@@ -350,6 +350,7 @@ mod tests {
             agentic_review_composing: state.agentic_review_composing,
             window_pending: false,
             stats_dashboard_open: state.stats.open,
+            timeline_active: state.timeline.active,
         }
     }
 

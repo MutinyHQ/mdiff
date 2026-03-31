@@ -284,4 +284,10 @@ pub enum Action {
     AgenticReviewError(String),
     AgenticReviewPanelUp,
     AgenticReviewPanelDown,
+
+    // Timeline scrubber
+    ToggleTimeline,
+    TimelineNext,
+    TimelinePrev,
+    TimelineSelectAll,
 }

@@ -1,7 +1,7 @@
 # mdiff Roadmap & Feature Backlog
 
 > **Maintained by**: Milo (automated ideation agent)
-> **Last updated**: 2026-03-27
+> **Last updated**: 2026-03-30
 > **Schedule**: New ideas are evaluated and prioritized every 24 hours
 
 This document tracks feature ideas, prioritized issues, and the rationale behind them. It draws from competitive analysis of tools like **critique**, **tuicr**, **acre**, **difi**, **deff**, **git-review**, **Kaleidoscope**, **lazygit**, **fzf**, **justshowmediff**, **IPE**, **diffreview**, **Fresh**, **1Code**, **Duff**, **patchcast**, **Anduin**, **carn**, **ftdv**, **keifu**, **dead-ringer**, **cmux**, **Muse/Manyana**, **oh-my-pi**, **Superset**, **Orchestrator**, **vibetracer**, **OpenClaw**, and patterns from RLHF/human feedback research.
@@ -53,13 +53,13 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 **Competitive reference**: VS Code file explorer, GitHub PR file tree, lazygit file tree, Yazi TUI file manager.
 
 #### 6. Diff Statistics Dashboard
-**Status**: Spec written (019), Cursor agent finished but no PR opened (model issues through 2026-03-19). Needs re-launch.
+**Status**: Spec written (019), Cursor agent re-launched (2026-03-30).
 **Rationale**: Before diving into line-by-line review, reviewers need an overview: how many files changed, total additions/deletions, which files have the most churn. No way to quickly assess changeset scope without scrolling through every file.
 **Scope**: Add a summary view (toggle with `S`) showing: total files/additions/deletions, per-file sparkline bars, file type breakdown, largest files by change size. Jump-to-file from the dashboard.
 **Competitive reference**: GitHub PR stats bar, `git diff --stat`, diffray summary.
 
 #### Ask a Question: Inline Q&A Over Diff Context (Issue #52)
-**Status**: Spec written (021), Cursor agent finished but no PR opened (model issues through 2026-03-19). Needs re-launch.
+**Status**: Spec written (021), Cursor agent re-launched (2026-03-30).
 **Addresses**: GitHub Issue #52
 **Rationale**: Reviewers frequently encounter unfamiliar code or unclear intent during review and must leave the TUI to ask an LLM. This destroys flow state. Inline Q&A with diff context assembly eliminates the context switch entirely. No other TUI diff viewer offers this — a clear differentiator. Filed by repo owner.
 **Scope**: `Ctrl+Q` trigger, question input bar at bottom of diff view, context assembly from visible hunks/selection, answer panel as right-side split, Q&A history with Ctrl+]/Ctrl+[, session persistence.
@@ -306,7 +306,7 @@ This document tracks feature ideas, prioritized issues, and the rationale behind
 | #52 | Feature | P1 | Open | Spec 021 written, Cursor agent finished but no PR. Needs re-launch. |
 | #37 | Feature | P1 | Open (PR #45 merged, issue not closed) | Implementation complete, issue should be closed |
 | #35 | Bug | P0 | Open (PR #51 merged) | Fix merged, issue should be closed |
-| #25 | Bug | P0 | Open (PR #50 merged) | Fix merged, issue should be closed |
+| #25 | Bug | P0 | Open — fix from PR #50 insufficient | **Second pass** — Spec 035 written, Cursor agent launched (2026-03-30). Scroll still clips bottom lines + adding boundary padding. |
 | #38 | UX/Safety | P0 | Closed | Resolved |
 
 ---
