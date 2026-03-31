@@ -121,6 +121,7 @@ pub struct KeyContext {
     pub agentic_review_composing: bool,
     pub auto_review_panel_open: bool,
     pub window_pending: bool,
+    pub timeline_active: bool,
 }
 
 /// Context for mouse event mapping.
@@ -569,6 +570,15 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
     }
 
+    // Priority 3.9: Timeline scrubber navigation (when timeline is active and in DiffExplorer)
+    if ctx.timeline_active && ctx.active_view == ActiveView::DiffExplorer && !review_composing {
+        match key.code {
+            KeyCode::Char('>') | KeyCode::Char('.') => return Some(Action::TimelineNext),
+            KeyCode::Char('<') | KeyCode::Char(',') => return Some(Action::TimelinePrev),
+            _ => {}
+        }
+    }
+
     // Priority 4: Global bindings (always active)
     match key.code {
         KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -588,6 +598,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
         }
         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
             return Some(Action::OpenAgenticReview)
+        }
+        KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            return Some(Action::ToggleTimeline)
         }
         _ => {}
     }
@@ -802,6 +815,7 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Char('3') => Some(Action::SetLineScore(3)),
             KeyCode::Char('4') => Some(Action::SetLineScore(4)),
             KeyCode::Char('5') => Some(Action::SetLineScore(5)),
+            KeyCode::Char('0') if ctx.timeline_active => Some(Action::TimelineSelectAll),
             KeyCode::Char('0') => Some(Action::RemoveLineScore),
             _ => None,
         },
@@ -925,6 +939,7 @@ mod tests {
             agentic_review_composing: false,
             auto_review_panel_open: false,
             window_pending: false,
+            timeline_active: false,
         }
     }
 
@@ -961,6 +976,7 @@ mod tests {
             agentic_review_composing: false,
             auto_review_panel_open: false,
             window_pending: false,
+            timeline_active: false,
         }
     }
 
@@ -997,6 +1013,7 @@ mod tests {
             agentic_review_composing: true,
             auto_review_panel_open: false,
             window_pending: false,
+            timeline_active: false,
         }
     }
 

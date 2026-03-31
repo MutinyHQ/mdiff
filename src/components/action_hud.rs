@@ -351,6 +351,7 @@ mod tests {
             auto_review_panel_open: state.auto_review.panel_open
                 && state.auto_review.has_findings(),
             window_pending: false,
+            timeline_active: state.timeline.active,
         }
     }
 

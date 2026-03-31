@@ -287,4 +287,10 @@ pub enum Action {
     AutoReviewJumpToCode,
     AutoReviewFilterCycle,
     AutoReviewClose,
+
+    // Timeline scrubber
+    ToggleTimeline,
+    TimelineNext,
+    TimelinePrev,
+    TimelineSelectAll,
 }
