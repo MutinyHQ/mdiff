@@ -199,6 +199,13 @@ pub enum Action {
     SettingsLeft,
     SettingsRight,
 
+    // Statistics dashboard
+    ToggleStatsDashboard,
+    StatsDashboardUp,
+    StatsDashboardDown,
+    StatsDashboardSelect,
+    StatsDashboardSort,
+
     // Feedback summary
     ToggleFeedbackSummary,
     FeedbackSummaryUp,

@@ -319,6 +319,12 @@ impl App {
 
                 action_hud.render(frame, outer[2], &self.state);
 
+                // Stats dashboard overlay (covers main content area)
+                if self.state.stats.open {
+                    use crate::components::stats_dashboard::StatsDashboard;
+                    StatsDashboard.render(frame, outer[1], &self.state);
+                }
+
                 // Render modal overlays (in priority order)
                 if self.state.target_dialog_open {
                     render_target_dialog(frame, &self.state);
@@ -412,6 +418,7 @@ impl App {
                     agentic_review_panel_open: self.state.agentic_review_panel_open,
                     agentic_review_composing: self.state.agentic_review_composing,
                     window_pending: self.window_pending,
+                    stats_dashboard_open: self.state.stats.open,
                     timeline_active: self.state.timeline.active,
                 };
                 let action = match event {
@@ -2539,6 +2546,48 @@ impl App {
                 }
             }
 
+            // Statistics dashboard
+            Action::ToggleStatsDashboard => {
+                self.state.stats.open = !self.state.stats.open;
+                if self.state.stats.open {
+                    self.state.stats.scroll_offset = 0;
+                    self.state.stats.selected_index = 0;
+                    self.recompute_diff_summary();
+                }
+            }
+            Action::StatsDashboardUp => {
+                if self.state.stats.selected_index > 0 {
+                    self.state.stats.selected_index -= 1;
+                }
+            }
+            Action::StatsDashboardDown => {
+                let file_count = self
+                    .state
+                    .stats
+                    .diff_summary
+                    .as_ref()
+                    .map(|s| s.total_files)
+                    .unwrap_or(0);
+                if file_count > 0 && self.state.stats.selected_index < file_count - 1 {
+                    self.state.stats.selected_index += 1;
+                }
+            }
+            Action::StatsDashboardSelect => {
+                if let Some(ref summary) = self.state.stats.diff_summary {
+                    let sorted = summary.sorted_file_stats(self.state.stats.sort_mode);
+                    if let Some(file) = sorted.get(self.state.stats.selected_index) {
+                        let delta_index = file.delta_index;
+                        self.state.stats.open = false;
+                        self.update(Action::SelectFile(delta_index));
+                        self.state.focus = FocusPanel::DiffView;
+                    }
+                }
+            }
+            Action::StatsDashboardSort => {
+                self.state.stats.sort_mode = self.state.stats.sort_mode.next();
+                self.state.stats.selected_index = 0;
+            }
+
             // Feedback summary
             Action::ToggleFeedbackSummary => {
                 if self.state.active_view == ActiveView::FeedbackSummary {
@@ -3397,6 +3446,11 @@ impl App {
                 self.set_status(format!("Failed to list worktrees: {e}"), true);
             }
         }
+    }
+
+    fn recompute_diff_summary(&mut self) {
+        use crate::state::stats_state::DiffSummary;
+        self.state.stats.diff_summary = Some(DiffSummary::from_deltas(&self.state.diff.deltas));
     }
 
     fn set_status(&mut self, msg: String, is_error: bool) {

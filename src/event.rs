@@ -120,6 +120,7 @@ pub struct KeyContext {
     pub agentic_review_panel_open: bool,
     pub agentic_review_composing: bool,
     pub window_pending: bool,
+    pub stats_dashboard_open: bool,
     pub timeline_active: bool,
 }
 
@@ -411,6 +412,18 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
             KeyCode::Enter => Some(Action::BookmarkListSelect),
             KeyCode::Char('d') => Some(Action::BookmarkListDelete),
             KeyCode::Esc => Some(Action::ToggleBookmarkList),
+            _ => None,
+        };
+    }
+
+    // Priority 2.37: Stats dashboard overlay
+    if ctx.stats_dashboard_open {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('S') => Some(Action::ToggleStatsDashboard),
+            KeyCode::Up | KeyCode::Char('k') => Some(Action::StatsDashboardUp),
+            KeyCode::Down | KeyCode::Char('j') => Some(Action::StatsDashboardDown),
+            KeyCode::Enter => Some(Action::StatsDashboardSelect),
+            KeyCode::Char('s') => Some(Action::StatsDashboardSort),
             _ => None,
         };
     }
@@ -712,6 +725,9 @@ pub fn map_key_to_action(key: KeyEvent, ctx: &KeyContext) -> Option<Action> {
                 return Some(Action::SwitchToAgentOutputs)
             }
             KeyCode::Char('F') => return Some(Action::ToggleFeedbackSummary),
+            KeyCode::Char('S') if !ctx.visual_mode_active => {
+                return Some(Action::ToggleStatsDashboard)
+            }
             KeyCode::Char('R') => return Some(Action::RefreshDiff),
             KeyCode::Char('n') if !ctx.visual_mode_active => {
                 return match ctx.focus {
@@ -919,6 +935,7 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            stats_dashboard_open: false,
             timeline_active: false,
         }
     }
@@ -955,6 +972,7 @@ mod tests {
             agentic_review_panel_open: false,
             agentic_review_composing: false,
             window_pending: false,
+            stats_dashboard_open: false,
             timeline_active: false,
         }
     }
@@ -991,6 +1009,7 @@ mod tests {
             agentic_review_panel_open: true,
             agentic_review_composing: true,
             window_pending: false,
+            stats_dashboard_open: false,
             timeline_active: false,
         }
     }
