@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/MutinyHQ/mdiff/compare/v0.1.22...v0.1.23) - 2026-03-31
+
+### Fixed
+
+- add boundary padding rows and fix scroll clipping at bottom
+- keymapping consistency
+
+### Other
+
+- Merge branch 'main' into feat/diff-statistics-dashboard-019
+- Merge pull request #77 from MutinyHQ/cursor/diff-timeline-scrubber-9c30
+- add spec 035 — Fix Diff Scroll Bottom & Boundary Padding (Issue #25, second pass)
+- update ROADMAP.md and journal for Run #14 (2026-03-27)
+- add spec 034 — Inline Diff Minimap
+- add spec 032 — Automated Review Surface (Issue #71)
+- add spec 033 — Diff Timeline Scrubber
+
 ## [0.1.22](https://github.com/MutinyHQ/mdiff/compare/v0.1.21...v0.1.22) - 2026-03-25
 
 ### Added
